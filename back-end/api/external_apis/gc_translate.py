@@ -1,0 +1,9 @@
+def translate(text, source_language):
+    #df = helpers.translate_dataframe(pd.DataFrame(rows, dtype='str'), non_english_columns)
+    #translated_rows = df.to_json(orient='values', force_ascii=False)
+    # translated_rows = [["date","genus","epithet","count","location","description"],["01\\/03\\/2012","Eudyptes","moseleyi","5","Gough Island","Analysis surfaces"],["02\\/03\\/2012","Eudyptes","moseleyi","10","Gough Island","Comment"],["03\\/03\\/2012","Eudyptes","moseleyi","10","Gough Island","Monitoring of pollution situations"]]
+    #table = df.to_html()
+    # table = '<table border="1" class="dataframe">\n  <thead>\n    <tr style="text-align: right;">\n      <th></th>\n      <th>0</th>\n      <th>1</th>\n      <th>2</th>\n      <th>3</th>\n      <th>4</th>\n      <th>5</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <th>0</th>\n      <td>date</td>\n      <td>genus</td>\n      <td>epithet</td>\n      <td>count</td>\n      <td>location</td>\n      <td>description</td>\n    </tr>\n    <tr>\n      <th>1</th>\n      <td>01/03/2012</td>\n      <td>Eudyptes</td>\n      <td>moseleyi</td>\n      <td>5</td>\n      <td>Gough Island</td>\n      <td>Analysis surfaces</td>\n    </tr>\n    <tr>\n      <th>2</th>\n      <td>02/03/2012</td>\n      <td>Eudyptes</td>\n      <td>moseleyi</td>\n      <td>10</td>\n      <td>Gough Island</td>\n      <td>Comment</td>\n    </tr>\n    <tr>\n      <th>3</th>\n      <td>03/03/2012</td>\n      <td>Eudyptes</td>\n      <td>moseleyi</td>\n      <td>10</td>\n      <td>Gough Island</td>\n      <td>Monitoring of pollution situations</td>\n    </tr>\n  </tbody>\n</table>'
+    #return jsonify({'translated': False, 'rows': df.to_json(orient='values', force_ascii=False)})
+    # return ({'translated': True, 'non_english_columns': non_english_columns, 'rows': translated_rows, 'table': table})
+    return text

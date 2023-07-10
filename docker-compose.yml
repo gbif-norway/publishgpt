@@ -1,0 +1,36 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:latest # To clear database: docker rm -v publishgpt-db-1 
+    shm_size: 5g
+    environment:
+        - POSTGRES_HOST_AUTH_METHOD=trust
+  back-end:
+    build: ./back-end
+    entrypoint: "tail -f /dev/null"
+    volumes:
+      - ./back-end:/app
+    depends_on:
+      - db
+    expose:
+      - 80
+    env_file:
+      - ./back-end/.env
+  front-end:
+    build: ./front-end
+    volumes:
+      - ./front-end:/app
+    stdin_open: true
+    tty: true
+    expose:
+      - 3000
+    env_file:
+      - ./front-end/.env
+    depends_on:
+        - back-end
+
+networks:
+  default:
+    external:
+      name: nginx-proxy
