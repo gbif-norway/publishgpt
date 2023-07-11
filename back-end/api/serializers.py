@@ -24,9 +24,11 @@ class TaskSerializer(serializers.ModelSerializer):
 
 
 class ConversationSerializer(serializers.ModelSerializer):
+    message_set = MessageSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Conversation
-        fields = '__all__'
+        fields = ['id', 'dataset', 'created', 'task', 'updated_df_sample', 'status', 'message_set']
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -37,14 +39,34 @@ class DatasetSerializer(serializers.ModelSerializer):
     def create(self, data):
         df = _read_file(data['file'].file)
         data['shape'] = df.shape
-        data['df_sample'] = _get_df_sample(df)
 
-        # Model is not created unless GPT thinks there's a scientific name
+        rows_minimum = 4
+
+        # Check uploaded sheet has enough rows to work with
+        if len(df) < rows_minimum:
+            raise serializers.ValidationError(f"Your dataset has fewer than {rows_minimum} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
+        
+        # Reduce to something near the openai character count limit and check there are still enough rows
+        sample = _limit_dataframe_characters(df)
+        print(f'Number of rows: {len(df)}')
+        if len(df) < rows_minimum:
+            raise serializers.ValidationError(f"You have too many characters per row on your spreadsheet. I'm using OpenAI's GPT API and unfortunately there's a character limit on what I can process. When working with a dataframe as large as yours I usually take a small sample of a few rows so I am within the character count limit, but in your case I only have {len(df)} rows to work with. Can you reduce the amount of text in some of the columns, or drop some columns? Please upload a new sheet.")
+        data['df_sample'] = sample.to_json(force_ascii=False) #orient='values'
+
+        # Check there's a scientific name
         text = f'Dataframe: {data["df_sample"]} --- Is there at least one column containing either a scientific name string such as a latin name (can be for phylum, family, genus, species, subspecies, etc), or a scientificNameID such as a BOLD ID or an LSID? Reply with "yes" or "no", and no other text.'
-        response = openai.chat_completion(messages=[Message(content=text, role=Message.Role.SYSTEM)])
-        if 'no' in response['choices'][0]['message']['content']:
+        response = openai.chat_completion(messages=[Message(content=text, role=Message.Role.USER)])
+        if 'no' in response['choices'][0]['message']['content'].lower():
             raise serializers.ValidationError('It looks as if your data does not contain a scientificName or scientificNameID. It\'s only possible to publish biodiversity data linked to species on <a href="https://gbif.org" target="_blank">gbif.org</a>.')
         
+        # Check there's at least one header row
+        text = f'Dataframe: {data["df_sample"]} --- Is the top row a header row? Reply with "yes" or "no", and no other text.'
+        response = openai.chat_completion(messages=[Message(content=text, role=Message.Role.USER)])
+        if 'no' in response['choices'][0]['message']['content'].lower():
+            raise serializers.ValidationError("There doesn't appear to be a header row in your data. Please add one, ideally with darwin core terms, and reupload.")
+        sample = sample.rename(columns=sample.iloc[0]).drop(sample.index[0]).reset_index(drop=True)
+        data['df_sample'] = sample.to_json(force_ascii=False)
+
         # Create the corresponding cleaning task conversations, but don't start them
         dataset = Dataset.objects.create(**data)
         for task in Task.objects.all():
@@ -59,17 +81,6 @@ def _read_file(file):
     # try:
     df = pd.read_csv(file, skip_blank_lines=True, header=None)
     return df
-
-def _get_df_sample(df):
-    rows_minimum = 4
-    if len(df) < rows_minimum:
-        raise serializers.ValidationError(f"Your dataset has fewer than {rows_minimum} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
-    sample = _limit_dataframe_characters(df)
-    print(f'No of rows: {len(df)}')
-    if len(df) < rows_minimum:
-        raise serializers.ValidationError(f"<strong>You have too many characters per row on your spreadsheet.</strong> I'm using OpenAI's GPT API and unfortunately there's a character limit on what I can process. When working with a dataframe as large as yours I usually take a small sample of a few rows so I am within the character count limit, but in your case I only have {len(df)} rows to work with. Can you reduce the amount of text in some of the columns, or drop some columns? Please upload a new sheet.")
-    
-    return sample.to_json(force_ascii=False) #orient='values'
 
 def _limit_dataframe_characters(df, max_characters=3000):
     # Calculate the target character count per section (top and bottom)

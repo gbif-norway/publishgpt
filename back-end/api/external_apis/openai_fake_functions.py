@@ -27,7 +27,7 @@ class DropColumnsRows(BaseModel):
     row_indexes: List[int] = Field(...)
     column_indexes: List[int] = Field(...)
 
-class MergeTopRowsAndCreateHeader(BaseModel):
+class MergeTopRowsIntoHeader(BaseModel):
     number_of_top_rows_to_merge: int = Field(...)
 
 class MergeRows(BaseModel):

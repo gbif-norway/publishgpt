@@ -45,10 +45,11 @@ class Dataset(models.Model):
         ordering = ['created']
 
 
-class Task(models.Model):  # See tasks.yml for the only things this model is populated with
+class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=30, unique=True)
-    system_prompt = models.CharField(max_length=500, blank=True)
-    initial_assistant_message = models.CharField(max_length=1500, blank=True)
+    description = models.CharField(max_length=500)
+    initial_user_message = models.CharField(max_length=1500)
+    initial_assistant_message = models.CharField(max_length=1500)
     functions = ArrayField(models.CharField(max_length=200))
 
     def get_available_functions(self):
@@ -73,10 +74,13 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
 
     def get_system_message(self):
         return (
-            "You are a human-friendly python code interface working through a series of tasks with this" 
-            " pandas dataframe sample of a larger dataset (loaded from the user's CSV file): --- {rows} --- "
-            "The full dataset shape: {shape}. When working with the dataframe, only use the functions you "
-            " have been provided with."
+            "You are a human-friendly python code interface working through a series of Tasks in order to get a biodiversity dataframe into darwin core format, ready for publication with gbif.org."
+            "The Tasks must be done in a certain order, your current Task is the following: {task}."
+            "If the user gets distracted or asks for other things, politely ask them to focus on the current Task, and tell them there will be an opportunity to perform other fixes later."
+            "When the user is satisfied, proceed to the next task by calling ProceedToNextTask. "
+            "When working with the dataframe, only use the functions you have been provided with. "
+            "Full dataframe (loaded from the user's CSV file) has shape: {shape}. "
+            "Small sample dataframe: --- {rows} --- "
         ).format(rows=self.dataset.df_sample, shape=self.dataset.shape) 
 
     def start(self):
@@ -89,7 +93,7 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
         # Make a user message as this seems to be required for the prompt
         instruction_message = Message.objects.create(
             conversation=self,
-            content=f'{self.task.system_prompt.lower()}, or proceed to the next task.',
+            content=self.task.system_prompt,
             role=Message.Role.USER
         )
         
