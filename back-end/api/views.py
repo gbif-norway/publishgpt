@@ -38,34 +38,26 @@ class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all().order_by('-pk')
     serializer_class = MessageSerializer
 
+    @action(detail=True)
+    def post_message_and_get_reply(self, request, *args, **kwargs):
+        conversation = self.get_object()
 
-class GetNextConversationTask(viewsets.ViewSet):
-    def get(self, request, dataset_id, format=None):
-        dataset = Dataset.objects.get(dataset_id)
-        next_conversation = dataset.get_next_conversation_task()
-        if next_conversation:
-            return Response(ConversationSerializer(next_conversation), status=status.HTTP_200_OK)
-        return Response(None, status=status.HTTP_404_NOT_FOUND)
-
-
-class StoreUserMessageAndGetReply(viewsets.ViewSet):
-    def post(self, request, format=None):
         serialized_user_message = MessageSerializer(instance=None, data=request.data)
         if serialized_user_message.is_valid():
             serialized_user_message['role'] = Message.Role.USER
             user_message = serialized_user_message.save()
             
             # Store the assistant reply
-            conversation = user_message.conversation
             assistant_message = Message(role=Message.Role.ASSISTANT)
             assistant_message.gpt_response = openai.chat_completion_with_functions(
-                messages=conversation, 
+                messages=conversation.message_set, 
                 functions=conversation.task.function_objects, 
                 model=conversation.task.gpt_model
             )
             assistant_message.save()
 
             if conversation.status != Conversation.Status.COMPLETED:
+                # Need an adjustment here so we return an html table for the df_sample, if one has been set
                 return Response(MessageSerializer(assistant_message).data, status=status.HTTP_200_OK)
         
             next_message = conversation.dataset.start_next_task_conversation()
@@ -74,4 +66,3 @@ class StoreUserMessageAndGetReply(viewsets.ViewSet):
             
             final_message = {'message': 'Congratulations! Your dataset has been published something something'}
             return Response(final_message, status=status.HTTP_200_OK)
-

@@ -1,7 +1,5 @@
 import { useState } from 'react';
 
-const API_TASKS = ['translate', 'flatten_header', 'drop'] // , 'uncrosstab', 'join_columns', 'split_columns', 'map', 'fix_dates', 'add_basis_of_record'
-
 const IndexPage = () => {
   const [conversation, setConversation] = useState<string[]>([]);
   const [userInput, setUserInput] = useState('');
@@ -12,91 +10,69 @@ const IndexPage = () => {
     // Create dataset in the backend
     const formData = new FormData();
     formData.append('file', e.dataTransfer.files[0]);
-    console.log('onFileDrop sent:')
-    console.log(formData)
     fetch("http://publishgpt-back.local/datasets/", {
       method: "POST",
       body: formData,
     }).then((response) => {
       if (!response.ok) {
         response.json().then(data => { 
-          setConversation(prevState => [...prevState, data['non_field_errors']]);
+          // Show error message in initial-errors div
         })
       } else {
         response.json().then(data => { 
-          setConversation(prevState => [...prevState, data['conversations']);
-          startChatbot(data['pk'], API_TASKS[0]);
+          // Store data['df_sample'] for display later
+          // GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/'
+          // Results will look like this:
+          // conversation = {
+          //   "id": 1,
+          //   "created": "2023-07-10",
+          //   "updated_df_sample": "{\"date\":{\"1\":\"01\\/03\\/2012\",\"2\":\"02\\/03\\/2012\",\"3\":\"03\\/03\\/2012\"},\"genus\":{\"1\":\"Eudyptes\",\"2\":\"Eudyptes\",\"3\":\"Eudyptes\"},\"specific epithet\":{\"1\":\"moseleyi\",\"2\":\"moseleyi\",\"3\":\"moseleyi\"},\"count\":{\"1\":\"5\",\"2\":\"10\",\"3\":\"10\"},\"location\":{\"1\":\"Gough Island\",\"2\":\"Gough Island\",\"3\":\"Gough Island\"}}",
+          //   "status": "in-progress",
+          //   "dataset": 1, // data['pk']
+          //   "task": 1
+          //   "message_set": [{"role": "system", "content": "x"}, {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]"}]
+          // }
+          // Hide initial-message div
+          // startConversation(conversation);
         })
       }
     })
   }
 
-  const startChatbot = (dataset_id: string, task: string) => {
-    console.log('starting chatbot...')
-    const formData = new FormData();
-    formData.append('dataset', dataset_id);
-    formData.append('task', task);
-    console.log('startChatbot sent:')
-    console.log(formData)
-    for (var pair of formData.entries()) {
-      console.log(pair[0]+ ', ' + pair[1]); 
-    }
-    fetch("http://publishgpt-back.local/conversations/", {
-      method: "POST",
-      body: formData,
-    }).then((response) => {
-      response.json().then(data => {
-        if (!response.ok) {
-          response.json().then(data => { 
-            setConversation(prevState => [...prevState, data['non_field_errors']]);
-          })
-        } else {
-          response.json().then(data => { 
-            startChatbot(data['pk'], API_TASKS[0]);
-            console.log('startChatbot received:');
-            console.log(data);
-            setConversation(data['messages']);
-          })
-        }
-      })
-    })
+  // Run an interactive conversation
+  function startConversation(conversation) {
+    // Show the conversations div
+    // Create a child 'conversation' class div like the one below, and populate it with messages
+    // Each message should have an additional 'assistant' or 'user' class, don't display the "system" messages
+    /*
+    <div class="conversation">
+      <div class="messages">
+        {conversation.map((message, index) => (
+          <div key={index} className='flex flex-col message'}><p>{message}</p></div>
+        ))}
+      </div>
+
+      <input type="text" />
+    </div>*/
+    // When the user writes text in the input and then presses enter, the following should happen:
+    // display the user's message in the messages div
+    // show a simple animation of three dots ... first 1 dot, then 2 dots, then 3 dots, repeating
+    // disable the input box
+    // make an object for the user's message, something like {'role': 'user', 'content': '[user message]', 'conversation_id': conversation['id']}
+    // POST user's message object to 'http://publishgpt-back.local/messages/post_message_and_get_reply/'
+    // Results will be another message object, like {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]"}
+    // Display the new message with the 'assistant' class, and display the df_sample content underneath, no processing necessary as it will be in html table format
+    // df_sample may also be null, in which case just the message is displayed
+    // enable the input box again
+    // Repeat for the next message
+    // If the conversation is complete... ?
   }
 
-  const interact = (action: any, message: string) => {
-    console.log('interacting...')
-    setConversation(prevState => [...prevState, message]);
-    action['messages'].push(message);
-
-    const formData = new FormData();
-    formData.append('action', JSON.stringify(action));
-    console.log('interacting sent:')
-    console.log(formData)
-    fetch("http://publishgpt-back.local/actions/", {
-      method: "PUT",
-      body: formData,
-    }).then((response) => {
-      response.json().then(data => {
-        console.log('interacting received:')
-        console.log(data)
-        if (data['complete']) {
-          callNextStep(action['task'], action['dataset_id']);
-        } else {
-          const bot_message = data['messages'][data['messages'].length - 1];
-          setConversation(prevState => [...prevState, bot_message]);
-        }
-      })
-    })
-  }
-
-  const callNextStep = (last_step: string, dataset_id: string) => {
-    const next_step = API_TASKS[API_TASKS.findIndex(API_TASKS => API_TASKS === last_step) + 1];
-    startChatbot(dataset_id, next_step);
-  }
 
   return (
     <main className="flex flex-col items-center justify-between pb-40">
       <div className="border-gray-200sm:mx-0 mx-5 mt-5 max-w-screen-md rounded-md border sm:w-full">
-        <div className="flex flex-col message bot">
+        <div className="flex flex-col message bot initial-message">
           <h1 className="text-lg font-semibold main-header">Hi, I'm PublishGPT</h1>
           <p>
             I can help you publish your biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>. 
@@ -107,26 +83,10 @@ const IndexPage = () => {
           <div onDragOver={(e) => e.preventDefault()} onDrop={onFileDrop} className="my-10 w-full h-48 border-2 border-dashed border-gray-400 flex justify-center items-center">
             Drop your CSV here
           </div>
+          <div class="initial-errors"></div>
         </div>
-        {/* Iterate over messages and insert them here */}
-        {conversation.map((message, index) => (
-          <div key={index} className={index % 2 === 0 ? 'flex flex-col message bot' : 'flex flex-col message user'}>
-            <p>{message}</p>
-          </div>
-        ))}
-
-        {/* Input field with user message */}
-        <input 
-          type="text" 
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              interact(conversation, userInput);  // assuming conversation is the action object
-              setUserInput('');  // clear the input
-            }
-          }}
-        />
+        <div class="conversations">
+        </div>
       </div>
     </main>
   );
