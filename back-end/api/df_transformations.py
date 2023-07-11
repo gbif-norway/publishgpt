@@ -4,6 +4,9 @@ import langcodes
 
 
 def merge_top_rows_into_header(df, number_of_top_rows_to_merge):
+    if number_of_top_rows_to_merge < 1:
+        return df
+    
     # Merge the first x rows to create a new header
     header = df.iloc[:number_of_top_rows_to_merge].fillna('').apply(lambda x: '_'.join(x), axis=0)
 

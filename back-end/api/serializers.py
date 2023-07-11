@@ -55,13 +55,13 @@ class DatasetSerializer(serializers.ModelSerializer):
 
         # Check there's a scientific name
         text = f'Dataframe: {data["df_sample"]} --- Is there at least one column containing either a scientific name string such as a latin name (can be for phylum, family, genus, species, subspecies, etc), or a scientificNameID such as a BOLD ID or an LSID? Reply with "yes" or "no", and no other text.'
-        response = openai.chat_completion(messages=[Message(content=text, role=Message.Role.USER)])
+        response = openai.chat_completion([Message(content=text, role=Message.Role.SYSTEM)])  # For some reason to work consistently this has to be system i think?
         if 'no' in response['choices'][0]['message']['content'].lower():
             raise serializers.ValidationError('It looks as if your data does not contain a scientificName or scientificNameID. It\'s only possible to publish biodiversity data linked to species on <a href="https://gbif.org" target="_blank">gbif.org</a>.')
         
         # Check there's at least one header row
         text = f'Dataframe: {data["df_sample"]} --- Is the top row a header row? Reply with "yes" or "no", and no other text.'
-        response = openai.chat_completion(messages=[Message(content=text, role=Message.Role.USER)])
+        response = openai.chat_completion([Message(content=text, role=Message.Role.SYSTEM)])
         if 'no' in response['choices'][0]['message']['content'].lower():
             raise serializers.ValidationError("There doesn't appear to be a header row in your data. Please add one, ideally with darwin core terms, and reupload.")
         sample = sample.rename(columns=sample.iloc[0]).drop(sample.index[0]).reset_index(drop=True)

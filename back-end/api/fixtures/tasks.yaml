@@ -2,23 +2,29 @@
   fields:
     name: flatten_header
     description: Flatten any header rows
-    initial_user_message: Do you think any of the top rows are also header rows? I.e. should any additional top rows be merged into the header? If so then merge them otherwise proceed to the next task
+    initial_user_message: Do you think any of the top rows contain information which should be included in the header? If so, merge them into the header, otherwise skip the current task.
     initial_assistant_message: In order to publish the data, we need one single header row. I think you may have additional rows which need to be headers, which I have tried to fix. How does this look?
-    functions: [ProceedToNextTask, MergeTopRowsIntoHeader]
+    initial_function: SetTaskStatus_MergeTopRowsIntoHeader
+    functions: [GoToNextTask, MergeTopRowsIntoHeader]
+    gpt_model: 'gpt-4'
 - model: api.task
   fields:
     name: translate
     description: Translate any non-English columns into English
-    initial_user_message: Do you think any of these columns are not in English? If so then translate them, otherwise proceed to the next task.
+    initial_user_message: Ignoring columns such as scientific names (which are often in latin), do you think any of these columns are not in English? If so, translate them, otherwise skip the current task.
     initial_assistant_message: I think some of your dataset may not be in English. Before we proceed further we need to translate it. I have translated {input}. Does this look ok?
-    functions: [ProceedToNextTask, TranslateNonEnglishColumns]
+    initial_function: SetTaskStatus_TranslateNonEnglishColumns
+    functions: [GoToNextTask, TranslateNonEnglishColumns]
+    gpt_model: 'gpt-4'
 - model: api.task
   fields:
     name: drop
-    description: Drop any columns or rows which you think are superfluous/unnecessary or meaningless
-    initial_user_message: Do you think any of these columns are unnecessary? If so then drop them, otherwise proceed to the next task.
+    description: Drop any superfluous/unnecessary or meaningless columns or rows
+    initial_user_message: Do you think any of these columns or rows are unnecessary in the context of biodiversity data publishing? If so, drop them, otherwise skip the current task.
     initial_assistant_message: I think your dataset contains unnecessary data, so I have tried removing it. Does this look ok?
-    functions: [ProceedToNextTask, DropColumnsRows]
+    initial_function: SetTaskStatus_DropColumnsRows
+    functions: [GoToNextTask, DropColumnsRows]
+    gpt_model: 'gpt-4'
 # - model: api.task
 #   fields:
 #     name: uncrosstab

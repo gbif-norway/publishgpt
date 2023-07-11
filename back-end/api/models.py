@@ -32,12 +32,15 @@ class Dataset(models.Model):
         return self.last_complete_conversation.updated_df_sample
 
     def get_next_conversation_task(self):
-        next = Conversation.objects.filter(dataset=self, status__in=[Conversation.Status.NOT_STARTED, Conversation.Status.NEEDS_USER_INPUT]).first()
+        next = Conversation.objects.filter(dataset=self, status__in=[Conversation.Status.NOT_STARTED, Conversation.Status.IN_PROGRESS]).first()
         if next:
             print('Next task found:')
             print(next.task.name)
             next.start()
-            return next
+            print(f'Starting the task has finished, status is {next.status}')
+            if next.status in [Conversation.Status.NOT_STARTED, Conversation.Status.IN_PROGRESS]:
+                return next
+            self.get_next_conversation_task()
         return None
     
     class Meta:
@@ -50,11 +53,18 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     description = models.CharField(max_length=500)
     initial_user_message = models.CharField(max_length=1500)
     initial_assistant_message = models.CharField(max_length=1500)
+    initial_function = models.CharField(max_length=200)
     functions = ArrayField(models.CharField(max_length=200))
+    class GPTModel(models.TextChoices):
+        GPT_35 = 'gpt-3.5-turbo'
+        GPT_35_16K = 'gpt-3.5-turbo-16k'
+        GPT_4 = 'gpt-4'
+    gpt_model = models.CharField(max_length=30, choices=GPTModel.choices, default=GPTModel.GPT_35_16K)
 
-    def get_available_functions(self):
+    @property
+    def function_objects(self):
         return [getattr(fake, f) for f in self.functions]
-
+    
     class Meta:
         get_latest_by = 'id'
         ordering = ['id']
@@ -66,22 +76,20 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
     updated_df_sample = models.JSONField(null=True, blank=True)
     class Status(models.TextChoices):
-        COMPLETED = 'c'
-        SKIPPED = 's'
-        NOT_STARTED = 'n'
-        NEEDS_USER_INPUT = 'u'
-    status = models.CharField(max_length=1, choices=Status.choices, default=Status.NOT_STARTED)
+        COMPLETED = 'completed'
+        SKIPPED = 'skipped'
+        NOT_STARTED = 'not_started'
+        IN_PROGRESS = 'in_progress'
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_STARTED)
 
     def get_system_message(self):
         return (
-            "You are a human-friendly python code interface working through a series of Tasks in order to get a biodiversity dataframe into darwin core format, ready for publication with gbif.org."
-            "The Tasks must be done in a certain order, your current Task is the following: {task}."
-            "If the user gets distracted or asks for other things, politely ask them to focus on the current Task, and tell them there will be an opportunity to perform other fixes later."
-            "When the user is satisfied, proceed to the next task by calling ProceedToNextTask. "
+            "You are a human-friendly python code interface working through a series of Tasks in order to get a biodiversity dataframe into darwin core format, ready for publication with gbif.org. "
+            "The Tasks must be done in a certain order, your current Task is the following: {task}. "
             "When working with the dataframe, only use the functions you have been provided with. "
             "Full dataframe (loaded from the user's CSV file) has shape: {shape}. "
             "Small sample dataframe: --- {rows} --- "
-        ).format(rows=self.dataset.df_sample, shape=self.dataset.shape) 
+        ).format(rows=self.dataset.df_sample, shape=self.dataset.shape, task=self.task.description) 
 
     def start(self):
         system_message = Message.objects.create(
@@ -93,21 +101,31 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
         # Make a user message as this seems to be required for the prompt
         instruction_message = Message.objects.create(
             conversation=self,
-            content=self.task.system_prompt,
+            content=self.task.initial_user_message,
             role=Message.Role.USER
         )
         
         # Store the assistant reply
-        response = openai.chat_completion_with_functions(
+        function = getattr(fake, self.task.initial_function)
+        gpt_response = openai.chat_completion_with_functions(
             messages=[system_message, instruction_message], 
-            functions=self.task.get_available_functions()
+            functions=[function],
+            function_call={'name': function.__name__},
+            model=self.task.gpt_model
         )
         response = Message.objects.create(
             conversation=self,
             role=Message.Role.ASSISTANT, 
-            gpt_response=response, 
+            gpt_response=gpt_response, 
             content=self.task.initial_assistant_message
         )
+
+        # Edit the system message so it knows to only move onto the ProceedToNextTask if the real user is satisfied
+        system_message.content += (
+            "If the user gets distracted or asks for other things, politely ask them to focus on the current Task, and tell them there will be an opportunity to perform other fixes later."
+            "When the user is satisfied, call GoToNextTask with set_current_task_status='completed'. If the user wishes to skip the task, call GoToNextTask with set_current_task_status='skipped'."
+        )
+        system_message.save()
 
     class Meta:
         get_latest_by = 'created'
@@ -141,20 +159,25 @@ class Message(models.Model):
                 function_name = response['function_call']['name']
                 function_args = json.loads(response['function_call']['arguments'])
                 print(f'gpt is calling this function {function_name} with args {function_args}')
-                if function_name == fake.SetTaskAsComplete.__name__:
-                    self.conversation.status = Conversation.Status.COMPLETED
-                    self.conversation.save()
-                elif function_name == fake.ProceedToNextTask.__name__:
-                    self.conversation.status = Conversation.Status.SKIPPED
+                stops = Task.objects.values_list('initial_function', flat=True)
+                if function_name in [getattr(fake, x).__name__ for x in stops] + [fake.GoToNextTask.__name__]: 
+                    self.conversation.status = function_args['set_current_task_status']
                     self.conversation.save()
                 else:
-                    self.conversation.status = Conversation.Status.NEEDS_USER_INPUT
+                    # Prompt the user to allow us to proceed to the next task
+                    self.content = 'Does this look ok?' 
+                    if self.conversation.status == Conversation.Status.NOT_STARTED:
+                        self.content = self.conversation.task.initial_assistant_message
+
+                    # Run the desired function over the sample, ready to display to the user
                     rows_df = pd.DataFrame(json.loads(self.conversation.dataset.df_sample), dtype=str)
                     updated_df_sample_df = getattr(df_transformations, inflection.underscore(function_name))(df=rows_df, **function_args)
-                    self.conversation.updated_df_sample = updated_df_sample_df.to_json(force_ascii=False)
                     self.df_sample = updated_df_sample_df.to_json(force_ascii=False)
+                    self.conversation.updated_df_sample = updated_df_sample_df.to_json(force_ascii=False)
+                    self.conversation.status = Conversation.Status.IN_PROGRESS
                     self.conversation.save()
             else:
+                print('No function call from gpt')
                 self.content = response['content']
         super(Message, self).save(*args, **kwargs)
 

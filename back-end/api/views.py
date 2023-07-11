@@ -27,11 +27,6 @@ class DatasetViewSet(viewsets.ModelViewSet):
 class ConversationViewSet(viewsets.ModelViewSet):
     queryset = Conversation.objects.all().order_by('-created')
     serializer_class = ConversationSerializer
-    messages = MessageSerializer(many=True, read_only=True)
-
-    class Meta:
-        model=Conversation
-        fields = ['id', 'dataset', 'created', 'task', 'updated_df_sample', 'status', 'messages']
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -65,7 +60,8 @@ class StoreUserMessageAndGetReply(viewsets.ViewSet):
             assistant_message = Message(role=Message.Role.ASSISTANT)
             assistant_message.gpt_response = openai.chat_completion_with_functions(
                 messages=conversation, 
-                functions=conversation.task.get_available_functions() + [fake.SetTaskAsComplete], 
+                functions=conversation.task.function_objects, 
+                model=conversation.task.gpt_model
             )
             assistant_message.save()
 
