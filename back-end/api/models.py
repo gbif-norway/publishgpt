@@ -99,7 +99,7 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
         )
 
         # Make a user message as this seems to be required for the prompt
-        instruction_message = Message.objects.create(
+        instruction_message = Message(
             conversation=self,
             content=self.task.initial_user_message,
             role=Message.Role.USER
@@ -113,7 +113,7 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
             function_call={'name': function.__name__},
             model=self.task.gpt_model
         )
-        response = Message.objects.create(
+        assistant_message = Message.objects.create(
             conversation=self,
             role=Message.Role.ASSISTANT, 
             gpt_response=gpt_response, 
