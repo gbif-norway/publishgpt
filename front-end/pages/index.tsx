@@ -22,6 +22,7 @@ const IndexPage = () => {
         response.json().then(data => { 
           // Store data['df_sample'] for display later
           // GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/'
+          // OpenAPI yaml available here http://publishgpt-back.local/api-schema/
           // Results will look like this:
           // conversation = {
           //   "id": 1,
@@ -45,7 +46,7 @@ const IndexPage = () => {
     // Create a child 'conversation' class div like the one below, and populate it with messages
     // Each message should have an additional 'assistant' or 'user' class, don't display the "system" messages
     /*
-    <div class="conversation">
+    <div class="conversation in-progress">
       <div class="messages">
         {conversation.map((message, index) => (
           <div key={index} className='flex flex-col message'}><p>{message}</p></div>
@@ -54,18 +55,23 @@ const IndexPage = () => {
 
       <input type="text" />
     </div>*/
+    // This is basically a chat interface split into chunks, each chunk dealing with a particular task.
     // When the user writes text in the input and then presses enter, the following should happen:
     // display the user's message in the messages div
     // show a simple animation of three dots ... first 1 dot, then 2 dots, then 3 dots, repeating
     // disable the input box
     // make an object for the user's message, something like {'role': 'user', 'content': '[user message]', 'conversation_id': conversation['id']}
     // POST user's message object to 'http://publishgpt-back.local/messages/post_message_and_get_reply/'
-    // Results will be another message object, like {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]"}
-    // Display the new message with the 'assistant' class, and display the df_sample content underneath, no processing necessary as it will be in html table format
+    // Results will be an array of message objects, including the user's message and with a reply at the end of it, the reply will be something like like {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]", "conversation_id": x}
+    // If the conversation ID has changed, remove the "in-progress" class of the conversation div and its input field, and create a new conversation div displaying the new set of messages 
+    // If the conversation ID has not changed, just display the new message with the 'assistant' class, and display the df_sample content underneath, no processing necessary as it will be in html table format
     // df_sample may also be null, in which case just the message is displayed
     // enable the input box again
     // Repeat for the next message
-    // If the conversation is complete... ?
+    // If next message returns None........
+    // If the conversation is complete GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/' and repeat the process
+    // If GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/' returns None, then display a message saying "Thanks for publishing your data. <input type="button">Publish another dataset</input>"
+    // Clicking on the button should just refresh the page
   }
 
 

@@ -25,8 +25,6 @@ router.register(r'datasets', views.DatasetViewSet)
 router.register(r'conversations', views.ConversationViewSet)
 router.register(r'messages', views.MessageViewSet)
 router.register(r'tasks', views.TaskViewSet)
-router.register(r'reply', views.StoreUserMessageAndGetReply, basename='reply')
-router.register(r'next', views.GetNextConversationTask, basename='next')
 
 urlpatterns = [
     path('', include(router.urls)),
