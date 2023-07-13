@@ -6,11 +6,11 @@ from pprint import pprint
 def serialize_message(message):
     return {'content': message.content, 'role': message.role}
 
-def chat_completion_with_functions(messages, functions, model, function_call='auto'):
+def chat_completion_with_functions(messages, functions, model='gpt-4'):
     messages = [serialize_message(m) for m in messages]
-    gpt_functions = [{'name': x.__name__, 'parameters': x.schema(), 'type': 'object'} for x in functions]
+    gpt_functions = [f.openai_schema for f in functions]
 
-    # function_call = 'auto'
+    function_call = 'auto'
     print('---')
     print(f'---Calling GPT {model} with functions---')
     print(messages)

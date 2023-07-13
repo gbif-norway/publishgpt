@@ -1,80 +1,65 @@
-from django.db import models, signals
+from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from api import df_transformations
-import inflection
 import pandas as pd
-from api.external_apis import openai, openai_fake_functions as fake
+from api.external_apis import openai, callable_functions, prompts
 import json
+from openai_function_call import openai_function
 
 
 class Dataset(models.Model):
     created = models.DateField(auto_now_add=True)
     title = models.CharField(max_length=500, blank=True)
-    description = models.CharField(max_length=9000, blank=True)
+    description = models.CharField(max_length=2000, blank=True)
     orcid =  models.CharField(max_length=50, blank=True)
-    df_sample = models.JSONField(null=True, blank=True)
-    shape = models.JSONField()
     file = models.FileField(upload_to='user_files')
-    # dataframe = models.JSONField(null=True, blank=True)
 
-    @property
-    def is_published(self):
-        False
+    def create_dataframes(self):
+        pass
 
-    @property
-    def last_complete_conversation(self):
-        return Conversation.objects.filter(dataset=self, complete=True).last()
-
-    @property
-    def latest_df_sample(self):
-        return self.last_complete_conversation.updated_df_sample
-
-    def get_next_conversation_task(self):
-        next = Conversation.objects.filter(dataset=self, status__in=[Conversation.Status.NOT_STARTED, Conversation.Status.IN_PROGRESS]).first()
-        if next:
-            print('Next task found:')
-            print(next.task.name)
-            next.start()
-            print(f'Starting the task has finished, status is {next.status}')
-            if next.status in [Conversation.Status.NOT_STARTED, Conversation.Status.IN_PROGRESS]:
-                return next
-            self.get_next_conversation_task()
-        return None
-    
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
 
 
-class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
-    name = models.CharField(max_length=30, unique=True)
-    description = models.CharField(max_length=500)
-    initial_user_message = models.CharField(max_length=1500)
-    initial_assistant_message = models.CharField(max_length=1500)
-    initial_function = models.CharField(max_length=200)
-    functions = ArrayField(models.CharField(max_length=200))
-    class GPTModel(models.TextChoices):
-        GPT_35 = 'gpt-3.5-turbo'
-        GPT_35_16K = 'gpt-3.5-turbo-16k'
-        GPT_4 = 'gpt-4'
-    gpt_model = models.CharField(max_length=30, choices=GPTModel.choices, default=GPTModel.GPT_35_16K)
+class DataFrame(models.Model):
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    full = models.JSONField(description='The full dataframe')
+    sample = models.JSONField(null=True, blank=True, description='First few and last rows of the dataframe')
+    shape = models.JSONField(description='Shape of the dataframe - number of rows and columns')
+    description: models.CharField(max_length=2000, blank=True, description='Explains the dataframe content')
+    problems: ArrayField(base_field=models.CharField, null=True, blank=True, description='List of holes, inconsistencies and problems in the dataframe')
+    derived_from = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE)
+    
+    def save_full_df(self, df):
+        self.full = df.to_json(force_ascii=False, orient='table')
+        self.save()
 
     @property
-    def function_objects(self):
-        return [getattr(fake, f) for f in self.functions]
+    def full_df(self):
+        return pd.read_json(self.full, orient='table')
     
-    class Meta:
-        get_latest_by = 'id'
-        ordering = ['id']
+    def save_sample_df(self, df):
+        self.sample = df.to_json(force_ascii=False, orient='table')
+        self.save()
+    
+    @property
+    def sample_df(self):
+        return pd.read_json(self.sample, orient='table')
+    
+    def generate_description_and_problems(self):
+        messages = [Message(content=prompts.generate_dataframe_description_and_problems, role=Message.Role.SYSTEM)]
+        functions = [callable_functions.run_dataframe_code, callable_functions.DataFrameAnalysis]
+        response = openai.chat_completion_with_functions(messages, functions=functions)
+        function_called = 
+        import pdb; pdb.set_trace()
 
 
-class Conversation(models.Model):  # 1 conversation per task, multiple conversations per dataset
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+class Task(models.Model):  
     created = models.DateField(auto_now_add=True)
-    task = models.ForeignKey(Task, on_delete=models.CASCADE)
-    updated_df_sample = models.JSONField(null=True, blank=True)
+    task_description = models.CharField(max_length=1000)
     class Status(models.TextChoices):
         COMPLETED = 'completed'
         SKIPPED = 'skipped'
@@ -132,7 +117,7 @@ class Conversation(models.Model):  # 1 conversation per task, multiple conversa
         ordering = ['created']
 
 class Message(models.Model):
-    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE)
+    conversation = models.ForeignKey(Task, on_delete=models.CASCADE)
     created = models.DateField(auto_now_add=True)
     content = models.CharField(max_length=3000, blank=True)
     class Role(models.TextChoices):
@@ -144,7 +129,7 @@ class Message(models.Model):
     # Assistant message only fields
     gpt_response = models.JSONField(null=True, blank=True)  # Store the full response from the API
     gpt_output_function = models.JSONField(null=True, blank=True)
-    df_sample = models.JSONField(null=True, blank=True)
+    df = models.ForeignKey(DataFrame, null=True, blank=True, on_delete=models.SET_NULL)
 
     def clean(self):
         if self.role == Message.Role.ASSISTANT:
@@ -185,8 +170,43 @@ class Message(models.Model):
         get_latest_by = 'created'
         ordering = ['created']
 
-# class Publication(models.Model):
-#     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-#     doi = models.CharField(max_length=100)
-#     date = models.DateField(null=True)
 
+def get_df_sample(df, max_characters=3000):
+    # Calculate the target character count per section (top and bottom)
+    target_characters_per_section = max_characters // 2
+    
+    # Convert the DataFrame to a string representation
+    df_str = df.to_string(index=False)
+    
+    # Check if the DataFrame already fits within the character limit
+    if len(df_str) <= max_characters:
+        return df
+    
+    # Calculate the reduction factor to scale down the rows
+    reduction_factor = target_characters_per_section / 2 / len(df_str)
+    
+    # Calculate the reduced number of rows
+    reduced_n = int(len(df) * reduction_factor)
+    
+    # Get the top and bottom sections of the DataFrame
+    top_df = df.head(reduced_n)
+    bottom_df = df.tail(reduced_n)
+    
+    # Convert the top and bottom sections to string representations
+    top_df_str = top_df.to_string(index=False)
+    bottom_df_str = bottom_df.to_string(index=False)
+    
+    # Calculate the remaining available characters
+    remaining_characters = max_characters - len(top_df_str) - len(bottom_df_str)
+    
+    # Calculate the maximum number of rows to fit the remaining characters
+    max_rows_to_fit_remaining = remaining_characters // len(df.columns)
+    
+    # Reduce the number of rows if necessary to fit the remaining characters
+    if len(df) > max_rows_to_fit_remaining:
+        reduced_n = max_rows_to_fit_remaining
+    
+    # Get the reduced DataFrame
+    reduced_df = df.head(reduced_n)
+    
+    return reduced_df
