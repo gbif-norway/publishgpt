@@ -1,0 +1,9 @@
+- model: api.function
+  fields:
+    name: set_task_status_to_complete
+- model: api.function
+  fields:
+    name: query_dataframe
+- model: api.function
+  fields:
+    name: save_description_and_problems

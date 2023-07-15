@@ -22,9 +22,9 @@ from drf_spectacular.views import SpectacularAPIView
 
 router = routers.DefaultRouter()
 router.register(r'datasets', views.DatasetViewSet)
-router.register(r'conversations', views.ConversationViewSet)
+router.register(r'dataframes', views.DataFrameViewSet)
 router.register(r'messages', views.MessageViewSet)
-router.register(r'tasks', views.TaskViewSet)
+router.register(r'workers', views.WorkerViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
