@@ -26,7 +26,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             df.dropna(how='all', axis=1, inplace=True) # columns
             df.replace(np.nan, '', inplace=True)
             df = DataFrame.objects.create(dataset=dataset, sheet_name=sheet_name, df=df)
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             df.generate_description_and_problems()  # Yes future Rukaya, I am certain that this needs to happen w/out opportunity for user feedback. Please trust me and don't go down this rabbit hole again.
 
         return dataset

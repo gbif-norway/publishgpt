@@ -5,6 +5,7 @@ import pandas as pd
 from api.openai_wrapper import chat_completion, functions, prompts
 from api import helpers
 from picklefield.fields import PickledObjectField
+import re
 
 
 class Dataset(models.Model):
@@ -29,8 +30,8 @@ class DataFrame(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     sheet_name = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
-    description: models.CharField(max_length=2000, blank=True)
-    problems: ArrayField(base_field=models.CharField, null=True, blank=True)
+    description = models.CharField(max_length=2000, blank=True)
+    problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
     
     def generate_description_and_problems(self):
         top_snapshot, bottom_snapshot = helpers.snapshot_data(self.df)
@@ -44,13 +45,13 @@ class DataFrame(models.Model):
                        'rows': rows,
                        'cols': cols}
         print(f'GENERATING FOR {self.sheet_name}')
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         worker = Worker.objects.create(
             task=prompts.generate_dataframe_description_and_problems.format(**prompt_args),
             stop_function=Function.objects.get(pk=functions.save_description_and_problems.openai_schema['name'])
         )
         worker.functions.add(functions.query_dataframe.openai_schema['name'])
-        worker.run()
+        worker.run(allow_user_feedack=False)
 
 
 class Function(models.Model):
@@ -76,14 +77,14 @@ class Worker(models.Model):
         get_latest_by = 'created'
         ordering = ['created']
 
-    def run(self, current_call=0, max_calls=5):
+    def run(self, allow_user_feedack=True, current_call=0, max_calls=5):
         # Create first message
         if not self.message_set.count():
             Message.objects.create(worker=self, content=self.task, role=Message.Role.SYSTEM)
         
         print(f'Call {current_call} for worker {self.pk}')
         if current_call == max_calls:
-            response = chat_completion.create(self.message_set.all(), [self.stop_function], call_function=True)
+            response = chat_completion.create(self.message_set.all(), [self.stop_function], call_first_function=True)
         else:
             response = chat_completion.create(self.message_set.all(), [self.stop_function] + list(self.functions.all()))
         
@@ -94,15 +95,22 @@ class Worker(models.Model):
             print(f'Calling {name}')
             function_result = Function.objects.get(name=name).callable_object.from_response(response)
             print(f'Result {function_result}')
-
-            if name is self.stop_function:
+            if function_result is None: # or function_result == 'None':
+                import pdb; pdb.set_trace()
+            if name == self.stop_function.openai_schema['name']:
                 print('---STOP FUNCTION--- return None ---')
                 return None
 
             Message.objects.create(worker=self, role=Message.Role.FUNCTION, content=function_result, function_name=name)
-            return self.run(current_call=current_call+1)
+            return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
 
         message = Message.objects.create(worker=self, role=Message.Role.ASSISTANT, content=response)
+        if not allow_user_feedack:
+            message = Message.objects.create(worker=self, role=Message.Role.USER, content='Please respond with a function call. If you are not sure, make your best guess.')
+            return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
+
+        print('Returned message without function')
+        import pdb; pdb.set_trace()
         return message
 
 
@@ -121,7 +129,7 @@ class Message(models.Model):
 
     @property
     def openai_schema(self):
-        print(f'------{self.role}---')
+        print(f'------{self.role}: {self.content[:100]}---')
         # import pdb; pdb.set_trace()
         if self.role == Message.Role.FUNCTION:
             return { 'content': self.content, 'role': self.role, 'name': self.function_name }

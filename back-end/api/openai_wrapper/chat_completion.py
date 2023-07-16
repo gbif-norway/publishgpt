@@ -13,9 +13,10 @@ def create(messages, functions=None, call_first_function=False, temperature=0, m
 
     print('---')
     print(f'---Calling GPT {model} with functions and function_call {call}---')
-    print(messages)
+    if len(messages) > 1:
+        print(messages[1:])
     print('-')
-    pprint(functions)
+    pprint([f['name'] for f in functions])
     print('---')
     response = openai.ChatCompletion.create(model=model, temperature=temperature, messages=messages, functions=functions, function_call=call)  
     pprint('---Response---')

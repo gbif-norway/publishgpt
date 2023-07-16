@@ -1,3 +1,5 @@
+import re
+
 system = """
     You are a chatbot, helping users (field biologists and ecologists who have no (or very little) knowledge of Excel, spreadsheets, data science, data standards or data management)
     prepare their data to the Darwin Core standard, and publish their data to GBIF.org. 
@@ -35,9 +37,10 @@ get_main_dataframe = """
     Decide on a suitable Darwin Core, one of: Taxon core, Occurrence core, Event core, or Simple Darwin Core (Event core with Occurrences combined).
     """
 
-generate_dataframe_description_and_problems = """
+generate_dataframe_description_and_problems = re.sub('\s+', ' ', re.sub('\n', ' ',"""
     You are a chatbot, helping users (field biologists and ecologists who have no (or very little) knowledge of Excel, spreadsheets, data science, data standards or data management) prepare their data to the Darwin Core standard. 
-    A user has uploaded a spreadsheet (sheet name: {sheet_name}), which has been converted into a dataframe in the system: df_id = {id}, it has {rows} rows and {cols} columns. All completely empty rows & columns were dropped. 
+    A user has uploaded a spreadsheet (sheet name: {sheet_name}), which has been converted into a dataframe in the system: df_id = {id}, it has {rows} rows and {cols} columns. 
+    The spreadsheet was loaded into pandas as dtype='str', with no headers, and all completely empty rows & columns were dropped. 
     Snapshot of the first {top_snapshot_length} rows:
     {top_snapshot}
     Snapshot of the last {bottom_snapshot_length} rows:
@@ -52,6 +55,7 @@ generate_dataframe_description_and_problems = """
     40,Tawny owl,1
     ...
     Here row 38 and 39 represent a new header row, so this example is not a flattened table structure. 
-    Your aim is, *without any user input*, to generate and save a summary description of the content, as well as a list of any problems (holes, inconsistencies and structural abnormalities) you have found.
+    Your aim is, *without any user input*, to generate and save a short, non-verbose summary description of the content, as well as a succinct list of any problems (holes, inconsistencies and structural abnormalities) you have found.
     If you need more information, you may explore the full dataframe by querying it, but do this as few times as possible, the idea is just to get a rough analysis of the dataset.
-    """
+    Reply only with the functions available to you.
+    """))
