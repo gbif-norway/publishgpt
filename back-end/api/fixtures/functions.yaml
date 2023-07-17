@@ -7,3 +7,16 @@
 - model: api.function
   fields:
     name: save_description_and_problems
+- model: api.function
+  fields:
+    name: run_python_with_dataframe_orm
+- model: api.function
+  fields:
+    name: publish_dwc
+- model: api.function
+  fields:
+    name: save_dataset_plan
+- model: api.function
+  fields:
+    name: allocate_dataset_core_and_extensions
+    
