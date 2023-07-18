@@ -1,7 +1,8 @@
-from api.models import Dataset, DataFrame, Worker, Message, Function
+from api.models import Dataset, DataFrame, Worker, Message
 from rest_framework import serializers
 import pandas as pd
 import numpy as np
+from api.helpers.df import trim_dataframe
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -21,13 +22,11 @@ class DatasetSerializer(serializers.ModelSerializer):
         dataset = Dataset.objects.create(**data)
 
         for sheet_name, df in dfs.items():
-            df.replace('', np.nan, inplace=True)
-            df.dropna(how='all', axis=0, inplace=True) # rows
-            df.dropna(how='all', axis=1, inplace=True) # columns
-            df.replace(np.nan, '', inplace=True)
-            df = DataFrame.objects.create(dataset=dataset, sheet_name=sheet_name, df=df)
-            # import pdb; pdb.set_trace()
-            df.generate_description_and_problems()  # Yes future Rukaya, I am certain that this needs to happen w/out opportunity for user feedback. Please trust me and don't go down this rabbit hole again.
+            raw_df = trim_dataframe(df)
+
+
+            # df = DataFrame.objects.create(dataset=dataset, sheet_name=sheet_name, df=df)
+
 
         return dataset
 
@@ -49,10 +48,4 @@ class WorkerSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Worker
-        fields = '__all__'
-
-
-class FunctionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Function
         fields = '__all__'

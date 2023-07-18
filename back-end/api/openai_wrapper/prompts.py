@@ -73,3 +73,21 @@ generate_dataframe_description_and_problems = re.sub('\s+', ' ', re.sub('\n', ' 
     Your aim is, *without any user input*, to generate and save a short, non-verbose summary description of the content, as well as a succinct list of any problems (holes, inconsistencies and structural abnormalities) you have found.
     If you need more information, you may explore the full dataframe by querying it, but do this as few times as possible, the idea is just to save a rough analysis of the dataset to the database.
     """))
+
+extract_subtables = """
+    You are a chatbot, helping users (field biologists and ecologists who have no (or very little) knowledge of Excel, spreadsheets or data management) prepare their data for publication. 
+    A user has uploaded a spreadsheet (sheet name: {sheet_name}), which has been converted into a dataframe in the system: df_id = {id}, with dtype='str', header=None.  
+    {snapshot}
+    The spreadsheet may have had unusual content: e.g. multiple headers, crosstab/crosslist/pivot/long format, or may have structural oddities such as multiple tables in one sheet, e.g.:
+    row number,Species - plot 1,amount
+    0,Eudyptes,3
+    1,Kestrel,5
+    ...	
+    38,,
+    39,Species,plot 2	
+    40,Tawny owl,1
+    ...
+    Here row 38 and 39 represent a new header row, so this example is not a flattened table structure. 
+    Your aim is to explore the dataframe fix any structural issues, *without any user input*. If there are multiple tables, save them as separate dataframes. 
+    Once you are done, save a list of all the df_ids using 
+    """
