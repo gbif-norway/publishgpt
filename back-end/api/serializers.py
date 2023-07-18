@@ -18,7 +18,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             dfs = {'[None]': df}
         except:
             dfs = pd.read_excel(data['file'].file, header=None, dtype='str', sheet_name=None)
-
+        
         dataset = Dataset.objects.create(**data)
 
         for sheet_name, df in dfs.items():
@@ -26,15 +26,21 @@ class DatasetSerializer(serializers.ModelSerializer):
 
             # Create agents to handle multiple tables in one sheet
             sub_dfs = extract_sub_tables_based_on_null_boundaries(df.df)
+
             if len(sub_dfs) > 1:
+                sub_df_objects = []
+                for new_df in sub_dfs:
+                    sub_df_objects.append(DataFrame.objects.create(dataset=dataset, parent=df, df = new_df))
+
                 agent = Agent.create_with_system_message(
-                    system_message = prompts.extract_subtables.format(**{ 'df_id': df.id, 'ds_id': dataset.id, 'title': df.title, 'snapshot': trunc_df_to_string(df) }),
-                    _functions = [functions.Python.classname]
+                    system_message = prompts.extract_subtables.format(**{ 'df_id': df.id, 'ds_id': dataset.id, 'title': df.title, 'snapshot': trunc_df_to_string(df.df) }),
+                    _functions = [functions.Python.classname],
+                    dataset=dataset
                 )
-                snapshots = '\n\n'.join([trunc_df_to_string(x) for x in sub_dfs])
-                Message.objects.create(Agent=agent, 
+                snapshots = f'\n\n'.join([f'DataFrame ID: {x.id}\n{trunc_df_to_string(x.df)}' for x in sub_df_objects])
+                Message.objects.create(agent=agent, 
                                        role=Message.Role.ASSISTANT, 
-                                       content=prompts.explain_extracted_subtables.format(**{ 'len': len(sub_dfs), 'snapshots': snapshots }))
+                                       content=prompts.explain_extracted_subtables.format(**{ 'len': len(sub_dfs), 'snapshots': snapshots, 'title': df.title }))
 
         return dataset
 

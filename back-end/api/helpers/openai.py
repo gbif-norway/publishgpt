@@ -1,10 +1,13 @@
 import ast
 from api.openai_wrapper import functions
 from pydantic import BaseModel
-from djantic import ModelSchema
 
 
-class OpenAISchemaMixin:
+class OpenAIBaseModel(BaseModel):
+    @classmethod
+    def classname(cls):
+        return cls.__name__
+    
     @classmethod
     def openai_schema(cls):
         parameters = cls.schema()  # Note this is a class method inherited from BaseModel
@@ -24,16 +27,6 @@ class OpenAISchemaMixin:
         }
 
 
-class OpenAIBaseModel(BaseModel, OpenAISchemaMixin):
-    @classmethod
-    def classname(cls):
-        return cls.__name__
-
-
-class OpenAIModelSchema(ModelSchema, OpenAISchemaMixin):
-    pass
-
-
 def callable(function_name):
     return getattr(functions, function_name)
 
@@ -46,8 +39,10 @@ def openai_function_details(response, choice=0):
 
     return None, None
 
+
 def openai_content(response, choice=0):
     return response['choices'][choice]['message']['content']
+
 
 def _remove_a_key(d, remove_key) -> None:
     """Remove a key from a dictionary recursively"""

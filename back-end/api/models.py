@@ -10,7 +10,6 @@ class Dataset(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
-    # plan = models.JSONField(null=True, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -31,7 +30,6 @@ class Dataset(models.Model):
 
 class Agent(models.Model):  
     created = models.DateTimeField(auto_now_add=True)
-    task = models.CharField(max_length=9000)
     task_complete = models.BooleanField(null=True, blank=True)
     _functions = ArrayField(base_field=models.CharField(max_length=500))
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)

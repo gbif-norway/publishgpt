@@ -1,16 +1,16 @@
 from rest_framework import viewsets, status
 from api.serializers import DatasetSerializer, DataFrameSerializer, MessageSerializer, AgentSerializer
-from api.models import Dataset, DataFrame, Message, Agent, Function
+from api.models import Dataset, DataFrame, Message, Agent
 from rest_framework.response import Response
 from rest_framework.decorators import action 
 from api.openai_wrapper import functions, prompts
-from helpers import df_helpers
+from api.helpers import df_helpers
 
 
 class DatasetViewSet(viewsets.ModelViewSet):
     queryset = Dataset.objects.all()
     serializer_class = DatasetSerializer
-    filterset_fields = ['created', 'orcid', 'master_Agent']
+    filterset_fields = ['created', 'orcid']
 
     @action(detail=True)
     def get_next_task_agent(self, request, *args, **kwargs):

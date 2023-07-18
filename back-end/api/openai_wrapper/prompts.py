@@ -45,7 +45,7 @@ extract_subtables = """
     A user has uploaded a spreadsheet, which has been converted into a pandas dataframe with dtype='str', header=None. The dataframe is stored in the `df` field of a Django model called DataFrame, which is associated with a Dataset model. 
     Currently, you are working with DataFrame id {df_id}. Here's a snapshot of it:
     {snapshot}
-    Your task is to separate out any sub tables in this dataframe into new, separate dataframes. New dataframes should have the parent set to {df_id}, and should also stay associated with the same dataset (id = {ds_id}).
+    Your task is to separate out any sub tables in this dataframe into new, separate DataFrames. New DataFrames should have the parent set to {df_id}, and should also stay associated with the same dataset (id = {ds_id}).
     """
 
 explain_extracted_subtables = """

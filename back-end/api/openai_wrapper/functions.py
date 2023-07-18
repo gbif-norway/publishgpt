@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, PositiveInt, validate_arguments
 import re
 import pandas as pd
 import numpy as np
-from api.helpers.openai import OpenAIBaseModel, OpenAIModelSchema
+from api.helpers.openai import OpenAIBaseModel
 
 
 class Python(OpenAIBaseModel):
@@ -37,7 +37,7 @@ class Python(OpenAIBaseModel):
     - Use print() if you want to see output
     - Output is a string of stdout, truncated to 2000 characters
     - Do not include comments in your code
-    - NEVER delete objects from the database
+    - Only delete objects from the database if requested by the user
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 
