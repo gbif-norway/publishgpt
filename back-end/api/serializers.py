@@ -1,8 +1,8 @@
-from api.models import Dataset, DataFrame, Worker, Message
+from api.models import Dataset, DataFrame, Agent, Message
 from rest_framework import serializers
 import pandas as pd
-import numpy as np
-from api.helpers.df import trim_dataframe
+from api.helpers.df_helpers import trim_dataframe, extract_sub_tables_based_on_null_boundaries, trunc_df_to_string
+from api.openai_wrapper import prompts, functions
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -22,11 +22,19 @@ class DatasetSerializer(serializers.ModelSerializer):
         dataset = Dataset.objects.create(**data)
 
         for sheet_name, df in dfs.items():
-            raw_df = trim_dataframe(df)
+            df = DataFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(df))
 
-
-            # df = DataFrame.objects.create(dataset=dataset, sheet_name=sheet_name, df=df)
-
+            # Create agents to handle multiple tables in one sheet
+            sub_dfs = extract_sub_tables_based_on_null_boundaries(df.df)
+            if len(sub_dfs) > 1:
+                agent = Agent.create_with_system_message(
+                    system_message = prompts.extract_subtables.format(**{ 'df_id': df.id, 'ds_id': dataset.id, 'title': df.title, 'snapshot': trunc_df_to_string(df) }),
+                    _functions = [functions.Python.classname]
+                )
+                snapshots = '\n\n'.join([trunc_df_to_string(x) for x in sub_dfs])
+                Message.objects.create(Agent=agent, 
+                                       role=Message.Role.ASSISTANT, 
+                                       content=prompts.explain_extracted_subtables.format(**{ 'len': len(sub_dfs), 'snapshots': snapshots }))
 
         return dataset
 
@@ -43,9 +51,9 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class WorkerSerializer(serializers.ModelSerializer):
+class AgentSerializer(serializers.ModelSerializer):
     message_set = MessageSerializer(many=True, read_only=True)
     
     class Meta:
-        model = Worker
+        model = Agent
         fields = '__all__'

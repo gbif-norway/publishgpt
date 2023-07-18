@@ -24,7 +24,7 @@ router = routers.DefaultRouter()
 router.register(r'datasets', views.DatasetViewSet)
 router.register(r'dataframes', views.DataFrameViewSet)
 router.register(r'messages', views.MessageViewSet)
-router.register(r'workers', views.WorkerViewSet)
+router.register(r'agents', views.AgentViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, PositiveInt, validate_arguments
 import re
 import pandas as pd
 import numpy as np
-from api.helpers.openai import OpenAIBaseModel
+from api.helpers.openai import OpenAIBaseModel, OpenAIModelSchema
 
 
 class Python(OpenAIBaseModel):
@@ -26,7 +26,10 @@ class Python(OpenAIBaseModel):
 
     class DataFrame(models.Model):
         dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+        title = models.CharField(max_length=200, blank=True)
         df = PickledObjectField()
+        description = models.CharField(max_length=2000, blank=True)
+        parent = models.ForeignKey('DataFrame', on_delete=models.CASCADE, blank=True, null=True)
     
     E.g. you can do `df_obj = db_models.DataFrame.objects.get(id=df_id); print(df_obj.df.to_string());`
     Notes: 
@@ -54,6 +57,16 @@ class Python(OpenAIBaseModel):
         finally:
             sys.stdout = old_stdout
         return str(result)[:2000]
+
+
+class SetTaskToComplete(OpenAIBaseModel):
+    agent_id: PositiveInt = Field(...)
+    complete: bool = Field(...)
+
+    def run(self):
+        agent = db_models.Agent.objects.get(id=self.agent_id)
+        agent.complete = True
+        agent.save()
 
 
 class PublishDwC(OpenAIBaseModel):
