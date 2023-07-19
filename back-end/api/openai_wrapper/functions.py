@@ -10,34 +10,12 @@ from api.helpers.openai import OpenAIBaseModel
 
 class Python(OpenAIBaseModel):
     """
-    Run python code with access to pandas (pd), numpy (np), and a Django database ORM (db_models) with a 'DataFrame' model and a 'Dataset' model. 
-    class Dataset(models.Model):
-        created = models.DateTimeField(auto_now_add=True)
-        class DWCCore(models.TextChoices):
-            EVENT = 'event_occurrences'
-            OCCURRENCE = 'occurrence'
-            TAXONOMY = 'taxonomy'
-        dwc_core = models.CharField(max_length=30, choices=DWCCore.choices, blank=True)
-        class DWCExtensions(models.TextChoices):
-            SIMPLE_MULTIMEDIA = 'simple_multimedia'
-            MEASUREMENT_OR_FACT = 'measurement_or_fact'
-            GBIF_RELEVE = 'gbif_releve'
-        dwc_extensions = ArrayField(base_field=models.CharField(max_length=500, choices=DWCExtensions.choices), null=True, blank=True)
-
-    class DataFrame(models.Model):
-        dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-        title = models.CharField(max_length=200, blank=True)
-        df = PickledObjectField()
-        description = models.CharField(max_length=2000, blank=True)
-        parent = models.ForeignKey('DataFrame', on_delete=models.CASCADE, blank=True, null=True)
+    Run python code with access to pandas (pd), numpy (np), and a Django database ORM (db_models) with a 'DatasetFrame' model and a 'Dataset' model. 
+    Dataset fields: created = DateTimeField
+    DatasetFrame fields: dataset = ForeignKey to Dataset, title = CharField, df = PickledObjectField, parent = ForeignKey to 'DatasetFrame' with blank=True, null=True
     
-    E.g. you can do `df_obj = db_models.DataFrame.objects.get(id=df_id); print(df_obj.df.to_string());`
-    Notes: 
-    - Use save() on instances to persist changes or create new objects e.g. `df_obj.save()`
-    - Use print() if you want to see output
-    - Output is a string of stdout, truncated to 2000 characters
-    - Do not include comments in your code
-    - Only delete objects from the database if requested by the user
+    E.g. `df_obj = db_models.DatasetFrame.objects.get(id=df_id); print(df_obj.df.to_string());`
+    Notes: - Use save() on instances to persist changes or create new objects e.g. `df_obj.save()` - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters - Do not include comments in your code - Only delete objects from the database if requested by the user
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 

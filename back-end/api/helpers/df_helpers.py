@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from skimage.measure import label, regionprops
-from api.models import DataFrame
+from api.models import DatasetFrame
 
 def trim_dataframe(df):
     # Replace empty spaces with NaN
@@ -11,7 +11,6 @@ def trim_dataframe(df):
     rows = np.where(df.notna().any(axis=1))[0]
     cols = np.where(df.notna().any(axis=0))[0]
 
-    # Trim the DataFrame based on these bounds
     trimmed_df = df.iloc[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]
 
     # If the first column is just a list of numbers from 0+ or 1+, it is meaningless, drop it
@@ -21,30 +20,9 @@ def trim_dataframe(df):
 
     return trimmed_df
 
-def trunc_df_to_string(df, max_rows=5, max_columns=5):
-    max_rows = max(max_rows, 5)    # At least 5 to show truncation correctly
-    max_columns = max(max_columns, 5)    # At least 5 to show truncation correctly
-    original_rows, original_cols = df.shape
-
-    if len(df) > max_rows:
-        top = df.head(max_rows // 2)
-        bottom = df.tail(max_rows // 2)
-        try:
-            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}), bottom])
-        except:
-            import pdb; pdb.set_trace()
-
-    if len(df.columns) > max_columns:
-        df = df.iloc[:, :max_columns//2].join(pd.DataFrame({ '...': ['...']*len(df) })).join(df.iloc[:, -max_columns//2:])
-
-    return df.to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
-
 def extract_sub_tables_based_on_null_boundaries(df):
-    from skimage.measure import label, regionprops
-    import pandas as pd
     larr = label(np.array(df.notnull()).astype("int"))
     dfs = []
-
     for s in regionprops(larr):
         sub_df = df.iloc[s.bbox[0]:s.bbox[2], s.bbox[1]:s.bbox[3]]
         dfs.append(sub_df)
@@ -59,3 +37,26 @@ def extract_sub_tables_based_on_null_boundaries(df):
             del dfs[i]
     
     return [df.reset_index(drop=True) for df in dfs]
+
+def extract_sub_tables(df, min_rows=2):
+    all_null_rows = df.isnull().all(axis=1)
+    start = 0
+    tables = []
+    for i, is_null in enumerate(all_null_rows):
+        if is_null:
+            if i - start >= min_rows:
+                tables.append(df.iloc[start:i])
+            start = i + 1
+    if len(df) - start >= min_rows:
+        tables.append(df.iloc[start:])
+    return [trim_dataframe(t) for t in tables]
+
+
+def get_datasetframe_sub_tables(dataset_frame):
+    # sub_dfs = extract_sub_tables_based_on_null_boundaries(dataset_frame.df)
+    sub_dfs = extract_sub_tables(dataset_frame.df)
+    sub_dsfs = []
+    for new_df in sub_dfs:
+        sub_dsf = DatasetFrame.objects.create(dataset=dataset_frame.dataset, parent=dataset_frame, df=new_df)
+        sub_dsfs.append({'id': sub_dsf.id, 'df_preview': str(sub_dsf)})
+    return sub_dsfs

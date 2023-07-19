@@ -42,10 +42,19 @@ agent_system_message = """
 """
 
 extract_subtables = """
-    A user has uploaded a spreadsheet, which has been converted into a pandas dataframe with dtype='str', header=None. The dataframe is stored in the `df` field of a Django model called DataFrame, which is associated with a Dataset model. 
-    Currently, you are working with DataFrame id {df_id}. Here's a snapshot of it:
+    A user has uploaded a spreadsheet, which has been converted into a pandas dataframe with dtype='str', header=None. The dataframe is stored in the `df` field of a Django model called DatasetFrame, which is associated with a Dataset model:
+    class Dataset(models.Model):
+        created = models.DateTimeField(auto_now_add=True)
+    class DatasetFrame(models.Model):
+        created = models.DateTimeField(auto_now_add=True)
+        dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+        title = models.CharField(max_length=200, blank=True)
+        df = PickledObjectField()  # Contains dataframe
+        parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    
+    Currently, you are working with DatasetFrame id {df_id}. Here's a snapshot of it:
     {snapshot}
-    Your task is to separate out any sub tables in this dataframe into new, separate DataFrames. New DataFrames should have the parent set to {df_id}, and should also stay associated with the same dataset (id = {ds_id}).
+    Your task is to separate out any sub tables in this dataframe into new, separate DatasetFrames. New DatasetFrames should have the parent set to {df_id}, and should also stay associated with the same dataset (id = {ds_id}).
     """
 
 explain_extracted_subtables = """

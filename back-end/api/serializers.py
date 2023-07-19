@@ -1,7 +1,7 @@
-from api.models import Dataset, DataFrame, Agent, Message
+from api.models import Dataset, DatasetFrame, Agent, Message
 from rest_framework import serializers
 import pandas as pd
-from api.helpers.df_helpers import trim_dataframe, extract_sub_tables_based_on_null_boundaries, trunc_df_to_string
+from api.helpers.df_helpers import trim_dataframe, get_datasetframe_sub_tables
 from api.openai_wrapper import prompts, functions
 
 
@@ -22,33 +22,35 @@ class DatasetSerializer(serializers.ModelSerializer):
         dataset = Dataset.objects.create(**data)
 
         for sheet_name, df in dfs.items():
-            df = DataFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(df))
+            dsf = DatasetFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(df))
+            sub_dsfs = get_datasetframe_sub_tables(dsf)
 
-            # Create agents to handle multiple tables in one sheet
-            sub_dfs = extract_sub_tables_based_on_null_boundaries(df.df)
-
-            if len(sub_dfs) > 1:
-                sub_df_objects = []
-                for new_df in sub_dfs:
-                    sub_df_objects.append(DataFrame.objects.create(dataset=dataset, parent=df, df = new_df))
-
+            if len(sub_dsfs) > 1:
+                # Start an agent to handle the sub table extraction
                 agent = Agent.create_with_system_message(
-                    system_message = prompts.extract_subtables.format(**{ 'df_id': df.id, 'ds_id': dataset.id, 'title': df.title, 'snapshot': trunc_df_to_string(df.df) }),
-                    _functions = [functions.Python.classname],
+                    system_message = prompts.extract_subtables.format(**{ 'df_id': dsf.id, 'ds_id': dataset.id, 'title': dsf.title, 'snapshot': str(dsf) }),
+                    _functions = [functions.Python.__name__],
                     dataset=dataset
                 )
-                snapshots = f'\n\n'.join([f'DataFrame ID: {x.id}\n{trunc_df_to_string(x.df)}' for x in sub_df_objects])
+
+                # Give the agent access to the results of the extract subtable function
                 Message.objects.create(agent=agent, 
-                                       role=Message.Role.ASSISTANT, 
-                                       content=prompts.explain_extracted_subtables.format(**{ 'len': len(sub_dfs), 'snapshots': snapshots, 'title': df.title }))
+                                       function_name='ExtractAndSaveSubtableDatasetFramesForUserFeedback',
+                                       role=Message.Role.FUNCTION, 
+                                       content=sub_dsfs)  
+
+                # snapshots = f'\n\n'.join([f'DatasetFrame ID: {x.id}\n{trunc_df_to_string(x.df)}' for x in sub_df_objects])
+                #,prompts.explain_extracted_subtables.format(**{ 'len': len(sub_dfs), 'snapshots': snapshots, 'title': df.title }))
 
         return dataset
 
 
-class DataFrameSerializer(serializers.ModelSerializer):
+class DatasetFrameSerializer(serializers.ModelSerializer):
+    df_str = serializers.CharField(source='df', read_only=True)
+
     class Meta:
-        model = DataFrame
-        fields = '__all__'
+        model = DatasetFrame
+        fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'parent']
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -63,3 +65,4 @@ class AgentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = '__all__'
+    

@@ -22,7 +22,7 @@ from drf_spectacular.views import SpectacularAPIView
 
 router = routers.DefaultRouter()
 router.register(r'datasets', views.DatasetViewSet)
-router.register(r'dataframes', views.DataFrameViewSet)
+router.register(r'datasetframes', views.DatasetFrameViewSet)
 router.register(r'messages', views.MessageViewSet)
 router.register(r'agents', views.AgentViewSet)
 

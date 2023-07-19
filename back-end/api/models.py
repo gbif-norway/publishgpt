@@ -4,6 +4,7 @@ from django.contrib.postgres.fields import ArrayField
 from api.openai_wrapper import chat_completion, functions, prompts
 from api.helpers.openai import callable, openai_function_details, function_name_in_text
 from picklefield.fields import PickledObjectField
+import pandas as pd
 
 
 class Dataset(models.Model):
@@ -47,12 +48,15 @@ class Agent(models.Model):
         Message.objects.create(agent=agent, content=content, role=Message.Role.SYSTEM)
 
         # Add default Task Complete function as well 
-        agent._functions = [functions.SetTaskToComplete.classname] + agent._functions
+        agent._functions = [functions.SetTaskToComplete.__name__] + agent._functions
         return agent
 
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
+
+    def run_force_function(self, function_call, current_call=0, max_calls=10):
+        pass
 
     def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
         stop_loop = current_call == max_calls
@@ -79,14 +83,32 @@ class Agent(models.Model):
         return message
 
 
-class DataFrame(models.Model):
+class DatasetFrame(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
-    parent = models.ForeignKey('DataFrame', on_delete=models.CASCADE, blank=True, null=True)
+    parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+
+    def __str__(self, max_rows=5, max_columns=5, max_str_len=70):
+        max_rows = max(max_rows, 5)  # At least 5 to show truncation correctly
+        max_columns = max(max_columns, 5)  # At least 5 to show truncation correctly
+        original_rows, original_cols = self.df.shape
+
+        # Truncate long strings in cells
+        df = self.df.astype(str).applymap(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x)
+
+        if len(df) > max_rows:
+            top = df.head(max_rows // 2)
+            bottom = df.tail(max_rows // 2)
+            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}), bottom])
+
+        if len(df.columns) > max_columns:
+            df = df.iloc[:, :max_columns//2].join(pd.DataFrame({ '...': ['...']*len(df) })).join(df.iloc[:, -max_columns//2:])
+
+        return df.to_string() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
 
 
 class Message(models.Model):

@@ -1,14 +1,11 @@
 import ast
 from api.openai_wrapper import functions
 from pydantic import BaseModel
+from pydantic.main import ModelMetaclass
 
 
-class OpenAIBaseModel(BaseModel):
-    @classmethod
-    def classname(cls):
-        return cls.__name__
-    
-    @classmethod
+class OpenAIBaseMeta(ModelMetaclass):
+    @property
     def openai_schema(cls):
         parameters = cls.schema()  # Note this is a class method inherited from BaseModel
         parameters['properties'] = {
@@ -26,6 +23,8 @@ class OpenAIBaseModel(BaseModel):
             'parameters': parameters,
         }
 
+class OpenAIBaseModel(BaseModel, metaclass=OpenAIBaseMeta):
+    pass
 
 def callable(function_name):
     return getattr(functions, function_name)
