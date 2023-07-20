@@ -1,53 +1,62 @@
 - model: api.task
   fields:
     name: extract_subtables
+    per_datasetframe: false
     system_message_template: >
       Separate out any sub tables in this dataframe into new, separate DatasetFrames. New DatasetFrames should have the parent set to {{ df_id }}, and should also stay associated with the same Dataset (id {{ dataset_id }}).
 
 - model: api.task
   fields:
     name: flatten_headers
+    per_datasetframe: true
     system_message_template: >
       Flatten any of the top rows which you think might contain header information into a single row, and convert it to the dataframe header. If there are multiple candidate header rows, try to preserve as much information as possible when you merge them. 
     
 - model: api.task
   fields:
     name: drop_unnecessary_rows_and_columns
+    per_datasetframe: true
     system_message_template: >  
       Drop any unnecessary rows and columns. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too. This is just a first pass to weed out obvious problems - we will map columns to the Darwin Core standard in a later Task.
     
 - model: api.task
   fields:
     name: de_crosstab  # Convert crosstab/pivot to long.
+    per_datasetframe: true
     system_message_template: >  
       Is this table in crosstab or pivot format? Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format, label the new column accordingly and present it to the user for confirmation. If a new DatasetFrame is made for the long dataframe, it should have the parent set to {{ df_id }}, and should also stay associated with the same Dataset (id {{ dataset_id }}). Don't forget to save changes to the database before marking this Task as complete.
     
 - model: api.task
   fields:
     name: set_core_and_extensions
+    per_datasetframe: false
     system_message_template: >  
-      Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
+      Carefully examine the contents of each of these dataframes. Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
 
 - model: api.task
   fields:
     name: organize_datasetframes
+    per_datasetframe: false
     system_message_template: >  
       Depending on the DwC core and DwC extensions this dataset has, organize the DatasetFrames, joining or deleting dataframes as necessary so the data structure resembles what is required.
 
 - model: api.task
   fields:
     name: mapping
+    per_datasetframe: false
     system_message_template: >  
       Depending on the DwC core and DwC extensions this dataset has, map the columns to the correct darwin core terms. Present these to the user to make sure you have not misunderstood anything. If column names are too cryptic, ask the user about them. Drop any unnecessary columns, and generally get the data into shape. Validation and format checking is the next Task. 
 
 - model: api.task
   fields:
     name: validation
+    per_datasetframe: false
     system_message_template: >  
       Check each of the newly mapped darwin core fields for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
 
 - model: api.task
   fields:
     name: adhoc
+    per_datasetframe: false
     system_message_template: >  
       Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. Are there any other outstanding issues you can see? Fix these and mark your Task as complete when you think there are no more issues and the dataframes are ready for publication.

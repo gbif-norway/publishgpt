@@ -15,7 +15,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
     @action(detail=True)
     def get_or_create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
-        return dataset.get_or_create_next_agent()
+        serializer = AgentSerializer(dataset.get_or_create_next_agent())
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class DatasetFrameViewSet(viewsets.ModelViewSet):

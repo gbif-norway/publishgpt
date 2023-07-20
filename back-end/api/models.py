@@ -7,14 +7,9 @@ from picklefield.fields import PickledObjectField
 import pandas as pd
 import datetime
 import re
-from django.template.loader import get_template
+from django.template.loader import render_to_string
 from os import path
-
-
-class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
-    name = models.CharField(max_length=30, unique=True)
-    system_message_template = models.CharField(max_length=5000)
-    per_datasetframe = models.BooleanField()
+from django.db.models import Count, Max, F
 
 
 class Dataset(models.Model):
@@ -42,16 +37,55 @@ class Dataset(models.Model):
         ordering = ['created']
     
     def get_or_create_next_agent(self):
-        next_agent = Agent.objects.filter(completed=None).first()
+        next_agent = self.agent_set.filter(completed=None).first()
         if next_agent:
             return next_agent
         
-        last_task_id = Agent.objects.all().order_by('completed').last().task.id
+        last_task_id = self.agent_set.all().order_by('completed').last().task.id
         next_task = Task.objects.filter(id__gt=last_task_id).order_by('id').first()
-        if not next_task:
-            return Agent.create_with_task_and_datasetframes(dataset=self, task=next_task)
-        if not next_task:
-            return None
+        if next_task:
+            return next_task.create_agents(dataset=self)
+
+        return None
+        
+    def get_active_datasetframes(self):
+        leaf_datasetframes = DatasetFrame.objects.filter(dataset=self).annotate(num_children=Count('datasetframe')).filter(num_children=0)
+        recent_datasetframes = DatasetFrame.objects.filter(dataset=self).values('parent').annotate(
+            recent_child_id=Max('id'),
+            recent_created=Max('created'),
+        ).filter(id=F('recent_child_id'))
+        return list(leaf_datasetframes) + list(recent_datasetframes)
+
+
+class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
+    name = models.CharField(max_length=300, unique=True)
+    system_message_template = models.CharField(max_length=5000)
+    per_datasetframe = models.BooleanField()
+
+    @property
+    def functions(self):
+        return [functions.Python.__name__, functions.SetTaskToComplete.__name__]
+
+    def create_agents(self, dataset:Dataset):
+        active_datasetframes = dataset.get_active_datasetframes()
+        agents = []
+
+        if self.per_datasetframe:
+            for datasetframe in active_datasetframes:
+                agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
+                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
+                system_message = render_to_string('single_df.txt', context={ 'agent': agent, 'agent_datasetframes': datasetframe })
+                Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+                agents.append(agent)
+        else:
+            agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
+            for datasetframe in active_datasetframes:
+                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
+            system_message = render_to_string('multi_df.txt', context={'agent': agent, 'agent_datasetframes': active_datasetframes })
+            Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+            agents.append(agent)
+
+        return agents
 
 
 class Agent(models.Model):  
@@ -64,22 +98,6 @@ class Agent(models.Model):
     @property
     def callable_functions(self):
         return [callable(f) for f in self._functions]
-    
-    @classmethod
-    def create_with_task_and_datasetframes(cls, datasetframes, **kwargs):
-        kwargs['_functions'] = [functions.Python.__name__, functions.SetTaskToComplete.__name__]
-        agent = cls.objects.create(**kwargs)
-
-        for datasetframe in datasetframes:
-            AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-        
-        # Add the first system message to the agent automatically
-        message_template = get_template('single_df') if agent.task.per_datasetframe else get_template('multi_df')
-        render_args = {'agent': agent, 'agent_datasetframes': datasetframes}
-        system_message = message_template.render(render_args)
-        Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
-
-        return agent
 
     class Meta:
         get_latest_by = 'created'
