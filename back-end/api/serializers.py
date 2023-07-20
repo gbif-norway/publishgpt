@@ -1,34 +1,9 @@
-from api.models import Dataset, Conversation, Message, Task
+from api.models import Dataset, DatasetFrame, Agent, Message, Task, AgentDatasetFrame
 from rest_framework import serializers
-from api.external_apis import openai, openai_fake_functions as fake
 import pandas as pd
-from pprint import pprint
-
-
-# class MessageSerializerForGPT(serializers.ModelSerializer):
-#     class Meta:
-#         model = Message
-#         fields = ['content', 'role']
-
-
-class MessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Message
-        fields = '__all__'
-
-
-class TaskSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Task
-        fields = '__all__'
-
-
-class ConversationSerializer(serializers.ModelSerializer):
-    message_set = MessageSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = Conversation
-        fields = ['id', 'dataset', 'created', 'task', 'updated_df_sample', 'status', 'message_set']
+from api.helpers.df_helpers import trim_dataframe, get_datasetframe_sub_tables
+from api.openai_wrapper import prompts, functions
+from django.template.loader import render_to_string
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -37,87 +12,62 @@ class DatasetSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def create(self, data):
-        df = _read_file(data['file'].file)
-        data['shape'] = df.shape
-
-        rows_minimum = 4
-
-        # Check uploaded sheet has enough rows to work with
-        if len(df) < rows_minimum:
-            raise serializers.ValidationError(f"Your dataset has fewer than {rows_minimum} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
+        try:
+            df = pd.read_csv(data['file'].file, header=None, dtype='str')
+            if len(df) < 4:
+                raise serializers.ValidationError(f"Your dataset has only {len(df)} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
+            dfs = {'[None]': df}
+        except:
+            dfs = pd.read_excel(data['file'].file, header=None, dtype='str', sheet_name=None)
         
-        # Reduce to something near the openai character count limit and check there are still enough rows
-        sample = _limit_dataframe_characters(df)
-        print(f'Number of rows: {len(df)}')
-        if len(df) < rows_minimum:
-            raise serializers.ValidationError(f"You have too many characters per row on your spreadsheet. I'm using OpenAI's GPT API and unfortunately there's a character limit on what I can process. When working with a dataframe as large as yours I usually take a small sample of a few rows so I am within the character count limit, but in your case I only have {len(df)} rows to work with. Can you reduce the amount of text in some of the columns, or drop some columns? Please upload a new sheet.")
-        data['df_sample'] = sample.to_json(force_ascii=False) #orient='values'
-
-        # Check there's a scientific name
-        text = f'Dataframe: {data["df_sample"]} --- Is there at least one column containing either a scientific name string such as a latin name (can be for phylum, family, genus, species, subspecies, etc), or a scientificNameID such as a BOLD ID or an LSID? Reply with "yes" or "no", and no other text.'
-        response = openai.chat_completion([Message(content=text, role=Message.Role.SYSTEM)])  # For some reason to work consistently this has to be system i think?
-        if 'no' in response['choices'][0]['message']['content'].lower():
-            raise serializers.ValidationError('It looks as if your data does not contain a scientificName or scientificNameID. It\'s only possible to publish biodiversity data linked to species on <a href="https://gbif.org" target="_blank">gbif.org</a>.')
-        
-        # Check there's at least one header row
-        text = f'Dataframe: {data["df_sample"]} --- Is the top row a header row? Reply with "yes" or "no", and no other text.'
-        response = openai.chat_completion([Message(content=text, role=Message.Role.SYSTEM)])
-        if 'no' in response['choices'][0]['message']['content'].lower():
-            raise serializers.ValidationError("There doesn't appear to be a header row in your data. Please add one, ideally with darwin core terms, and reupload.")
-        sample = sample.rename(columns=sample.iloc[0]).drop(sample.index[0]).reset_index(drop=True)
-        data['df_sample'] = sample.to_json(force_ascii=False)
-
-        # Create the corresponding cleaning task conversations, but don't start them
         dataset = Dataset.objects.create(**data)
-        for task in Task.objects.all():
-            Conversation.objects.create(dataset=dataset, task=task)
+
+        for sheet_name, df in dfs.items():
+            dataset_frame = DatasetFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(df))
+
+            # Try to extract any sub tables which exist in the sheet. Because people do this, for some reason. We need to treat each one separately.
+            sub_dataset_frames = get_datasetframe_sub_tables(dataset_frame)
+
+            if len(sub_dataset_frames) > 1:
+                # Start an agent to handle the sub table extraction
+                task = Task.objects.get(name='extract_subtables')
+                agent = Agent.objects.create(_functions=task.functions, dataset=dataset, task=task)
+
+                for datasetframe in sub_dataset_frames:
+                    AgentDatasetFrame.objects.create(agent=agent, dataset_frame_id=datasetframe['id'])
+                system_message = render_to_string('single_df.txt', context={'agent': agent, 'agent_datasetframes': [dataset_frame] })
+                Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+
+                # Give the agent access to the results of the extract subtable function
+                Message.objects.create(agent=agent, function_name='ExtractSubTables', role=Message.Role.FUNCTION, content=sub_dataset_frames) 
+
+                snapshots = '\n\n'.join([f'Sub-table #{idx} - (DatasetFrame.id: {d["id"]})\n```{d["df_preview"]}```' for idx, d in enumerate(sub_dataset_frames)]) 
+                explain_extracted_subtables = 'I just had a look at your spreadsheet "{title}". Based on the empty rows & columns which appear to be acting as "dividers" between the sub-tables, I think it contains {len} different, separate tables:\n{snapshots}\n\nIs this correct? Please let me know: a) if there are any separate sub-tables I missed which should be split off, and b) if there are any sub-tables that were incorrectly split, which should actually be joined to other sub-tables. An important step in publishing your data is getting every table loaded separately. '
+                Message.objects.create(agent=agent, 
+                                       role=Message.Role.ASSISTANT, 
+                                       content=explain_extracted_subtables.format(title=dataset_frame.title, len=len(sub_dataset_frames), snapshots=snapshots))  
+
         return dataset
 
 
-def _read_file(file):
-    # Throw an error if not csv or xlsx
-    # process xlsx - i guess there needs to be a chatgpt function to join multiple sheets 
-    # Your task is to try to join these different dataframes, imported as separate sheets from an excel spreadsheet. The main sheet should have a species name... something
-    # try:
-    df = pd.read_csv(file, skip_blank_lines=True, header=None)
-    return df
+class DatasetFrameSerializer(serializers.ModelSerializer):
+    df_str = serializers.CharField(source='df', read_only=True)
 
-def _limit_dataframe_characters(df, max_characters=3000):
-    # Calculate the target character count per section (top and bottom)
-    target_characters_per_section = max_characters // 2
+    class Meta:
+        model = DatasetFrame
+        fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'parent']
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = '__all__'
+
+
+class AgentSerializer(serializers.ModelSerializer):
+    message_set = MessageSerializer(many=True, read_only=True)
     
-    # Convert the DataFrame to a string representation
-    df_str = df.to_string(index=False)
+    class Meta:
+        model = Agent
+        fields = '__all__'
     
-    # Check if the DataFrame already fits within the character limit
-    if len(df_str) <= max_characters:
-        return df
-    
-    # Calculate the reduction factor to scale down the rows
-    reduction_factor = target_characters_per_section / 2 / len(df_str)
-    
-    # Calculate the reduced number of rows
-    reduced_n = int(len(df) * reduction_factor)
-    
-    # Get the top and bottom sections of the DataFrame
-    top_df = df.head(reduced_n)
-    bottom_df = df.tail(reduced_n)
-    
-    # Convert the top and bottom sections to string representations
-    top_df_str = top_df.to_string(index=False)
-    bottom_df_str = bottom_df.to_string(index=False)
-    
-    # Calculate the remaining available characters
-    remaining_characters = max_characters - len(top_df_str) - len(bottom_df_str)
-    
-    # Calculate the maximum number of rows to fit the remaining characters
-    max_rows_to_fit_remaining = remaining_characters // len(df.columns)
-    
-    # Reduce the number of rows if necessary to fit the remaining characters
-    if len(df) > max_rows_to_fit_remaining:
-        reduced_n = max_rows_to_fit_remaining
-    
-    # Get the reduced DataFrame
-    reduced_df = df.head(reduced_n)
-    
-    return reduced_df

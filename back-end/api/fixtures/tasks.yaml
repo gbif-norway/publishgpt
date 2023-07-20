@@ -1,63 +1,62 @@
 - model: api.task
   fields:
-    name: flatten_header
-    description: Flatten any header rows
-    initial_user_message: Do you think any of the top rows contain information which should be included in the header? If so, merge them into the header, otherwise skip the current task.
-    initial_assistant_message: In order to publish the data, we need one single header row. I think you may have additional rows which need to be headers, which I have tried to fix. How does this look?
-    initial_function: SetTaskStatus_MergeTopRowsIntoHeader
-    functions: [GoToNextTask, MergeTopRowsIntoHeader]
-    gpt_model: 'gpt-4'
+    name: extract_subtables
+    per_datasetframe: false
+    system_message_template: >
+      Separate out any sub tables in this dataframe into new, separate DatasetFrames. New DatasetFrames should have the parent set to {{ df_id }}, and should also stay associated with the same Dataset (id {{ dataset_id }}).
+
 - model: api.task
   fields:
-    name: translate
-    description: Translate any non-English columns into English
-    initial_user_message: Ignoring columns such as scientific names (which are often in latin), do you think any of these columns are not in English? If so, translate them, otherwise skip the current task.
-    initial_assistant_message: I think some of your dataset may not be in English. Before we proceed further we need to translate it. I have translated {input}. Does this look ok?
-    initial_function: SetTaskStatus_TranslateNonEnglishColumns
-    functions: [GoToNextTask, TranslateNonEnglishColumns]
-    gpt_model: 'gpt-4'
+    name: flatten_headers
+    per_datasetframe: true
+    system_message_template: >
+      Flatten any of the top rows which you think might contain header information into a single row, and convert it to the dataframe header. If there are multiple candidate header rows, try to preserve as much information as possible when you merge them. 
+    
 - model: api.task
   fields:
-    name: drop
-    description: Drop any superfluous/unnecessary or meaningless columns or rows
-    initial_user_message: Do you think any of these columns or rows are unnecessary in the context of biodiversity data publishing? If so, drop them, otherwise skip the current task.
-    initial_assistant_message: I think your dataset contains unnecessary data, so I have tried removing it. Does this look ok?
-    initial_function: SetTaskStatus_DropColumnsRows
-    functions: [GoToNextTask, DropColumnsRows]
-    gpt_model: 'gpt-4'
-# - model: api.task
-#   fields:
-#     name: uncrosstab
-#     system_prompt: If this dataframe is in crosstab format, unpivot/de-crosstab it
-#     initial_assistant_message: Your dataset appears to be in crosstab format. We need to split it into list format. I've had a stab at it - do the columns and rows look sensible here?
-#     functions: [Uncrosstab]
-# - model: api.task
-#   fields:
-#     name: join_columns_rows
-#     system_prompt: Join any columns which look as if they should logically be merged
-#     initial_assistant_message: Some of the columns in your dataset seem as if they should be joined. What do you think?
-#     functions: [JoinColumnsRows]
-# - model: api.task
-#   fields:
-#     name: split_columns_rows
-#     system_prompt: Split any single columns which contain multiple values
-#     initial_assistant_message: Some of the columns in your dataset seem as if they should be split. When publishing data, it's sometimes better to publish columns as the smallest possible component part - the exception is for dates. What do you think of the splits I've made?
-#     functions: [SplitColumnsRows]
-# - model: api.task
-#   fields:
-#     name: map
-#     system_prompt: Rename column headers to Darwin Core Standard terms
-#     initial_assistant_message: When publishing to gbif.org, we need to publish data in the Darwin Core standard, so that everyone understands what data columns contain. This means we have to convert some of your column header names, which I've attempted to do here. What do you think?
-#     functions: [MapToDarwinCore]
-# - model: api.task
-#   fields:
-#     name: fix_dates
-#     system_prompt: Write code to fix any problems with date formatting, etc
-#     initial_assistant_message: I've had a go at fixing some date formatting issues, how does this look?
-#     functions: [FixDates]
-# - model: api.task
-#   fields:
-#     name: add_basis_of_record
-#     system_prompt: 'Create an appropriate darwin core standard "basisOfRecord" column, possible values are: x, y'
-#     initial_assistant_message: A required field in the Darwin Core standard is 'basisOfRecord', which your dataset is missing. Possible values are x, y. I think your data is x because of x. What do you think?
-#     functions: [AddBasisOfRecord]
+    name: drop_unnecessary_rows_and_columns
+    per_datasetframe: true
+    system_message_template: >  
+      Drop any unnecessary rows and columns. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too. This is just a first pass to weed out obvious problems - we will map columns to the Darwin Core standard in a later Task.
+    
+- model: api.task
+  fields:
+    name: de_crosstab  # Convert crosstab/pivot to long.
+    per_datasetframe: true
+    system_message_template: >  
+      Is this table in crosstab or pivot format? Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format, label the new column accordingly and present it to the user for confirmation. If a new DatasetFrame is made for the long dataframe, it should have the parent set to {{ df_id }}, and should also stay associated with the same Dataset (id {{ dataset_id }}). Don't forget to save changes to the database before marking this Task as complete.
+    
+- model: api.task
+  fields:
+    name: set_core_and_extensions
+    per_datasetframe: false
+    system_message_template: >  
+      Carefully examine the contents of each of these dataframes. Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
+
+- model: api.task
+  fields:
+    name: organize_datasetframes
+    per_datasetframe: false
+    system_message_template: >  
+      Depending on the DwC core and DwC extensions this dataset has, organize the DatasetFrames, joining or deleting dataframes as necessary so the data structure resembles what is required.
+
+- model: api.task
+  fields:
+    name: mapping
+    per_datasetframe: false
+    system_message_template: >  
+      Depending on the DwC core and DwC extensions this dataset has, map the columns to the correct darwin core terms. Present these to the user to make sure you have not misunderstood anything. If column names are too cryptic, ask the user about them. Drop any unnecessary columns, and generally get the data into shape. Validation and format checking is the next Task. 
+
+- model: api.task
+  fields:
+    name: validation
+    per_datasetframe: false
+    system_message_template: >  
+      Check each of the newly mapped darwin core fields for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
+
+- model: api.task
+  fields:
+    name: adhoc
+    per_datasetframe: false
+    system_message_template: >  
+      Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. Are there any other outstanding issues you can see? Fix these and mark your Task as complete when you think there are no more issues and the dataframes are ready for publication.
