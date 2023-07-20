@@ -120,7 +120,9 @@ class Agent(models.Model):
         # Run a function if GPT has asked for a function to be called, and send the results back to GPT without user feedback
         function_name, function_args = openai_function_details(response)
         if function_name:
+            Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response)
             function_result = getattr(functions, function_name).run(**function_args)
+            import pdb; pdb.set_trace()
             if function_result:
                 Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
                 return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)

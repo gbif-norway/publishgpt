@@ -43,11 +43,19 @@ class AgentViewSet(viewsets.ModelViewSet):
         },
     }
 
-    @action(detail=True)
+    @action(detail=True, methods=['get', 'post'])
     def chat(self, request, *args, **kwargs):
-        agent = self.get_object()
-        next_assistant_message = agent.get_next_assistant_message_for_user()
-        if next_assistant_message:
-            serializer = MessageSerializer(next_assistant_message)
+        if self.request.method == 'POST':
+            agent = self.get_object()
+            Message.objects.create(agent=agent, content=request.POST['message'], role=Message.Role.USER)
+            import pdb; pdb.set_trace()
+            reply = agent.run()
+            serializer = MessageSerializer(reply)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(None, status=status.HTTP_404_NOT_FOUND)  # This should happen only when the dataset is ready for publication
+        if self.request.method == 'GET':
+            agent = self.get_object()
+            next_assistant_message = agent.get_next_assistant_message_for_user()
+            if next_assistant_message:
+                serializer = MessageSerializer(next_assistant_message)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(None, status=status.HTTP_404_NOT_FOUND)  # This should happen only when the dataset is ready for publication

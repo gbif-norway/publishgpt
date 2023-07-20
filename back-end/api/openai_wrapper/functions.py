@@ -16,8 +16,14 @@ class Python(OpenAIBaseModel):
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 
-    def run(self):
-        code = re.sub(r"^(\s|`)*(?i:python)?\s*", "", self.code)
+    @classmethod
+    def run(self, code):
+        if type(code) is dict:
+            if 'code' in dict:
+                code = code['code']
+            else:
+                import pdb; pdb.set_trace()
+        code = re.sub(r"^(\s|`)*(?i:python)?\s*", "", code)
         code = re.sub(r"(\s|`)*$", "", code)
         old_stdout = sys.stdout
         new_stdout = StringIO()
@@ -27,6 +33,8 @@ class Python(OpenAIBaseModel):
             globals = { 'db_models': db_models, 'pd': pd, 'np': np }
             exec(code, globals, locals)
             result = new_stdout.getvalue()
+            if not result:
+                result = 'Success' # Note new_stdout doesn't return e.g. delete output like (17, {'api.AgentDatasetFrame': 8, 'api.DatasetFrame': 9}) 
         except Exception as e:
             result = repr(e)
         finally:
@@ -35,9 +43,11 @@ class Python(OpenAIBaseModel):
 
 
 class SetTaskToComplete(OpenAIBaseModel):
+    """Mark an Agent's task as complete"""
     agent_id: PositiveInt = Field(...)
     complete: bool = Field(...)
 
+    @classmethod
     def run(self):
         agent = db_models.Agent.objects.get(id=self.agent_id)
         agent.complete = True

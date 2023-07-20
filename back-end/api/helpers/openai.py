@@ -34,7 +34,11 @@ def openai_function_details(response, choice=0):
     message = response['choices'][choice]['message']
     if 'function_call' in message:
         fc = message['function_call']
-        return fc['name'], ast.literal_eval(fc['arguments'])
+        try:
+            args = ast.literal_eval(fc['arguments'])
+        except ValueError:
+            args = fc['arguments']
+        return fc['name'], args
 
     return None, None
 
