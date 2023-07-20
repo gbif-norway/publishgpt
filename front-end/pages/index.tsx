@@ -21,57 +21,75 @@ const IndexPage = () => {
       } else {
         response.json().then(data => { 
           // Store data['df_sample'] for display later
-          // GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/'
-          // OpenAPI yaml available here http://publishgpt-back.local/api-schema/
+          // GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/get_or_create_next_agent/'
           // Results will look like this:
-          // conversation = {
-          //   "id": 1,
-          //   "created": "2023-07-10",
-          //   "updated_df_sample": "{\"date\":{\"1\":\"01\\/03\\/2012\",\"2\":\"02\\/03\\/2012\",\"3\":\"03\\/03\\/2012\"},\"genus\":{\"1\":\"Eudyptes\",\"2\":\"Eudyptes\",\"3\":\"Eudyptes\"},\"specific epithet\":{\"1\":\"moseleyi\",\"2\":\"moseleyi\",\"3\":\"moseleyi\"},\"count\":{\"1\":\"5\",\"2\":\"10\",\"3\":\"10\"},\"location\":{\"1\":\"Gough Island\",\"2\":\"Gough Island\",\"3\":\"Gough Island\"}}",
-          //   "status": "in-progress",
-          //   "dataset": 1, // data['pk']
-          //   "task": 1
-          //   "message_set": [{"role": "system", "content": "x"}, {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]"}]
-          // }
+        //   {
+        //     "id": 5,
+        //     "message_set": [
+            //   {
+            //     "id": 11,
+            //     "created": "2023-07-20T15:32:23.562035Z",
+            //     "content": "Some content",
+            //     "function_name": "",
+            //     "role": "system",
+            //     "agent": 5
+            // },
+            // {
+            //     "id": 12,
+            //     "created": "2023-07-20T15:32:23.565939Z",
+            //     "content": "[content]",
+            //     "function_name": "ExtractSubTables",
+            //     "role": "function",
+            //     "agent": 5
+            // },
+            // {
+            //     "id": 13,
+            //     "created": "2023-07-20T15:32:23.568798Z",
+            //     "content": "different content",
+            //     "function_name": "",
+            //     "role": "assistant",
+            //     "agent": 5
+            // },
+        //     ],
+        //     "created": "2023-07-20T15:32:23.416860Z",
+        //     "completed": null,
+        //     "dataset": 8,
+        //     "task": 6
+        // }
+        // Or possibly results might be 404 and None, in which case  display a message saying "Thanks for publishing your data. <input type="button">Publish another dataset</input>" - Clicking on the button should just refresh the page
           // Hide initial-message div
-          // startConversation(conversation);
+          // startChat(results["message_set"], results["id"]);
         })
       }
     })
   }
 
   // Run an interactive conversation
-  function startConversation(conversation) {
-    // Show the conversations div
-    // Create a child 'conversation' class div like the one below, and populate it with messages
-    // Each message should have an additional 'assistant' or 'user' class, don't display the "system" messages
+  function startChat(messages, agent_id) {
+    // Show the chats div
+    // Create a child 'chat' class div like the one below, and populate it with messages
+    // Each message should have an additional 'assistant' or 'user' class, don't display the 'system' messages or 'function' messages
     /*
-    <div class="conversation in-progress">
+    <div class="chat in-progress">
       <div class="messages">
-        {conversation.map((message, index) => (
+        {messages.map((message, index) => (
           <div key={index} className='flex flex-col message'}><p>{message}</p></div>
         ))}
       </div>
 
       <input type="text" />
     </div>*/
-    // This is basically a chat interface split into chunks, each chunk dealing with a particular task.
+    // This is basically a chat interface split into chunks, each chunk dealing with a particular Agent/task.
     // When the user writes text in the input and then presses enter, the following should happen:
     // display the user's message in the messages div
     // show a simple animation of three dots ... first 1 dot, then 2 dots, then 3 dots, repeating
     // disable the input box
-    // make an object for the user's message, something like {'role': 'user', 'content': '[user message]', 'conversation_id': conversation['id']}
-    // POST user's message object to 'http://publishgpt-back.local/messages/post_message_and_get_reply/'
-    // Results will be an array of message objects, including the user's message and with a reply at the end of it, the reply will be something like like {"role": "assistant", "content": "y", "df_sample": "[some pandas dataframe]", "conversation_id": x}
-    // If the conversation ID has changed, remove the "in-progress" class of the conversation div and its input field, and create a new conversation div displaying the new set of messages 
-    // If the conversation ID has not changed, just display the new message with the 'assistant' class, and display the df_sample content underneath, no processing necessary as it will be in html table format
-    // df_sample may also be null, in which case just the message is displayed
-    // enable the input box again
-    // Repeat for the next message
-    // If next message returns None........
-    // If the conversation is complete GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/' and repeat the process
-    // If GET 'http://publishgpt-back.local/datasets/' + data['pk'] + '/next_conversation_task/' returns None, then display a message saying "Thanks for publishing your data. <input type="button">Publish another dataset</input>"
-    // Clicking on the button should just refresh the page
+    // make an object for the user's message: {'message': '[user message]' }
+    // POST user's message object to 'http://publishgpt-back.local/agents/[agent_id]/chat'
+    // Results will be a 200 OK new message object with role "assistant", or 404 NOT FOUND with no content
+    // If it's 404 NOT FOUND, remove the 'in-progress' class and GET 'http://publishgpt-back.local/datasets/[dataset_id]/get_or_create_next_agent/' again as above, and start this whole process again
+    // Otherwise, just stop the animation, display the assistant message, and enable the user input box again
+
   }
 
 
@@ -98,4 +116,5 @@ const IndexPage = () => {
   );
 }
 
+// Note: OpenAPI yaml for the endpoints is available here http://publishgpt-back.local/api-schema/
 export default IndexPage;
