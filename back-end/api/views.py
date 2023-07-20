@@ -3,8 +3,6 @@ from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSe
 from api.models import Dataset, DatasetFrame, Message, Agent
 from rest_framework.response import Response
 from rest_framework.decorators import action 
-from api.openai_wrapper import functions, prompts
-from api.helpers import df_helpers
 from django.contrib.postgres.fields import ArrayField
 import django_filters as filters
 
@@ -15,8 +13,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
     filterset_fields = ['created', 'orcid']
 
     @action(detail=True)
-    def get_next_task_agent(self, request, *args, **kwargs):
-        pass
+    def get_or_create_next_agent(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        return dataset.get_or_create_next_agent()
 
 
 class DatasetFrameViewSet(viewsets.ModelViewSet):
@@ -42,16 +41,12 @@ class AgentViewSet(viewsets.ModelViewSet):
             },
         },
     }
-    # filterset_fields = '__all__'
-    # filter_backends = (filters.rest_framework.DjangoFilterBackend,)
-    # filter_fields = ['dataset', 'created', 'task_complete']
 
     @action(detail=True)
     def chat(self, request, *args, **kwargs):
         agent = self.get_object()
-        return_message = agent.run(allow_user_feedack=True)
-        import pdb; pdb.set_trace()
-        if return_message:
-            serializer = MessageSerializer(return_message)
+        next_assistant_message = agent.get_next_assistant_message_for_user()
+        if next_assistant_message:
+            serializer = MessageSerializer(next_assistant_message)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(None, status=status.HTTP_404_NOT_FOUND)
+        return Response(None, status=status.HTTP_404_NOT_FOUND)  # This should happen only when the dataset is ready for publication

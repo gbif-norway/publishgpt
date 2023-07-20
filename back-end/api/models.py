@@ -5,6 +5,16 @@ from api.openai_wrapper import chat_completion, functions, prompts
 from api.helpers.openai import callable, openai_function_details, function_name_in_text
 from picklefield.fields import PickledObjectField
 import pandas as pd
+import datetime
+import re
+from django.template.loader import get_template
+from os import path
+
+
+class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
+    name = models.CharField(max_length=30, unique=True)
+    system_message_template = models.CharField(max_length=5000)
+    per_datasetframe = models.BooleanField()
 
 
 class Dataset(models.Model):
@@ -24,39 +34,66 @@ class Dataset(models.Model):
         GBIF_RELEVE = 'gbif_releve'
     dwc_extensions = ArrayField(base_field=models.CharField(max_length=500, choices=DWCExtensions.choices), null=True, blank=True)
 
+    def filename(self):
+        return path.basename(self.file.name)
+    
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
+    
+    def get_or_create_next_agent(self):
+        next_agent = Agent.objects.filter(completed=None).first()
+        if next_agent:
+            return next_agent
+        
+        last_task_id = Agent.objects.all().order_by('completed').last().task.id
+        next_task = Task.objects.filter(id__gt=last_task_id).order_by('id').first()
+        if not next_task:
+            return Agent.create_with_task_and_datasetframes(dataset=self, task=next_task)
+        if not next_task:
+            return None
 
 
 class Agent(models.Model):  
     created = models.DateTimeField(auto_now_add=True)
-    task_complete = models.BooleanField(null=True, blank=True)
+    completed = models.DateTimeField(null=True, blank=True)
     _functions = ArrayField(base_field=models.CharField(max_length=500))
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
     @property
     def callable_functions(self):
         return [callable(f) for f in self._functions]
     
     @classmethod
-    def create_with_system_message(cls, system_message, **kwargs):
+    def create_with_task_and_datasetframes(cls, datasetframes, **kwargs):
+        kwargs['_functions'] = [functions.Python.__name__, functions.SetTaskToComplete.__name__]
         agent = cls.objects.create(**kwargs)
 
+        for datasetframe in datasetframes:
+            AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
+        
         # Add the first system message to the agent automatically
-        content = prompts.agent_system_message.format(dataset_id=agent.dataset.id, agent_id=agent.id, body=system_message)
-        Message.objects.create(agent=agent, content=content, role=Message.Role.SYSTEM)
+        message_template = get_template('single_df') if agent.task.per_datasetframe else get_template('multi_df')
+        render_args = {'agent': agent, 'agent_datasetframes': datasetframes}
+        system_message = message_template.render(render_args)
+        Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
 
-        # Add default Task Complete function as well 
-        agent._functions = [functions.SetTaskToComplete.__name__] + agent._functions
         return agent
 
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
 
-    def run_force_function(self, function_call, current_call=0, max_calls=10):
-        pass
+    def get_next_assistant_message_for_user(self):
+        if self.completed:
+            return None
+        
+        last_message = self.message_set.last()
+        if last_message.role == Message.Role.ASSISTANT:
+            return last_message
+        
+        return self.run(allow_user_feedack=True)
 
     def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
         stop_loop = current_call == max_calls
@@ -91,6 +128,7 @@ class DatasetFrame(models.Model):
     description = models.CharField(max_length=2000, blank=True)
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
     parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
 
     def __str__(self, max_rows=5, max_columns=5, max_str_len=70):
         max_rows = max(max_rows, 5)  # At least 5 to show truncation correctly
@@ -109,6 +147,16 @@ class DatasetFrame(models.Model):
             df = df.iloc[:, :max_columns//2].join(pd.DataFrame({ '...': ['...']*len(df) })).join(df.iloc[:, -max_columns//2:])
 
         return df.to_string() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
+
+
+class AgentDatasetFrame(models.Model):
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
+    dataset_frame = models.ForeignKey(DatasetFrame, on_delete=models.CASCADE)
+
+    def save(self, *args, **kwargs):
+        if self.agent.dataset != self.dataset_frame.dataset:
+            raise ValueError("Agent's Dataset and DatasetFrame's Dataset must be the same")
+        super().save(*args, **kwargs)
 
 
 class Message(models.Model):

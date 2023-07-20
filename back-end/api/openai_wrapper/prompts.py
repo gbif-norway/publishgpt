@@ -1,11 +1,6 @@
 import re
 
-main_agent = """
-    You are a data publication chatbot, working with a user to prepare their data into a Darwin Core dataset (dataset_id {dataset_id}), and publish their data to GBIF.org
-    It's important to note that users are field biologists and ecologists who have very little knowledge of Excel and spreadsheets, and no knowledge *at all* of data science, data management, or Darwin Core and data standards. 
-    If at any point you require user feedback, remember this and explain any technical terms as you go along.
-    
-    The user has uploaded {dataframes_no} dataframe(s) - (df_ids = {dataframe_ids}). The plan is to publish these with the {core} DwC core, and {extensions} DwC extension(s).
+main_agent = """The user has uploaded {dataframes_no} dataframe(s) - (df_ids = {dataframe_ids}). The plan is to publish these with the {core} DwC core, and {extensions} DwC extension(s).
     In order to achieve this aim, you have to run through the following tasks:
     {plan}
     Do as much work as possible on preparing the data for publication, but ask for clarification from the user if you are unsure of anything.
@@ -34,11 +29,10 @@ get_main_dataframe = """
 
 
 agent_system_message = """
-    You are an agent (agent_id {agent_id}) in a chatbot system, helping a user prepare their dataset (dataset_id {dataset_id}) for publication on gbif.org. 
-    It's important to note that users are field biologists and ecologists who have very little knowledge of Excel and spreadsheets, and no knowledge *at all* of data science, data management, or Darwin Core and data standards. 
-    If at any point you require user feedback, remember this and explain any technical terms as you go along.
+    You are a friendly, helpful agent (agent_id {agent_id}) in a chatbot system, helping a user prepare their dataset (dataset_id {dataset_id}) for publication on gbif.org. 
+    Note: users are field biologists and ecologists with no knowledge of data standards or how to structure data, so when interacting with the user explain technical terms and concepts simply.
     {body}
-    Once you and the user are happy with the result, set your task to complete using SetTaskToComplete, agent_id = {agent_id}
+    Once you and the user are happy with the result, set your task to complete using SetTaskToComplete with agent_id = {agent_id}
 """
 
 extract_subtables = """
@@ -58,9 +52,9 @@ extract_subtables = """
     """
 
 explain_extracted_subtables = """
-    I have just had a quick look at your spreadsheet {title}. Based on the empty rows & columns which appear to be acting as "dividers" between the sub-tables, I think it contains {len} different, separate tables:
+    I have just had a quick look at your spreadsheet "{title}". Based on the empty rows & columns which appear to be acting as "dividers" between the sub-tables, I think it contains {len} different, separate tables:
     {snapshots}
-    Is this correct? Are there any tables I've missed or possibly got wrong? An important step in publishing your data is getting every table loaded separately. Following this, we can use common identification columns to link any related tables together. 
+    Is this correct? Please let me know: a) if there are any separate sub-tables I missed which should be split off, and b) if there are any sub-tables that should be joined to other sub-tables. An important step in publishing your data is getting every table loaded separately. 
 """
 
 # # I think best is to let it spawn new Agents 

@@ -10,7 +10,7 @@ def create(messages, functions=None, call_first_function=False, temperature=0, m
             call = {'name': function_schemas[0]['name']}
         else:
             call = 'auto'
-
+    
     print('---')
     print(f'---Calling GPT {model} with functions and function_call {call}---')
     if len(messages) > 1:
