@@ -5,7 +5,7 @@ from api.openai_wrapper import chat_completion, functions, prompts
 from api.helpers.openai import callable, openai_function_details, function_name_in_text
 from picklefield.fields import PickledObjectField
 import pandas as pd
-import datetime
+from datetime import datetime
 import re
 from django.template.loader import render_to_string
 from os import path
@@ -36,26 +36,15 @@ class Dataset(models.Model):
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
-    
-    def get_or_create_next_agent(self):
-        next_agent = self.agent_set.filter(completed=None).first()
-        if next_agent:
-            return next_agent
-        
-        last_task_id = self.agent_set.all().order_by('completed').last().task.id
-        next_task = Task.objects.filter(id__gt=last_task_id).order_by('id').first()
-        if next_task:
-            return next_task.create_agents(dataset=self)
 
-        return None
-        
     def get_active_datasetframes(self):
-        leaf_datasetframes = DatasetFrame.objects.filter(dataset=self).annotate(num_children=Count('datasetframe')).filter(num_children=0)
-        recent_datasetframes = DatasetFrame.objects.filter(dataset=self).values('parent').annotate(
-            recent_child_id=Max('id'),
-            recent_created=Max('created'),
-        ).filter(id=F('recent_child_id'))
-        return list(leaf_datasetframes) + list(recent_datasetframes)
+        # Get all of the dataframes which either have no children (i.e. are leaf nodes) or are the most recent children - i.e., all the active ones we are using currently
+        # TODO we really need to modify this to take into account deleted dataframes
+        dsfs = DatasetFrame.objects.filter(dataset=self)
+        leaf_datasetframes = dsfs.annotate(num_children=Count('datasetframe')).filter(num_children=0)
+        recent_datasetframe_ids = dsfs.values('parent').annotate(recent_child_id=Max('id')).values_list('recent_child_id', flat=True)
+        recent_datasetframes = DatasetFrame.objects.filter(id__in=recent_datasetframe_ids)
+        return leaf_datasetframes | recent_datasetframes
 
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
@@ -63,26 +52,31 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     system_message_template = models.CharField(max_length=5000)
     per_datasetframe = models.BooleanField()
 
+    class Meta:
+        get_latest_by = 'id'
+        ordering = ['id']
+
     @property
     def functions(self):
         return [functions.Python.__name__, functions.SetTaskToComplete.__name__]
 
-    def create_agents(self, dataset:Dataset):
-        active_datasetframes = dataset.get_active_datasetframes()
+    def create_agents(self, dataset:Dataset, active_datasetframes=None):
+        if not active_datasetframes:
+            active_datasetframes = dataset.get_active_datasetframes()
         agents = []
 
-        if self.per_datasetframe:
+        if self.per_datasetframe:  # One agent per datasetframe
             for datasetframe in active_datasetframes:
-                agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
+                agent = Agent.objects.create(_functions=self.functions, dataset=dataset, task=self)
                 AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-                system_message = render_to_string('single_df.txt', context={ 'agent': agent, 'agent_datasetframes': datasetframe })
+                system_message = render_to_string('prompt.txt', context={ 'agent': agent, 'agent_datasetframes': datasetframe })
                 Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
                 agents.append(agent)
-        else:
-            agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
+        else:  # One agent for all the datasetframes
+            agent = Agent.objects.create(_functions=self.functions, dataset=dataset, task=self)
             for datasetframe in active_datasetframes:
                 AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-            system_message = render_to_string('multi_df.txt', context={'agent': agent, 'agent_datasetframes': active_datasetframes })
+            system_message = render_to_string('prompt.txt', context={'agent': agent, 'agent_datasetframes': active_datasetframes })
             Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
             agents.append(agent)
 
@@ -150,6 +144,10 @@ class DatasetFrame(models.Model):
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
     parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
     deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
+
+    def soft_delete(self):
+        self.deleted = datetime.now()
+        self.save()
 
     def __str__(self, max_rows=5, max_columns=5, max_str_len=70):
         max_rows = max(max_rows, 5)  # At least 5 to show truncation correctly

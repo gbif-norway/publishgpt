@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer
-from api.models import Dataset, DatasetFrame, Message, Agent
+from api.models import Dataset, DatasetFrame, Message, Agent, Task
 from rest_framework.response import Response
 from rest_framework.decorators import action 
 from django.contrib.postgres.fields import ArrayField
@@ -15,7 +15,22 @@ class DatasetViewSet(viewsets.ModelViewSet):
     @action(detail=True)
     def get_or_create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
-        serializer = AgentSerializer(dataset.get_or_create_next_agent())
+
+        next_agent = dataset.agent_set.filter(completed=None).first()
+        if not next_agent:
+            last_completed_agent = dataset.agent_set.exclude(completed=None)
+            if last_completed_agent:
+                last_task_id = last_completed_agent.task.id
+                next_task = Task.objects.filter(id__gt=last_task_id).first()
+                if next_task:
+                    next_task.create_agents(dataset=dataset)
+                    return self.get_or_create_next_agent(request)
+                else:
+                    return Response('ALL TASKS COMPLETE', status=status.HTTP_200_OK)
+            else:
+                raise Exception('A dataset should be created by the serializer, which creates agents')
+
+        serializer = AgentSerializer(next_agent)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
