@@ -13,6 +13,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
     filterset_fields = ['created', 'orcid']
 
     @action(detail=True)
+    def completed_agents(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        completed_agents = dataset.agent_set.exclude(completed=None).all()
+        serializer = AgentSerializer(completed_agents, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True)
     def get_or_create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
 
@@ -49,14 +56,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
-    filterset_overrides = {
-       ArrayField: {
-            'filter_class': filters.CharFilter,
-            'extra': lambda f: {
-                'lookup_expr': 'icontains',
-            },
-        },
-    }
+    filterset_fields = ['created', 'completed', 'dataset', 'task']
 
     @action(detail=True, methods=['get', 'post'])
     def chat(self, request, *args, **kwargs):
