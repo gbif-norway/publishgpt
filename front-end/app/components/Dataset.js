@@ -3,26 +3,23 @@ import { useDropzone } from 'react-dropzone';
 import Agent from './Agent';
 
 const Dataset = ({ initialDatasetId }) => {
-    const [dataset, setDataset] = useState(null);
     const [error, setError] = useState(null);
     const [agents, setAgents] = useState([]);
   
-    // fetch next agent
-    const fetchNextAgent = (dataset) => {
-        console.log(dataset);
+    const refreshAgents = (dataset) => {
       fetch(`http://publishgpt-back.local/api/datasets/${dataset.id}/get_or_create_next_agent`)
       .then(response => response.json())
-      .then(data => {
-        console.log('test');
-        console.log(data);
-        console.log('test');
-        setAgents([...agents, data]);
+      .then(next_agent => {
+        fetch(`http://publishgpt-back.local/api/datasets/${dataset.id}/completed_agents`)
+        .then(response => response.json())
+        .then(completed_agents => {
+          setAgents([...completed_agents, next_agent]);
+        });
       });
     };
   
     // handle file drop
     const onDrop = (acceptedFiles) => {
-      console.log('file drop');
       setError(null); // reset error
       const file = acceptedFiles[0];
       const formData = new FormData();
@@ -34,9 +31,7 @@ const Dataset = ({ initialDatasetId }) => {
       })
       .then(response => response.json())
       .then(data => {
-        console.log(data);
-        setDataset(data);
-        fetchNextAgent(data);
+        refreshAgents(data);
       })
       .catch(err => setError(err.message));
     };
@@ -50,10 +45,7 @@ const Dataset = ({ initialDatasetId }) => {
         fetch(`http://publishgpt-back.local/api/datasets/${initialDatasetId}`)
         .then(response => response.json())
         .then(data => {
-          console.log('testb');
-          console.log(data);
-          setDataset(data);
-          fetchNextAgent(data);
+            refreshAgents(data);
         })
         .catch(err => console.log(err.message));
       }
