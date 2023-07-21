@@ -17,17 +17,19 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework import routers
-from api import views
+from api import views as api_views
 from drf_spectacular.views import SpectacularAPIView
+from website import views
 
 router = routers.DefaultRouter()
-router.register(r'datasets', views.DatasetViewSet)
-router.register(r'datasetframes', views.DatasetFrameViewSet)
-router.register(r'messages', views.MessageViewSet)
-router.register(r'agents', views.AgentViewSet)
+router.register(r'datasets', api_views.DatasetViewSet)
+router.register(r'datasetframes', api_views.DatasetFrameViewSet)
+router.register(r'messages', api_views.MessageViewSet)
+router.register(r'agents', api_views.AgentViewSet)  
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('api-schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('', views.DatasetListView.as_view())
 ]
