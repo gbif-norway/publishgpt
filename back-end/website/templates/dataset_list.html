@@ -1,4 +1,14 @@
 {% extends "base_template.html" %}
 {% block content %}
-  List of datasets
+<p><a href="/create">Create a new dataset</a>
+{% if dataset_list %}
+ or continue chatting about a previous dataset:</p>
+<ul>
+{% for dataset in dataset_list %}
+    <li><a href="{% url 'chat_detail' dataset.id %}">File name: {{ dataset.filename }} - Created: {{ dataset.created }}</a></li>
+{% endfor %}
+</ul>
+{% else %}
+</p>
+{% endif %}
 {% endblock content %}

@@ -29,6 +29,7 @@ class Dataset(models.Model):
         GBIF_RELEVE = 'gbif_releve'
     dwc_extensions = ArrayField(base_field=models.CharField(max_length=500, choices=DWCExtensions.choices), null=True, blank=True)
 
+    @property
     def filename(self):
         return path.basename(self.file.name)
     
