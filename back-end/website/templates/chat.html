@@ -3,6 +3,6 @@
   Chat
   {{ dataset.filename }}
   <div id="js-framework-home"></div>
-  {{ dataset.id|json_script:'dataset' }}
-  <script src="/static/js/bundle.js"></script>
+  {{ dataset.id|json_script:'dataset_id' }}
+  <script src="http://publishgpt-front.local/static/js/bundle.js"></script>
 {% endblock content %}

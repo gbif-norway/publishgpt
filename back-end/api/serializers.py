@@ -19,6 +19,7 @@ class AgentSerializer(serializers.ModelSerializer):
         model = Agent
         fields = '__all__'
 
+
 class DatasetSerializer(serializers.ModelSerializer):
     agent_set = AgentSerializer(many=True, read_only=True)
 
