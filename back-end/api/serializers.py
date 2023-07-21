@@ -6,7 +6,22 @@ from api.openai_wrapper import prompts, functions
 from django.template.loader import render_to_string
 
 
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = '__all__'
+
+
+class AgentSerializer(serializers.ModelSerializer):
+    message_set = MessageSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Agent
+        fields = '__all__'
+
 class DatasetSerializer(serializers.ModelSerializer):
+    agent_set = AgentSerializer(many=True, read_only=True)
+
     class Meta:
         model = Dataset
         fields = '__all__'
@@ -57,17 +72,4 @@ class DatasetFrameSerializer(serializers.ModelSerializer):
         model = DatasetFrame
         fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'parent']
 
-
-class MessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Message
-        fields = '__all__'
-
-
-class AgentSerializer(serializers.ModelSerializer):
-    message_set = MessageSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = Agent
-        fields = '__all__'
     
