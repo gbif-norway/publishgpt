@@ -1,4 +1,5 @@
 import Message from './Message';
+import { useState } from 'react';
 
 const Agent = ({ agent }) => {
     const [messages, setMessages] = useState(agent.message_set);
