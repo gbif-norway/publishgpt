@@ -60,9 +60,8 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     def functions(self):
         return [functions.Python.__name__, functions.SetTaskToComplete.__name__]
 
-    def create_agents(self, dataset:Dataset, active_datasetframes=None):
-        if not active_datasetframes:
-            active_datasetframes = dataset.get_active_datasetframes()
+    def create_agents(self, dataset:Dataset):
+        active_datasetframes = dataset.get_active_datasetframes()
         agents = []
 
         if self.per_datasetframe:  # One agent per datasetframe
