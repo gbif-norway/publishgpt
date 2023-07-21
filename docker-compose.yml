@@ -20,7 +20,7 @@ services:
   front-end:
     build: ./front-end
     volumes:
-      - ./front-end/app:/app
+      - ./front-end:/app
     stdin_open: true
     tty: true
     expose:
