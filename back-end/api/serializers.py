@@ -46,18 +46,21 @@ class DatasetSerializer(serializers.ModelSerializer):
         dataset = Dataset.objects.create(**data)
 
         for sheet_name, df in dfs.items():
+            # Store the original dataframe as-is, required for the system message
             sheet_datasetframe = DatasetFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(df))
-            task = Task.objects.get(name='extract_subtables')
-            agent = task.create_agents(dataset)[0]  # Only 1 agent should get created per sheet
 
+            task = Task.objects.get(name='extract_subtables')
+            agent = task.create_agents_with_system_messages(dataset)[0]  # Only 1 agent should get created per sheet
+
+            # Now delete the original dataframe 
+            sheet_datasetframe.soft_delete()
+        
             # Try to extract any sub tables which exist in the sheet. Because people do this, for some reason. We need to treat each one separately.
             sub_dataset_frames = []
             for new_df in extract_sub_tables(df):
                 sub_dataset_frames.append(DatasetFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(new_df)))
 
             if len(sub_dataset_frames) > 1:
-                sheet_datasetframe.soft_delete()
-                
                 # Give the agent access to the results of the extract subtable function
                 Message.objects.create(agent=agent, function_name='ExtractSubTables', role=Message.Role.FUNCTION, content=sub_dataset_frames) 
 

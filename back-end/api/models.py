@@ -37,15 +37,6 @@ class Dataset(models.Model):
         get_latest_by = 'created'
         ordering = ['created']
 
-    def get_active_datasetframes(self):
-        # Get all of the dataframes which either have no children (i.e. are leaf nodes) or are the most recent children - i.e., all the active ones we are using currently
-        # TODO we really need to modify this to take into account deleted dataframes
-        dsfs = DatasetFrame.objects.filter(dataset=self)
-        leaf_datasetframes = dsfs.annotate(num_children=Count('datasetframe')).filter(num_children=0)
-        recent_datasetframe_ids = dsfs.values('parent').annotate(recent_child_id=Max('id')).values_list('recent_child_id', flat=True)
-        recent_datasetframes = DatasetFrame.objects.filter(id__in=recent_datasetframe_ids)
-        return leaf_datasetframes | recent_datasetframes
-
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=300, unique=True)
@@ -61,7 +52,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
     def create_agents(self, dataset:Dataset):
-        active_datasetframes = dataset.get_active_datasetframes()
+        active_datasetframes = DatasetFrame.objects.filter(dataset=self, deleted=None)
         agents = []
         if self.per_datasetframe:  # One agent per datasetframe
             for dataset_frame in active_datasetframes:
@@ -148,7 +139,7 @@ class DatasetFrame(models.Model):
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
-    parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    # parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
     deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
 
     def soft_delete(self):
