@@ -23,7 +23,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         next_agent = dataset.agent_set.filter(completed=None).first()
         if not next_agent:
-            last_completed_agent = dataset.agent_set.exclude(completed=None).first()
+            last_completed_agent = dataset.agent_set.exclude(completed=None).last()
             print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
