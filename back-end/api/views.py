@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status
-from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer, AgentDatasetFrame, TaskSerializer
+from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer, TaskSerializer
 from api.models import Dataset, DatasetFrame, Message, Agent, Task
 from rest_framework.response import Response
 from rest_framework.decorators import action 
@@ -23,18 +23,19 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         next_agent = dataset.agent_set.filter(completed=None).first()
         if not next_agent:
+            print('No next agent found, making new agent for new task')
             last_completed_agent = dataset.agent_set.exclude(completed=None).first()
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
                 next_task = Task.objects.filter(id__gt=last_task_id).first()
                 if next_task:
-                    next_task.create_agents(dataset=dataset)
+                    new_agents = next_task.create_agents(dataset=dataset)
                     print('recursing')
                     return self.get_or_create_next_agent(request)
                 else:
                     return Response('ALL TASKS COMPLETE', status=status.HTTP_200_OK)
             else:
-                raise Exception('A dataset should be created by the serializer, which creates agents')
+                raise Exception('Agent set for this dataset appears to be empty')
 
         next_agent.get_next_assistant_message_for_user()
         serializer = AgentSerializer(next_agent.refresh_from_db())

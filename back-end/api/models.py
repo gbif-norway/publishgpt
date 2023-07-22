@@ -49,7 +49,7 @@ class Dataset(models.Model):
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=300, unique=True)
-    system_message_template = models.CharField(max_length=5000)
+    text = models.CharField(max_length=5000)
     per_datasetframe = models.BooleanField()
 
     class Meta:
@@ -64,18 +64,11 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         active_datasetframes = dataset.get_active_datasetframes()
         agents = []
         if self.per_datasetframe:  # One agent per datasetframe
-            for datasetframe in active_datasetframes:
-                agent = Agent.objects.create(_functions=self.functions, dataset=dataset, task=self)
-                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-                system_message = render_to_string('prompt.txt', context={ 'agent': agent, 'agent_datasetframes': [datasetframe] })
-                Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+            for dataset_frame in active_datasetframes:
+                agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=[dataset_frame])
                 agents.append(agent)
         else:  # One agent for all the datasetframes
-            agent = Agent.objects.create(_functions=self.functions, dataset=dataset, task=self)
-            for datasetframe in active_datasetframes:
-                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-            system_message = render_to_string('prompt.txt', context={'agent': agent, 'agent_datasetframes': active_datasetframes })
-            Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=active_datasetframes)
             agents.append(agent)
 
         return agents
@@ -84,13 +77,12 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
 class Agent(models.Model):  
     created = models.DateTimeField(auto_now_add=True)
     completed = models.DateTimeField(null=True, blank=True)
-    _functions = ArrayField(base_field=models.CharField(max_length=500))
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
     @property
     def callable_functions(self):
-        return [getattr(agent_tools, f) for f in self._functions]
+        return [getattr(agent_tools, f) for f in self.task.functions]
 
     class Meta:
         get_latest_by = 'created'
@@ -106,9 +98,19 @@ class Agent(models.Model):
         
         return self.run(allow_user_feedack=True)
 
+    @classmethod
+    def create_with_system_message(cls, dataset_frames, **kwargs):
+        agent = cls.objects.create(**kwargs)
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_datasetframes': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
+        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+        return agent
+
     def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
-        stop_loop = current_call == max_calls
-        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=stop_loop)
+        messages = self.message_set.all()
+        if not messages:
+            messages.append(Message.objects.create(agent=self, content=self.system_message, role=Message.Role.SYSTEM))
+
+        response = create_chat_completion(messages, self.callable_functions, call_first_function=(current_call == max_calls))
         
         # Run a function if GPT has asked for a function to be called, and send the results back to GPT without user feedback
         function_name, function_args = openai_function_details(response)
@@ -130,7 +132,7 @@ class Agent(models.Model):
             return None  # If an agent is set to complete
 
         # If GPT didn't call the function properly or if we don't want user feedback, ask it to call a function
-        if not allow_user_feedack or function_name_in_text(self._functions, message_content):
+        if not allow_user_feedack or function_name_in_text(self.task.functions, message_content):
             message = Message.objects.create(agent=self, role=Message.Role.USER, content='Please respond with a function call, not text.')
             return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
 
@@ -176,16 +178,6 @@ class DatasetFrame(models.Model):
     def html_snapshot(self):
         original_rows, original_cols = self.df.shape
         return self._snapshot_df().to_html() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
-
-
-class AgentDatasetFrame(models.Model):
-    agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
-    dataset_frame = models.ForeignKey(DatasetFrame, on_delete=models.CASCADE)
-
-    def save(self, *args, **kwargs):
-        if self.agent.dataset != self.dataset_frame.dataset:
-            raise ValueError("Agent's Dataset and DatasetFrame's Dataset must be the same")
-        super().save(*args, **kwargs)
 
 
 class Message(models.Model):

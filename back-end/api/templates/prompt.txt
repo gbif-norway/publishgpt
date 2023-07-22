@@ -10,7 +10,7 @@ class DatasetFrame(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True) # Name of spreadsheet
     df = PickledObjectField() # Contains dataframe
-    parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    deleted = models.DateTimeField(null=True, blank=True) # IMPORTANT - do datasetframe_obj.soft_delete() to delete an unnecessary dataframe
 
 Currently, you are working on preprocessing:
 --- 
@@ -20,7 +20,7 @@ Snapshot of `DatasetFrame.objects.get(id={{ datasetframe.id }}).df`:
 {{ datasetframe.df }}
 {% endfor %}
 ---
-Your Task (#{{ task.id }} of {{ all_tasks_count }}): {{ task }}
+Your Task (#{{ agent.task.id }} of {{ all_tasks_count }}): {{ task_text }}
 
 If the user tries to ask for something complex which is not within the scope of your task, explain that we have to follow a set of data preprocessing and cleaning tasks, and that this will be dealt with in a later step.
 
