@@ -27,10 +27,10 @@ const Agent = ({ agent }) => {
         event.preventDefault();
       }
     };
-  
+    console.log(agent);
     return (
       <div className={`agent-task ${agent.task} ${isComplete ? 'complete' : ''}`}>
-        <h2>{agent.task}</h2>
+        <h2>{agent.task.id}</h2>
         <div className="messages">
           {messages.filter(function(message) { return (message.role == 'assistant' | message.role == 'user') }).map((message, i) => (
             <Message key={i} role={message.role} content={message.content} />

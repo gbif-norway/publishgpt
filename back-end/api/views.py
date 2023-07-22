@@ -43,8 +43,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
         if next_message is None:
             return self.get_or_create_next_agent(request)
         print('next agent about to be returned')
-        import pdb; pdb.set_trace()
-        serializer = AgentSerializer(next_agent.refresh_from_db())
+        # import pdb; pdb.set_trace()
+        next_agent.refresh_from_db()
+        serializer = AgentSerializer(next_agent)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
