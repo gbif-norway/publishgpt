@@ -12,7 +12,9 @@ class Python(OpenAIBaseModel):
     """
     Run python code with access to pandas (pd), numpy (np), and Django database ORM models `DatasetFrame` and `Dataset`
     E.g. `df_obj = DatasetFrame.objects.get(id=df_id); print(df_obj.df.to_string());`
-    Notes: - Use save() on instances to persist changes or create new objects e.g. `df_obj.save()` - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters - Do not include comments in your code - Only delete objects from the database if requested by the user
+    Notes: - Use save() on instances to persist changes or create new objects e.g. `df_obj.save()` 
+    - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
+    - State does not persist - the slate is wiped clean every time this function is called. 
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 

@@ -107,14 +107,16 @@ class Agent(models.Model):
         # Run a function if GPT has asked for a function to be called, and send the results back to GPT without user feedback
         function_name, function_args = openai_function_details(response)
         message_content = response['choices'][0]['message'].get('content')
+        print(f'Response message content: {message_content}')
         if function_name:
             # Sometimes GPT sends back message content as well as a function call, if it does then we may as well show it to the user
             if message_content:
                 Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
                 print(f'GPT function reply content message: {message_content}')
             function_model_class = getattr(agent_tools, function_name)
+            ()
             try:
-                print(function_args)
+                print(f'function args: {function_args}')
                 function_model_obj = function_model_class(**function_args)
             except ValidationError as e:
                 import pdb; pdb.set_trace()

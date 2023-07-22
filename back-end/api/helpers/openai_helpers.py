@@ -17,12 +17,12 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
             args['function_call'] = {'name': args['functions'][0]['name']}
         else:
             args['function_call'] = 'auto'
-    printargs = args.copy()
-    if len(printargs['messages']) > 1:
-        printargs['messages'] = printargs['messages'][1:]
-    else:
-        printargs['messages'] = '[System message]'
-    pprint(printargs)
+    # printargs = args.copy()
+    # if len(printargs['messages']) > 1:
+    #     printargs['messages'] = printargs['messages'][1:]
+    # else:
+    #     printargs['messages'] = '[System message]'
+    # pprint(printargs)
     print('---')
     response = openai.ChatCompletion.create(**args)  
     print('---Response---')
