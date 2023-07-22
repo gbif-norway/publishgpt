@@ -16,7 +16,7 @@ Currently, you are working on preprocessing:
 --- 
 {% for datasetframe in agent_datasetframes %}
 DatasetFrame id {{ datasetframe.id }} - sheet name {{ datasetframe.title }}.
-Snapshot of `db_models.DatasetFrame.objects.get(id={{ datasetframe.id }}).df`:
+Snapshot of `DatasetFrame.objects.get(id={{ datasetframe.id }}).df`:
 {{ datasetframe.df }}
 {% endfor %}
 ---

@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from skimage.measure import label, regionprops
-from api.models import DatasetFrame
 
 def trim_dataframe(df):
     # Replace empty spaces with NaN
@@ -51,12 +50,3 @@ def extract_sub_tables(df, min_rows=2):
         tables.append(df.iloc[start:])
     return [trim_dataframe(t) for t in tables]
 
-
-def get_datasetframe_sub_tables(dataset_frame):
-    # sub_dfs = extract_sub_tables_based_on_null_boundaries(dataset_frame.df)
-    sub_dfs = extract_sub_tables(dataset_frame.df)
-    sub_dsfs = []
-    for new_df in sub_dfs:
-        sub_dsf = DatasetFrame.objects.create(dataset=dataset_frame.dataset, parent=dataset_frame, df=new_df)
-        sub_dsfs.append({'id': sub_dsf.id, 'df_preview': str(sub_dsf)})
-    return sub_dsfs

@@ -1,5 +1,9 @@
 const Message = ({ role, content }) => (
-    <div className={`message ${role}-message`}><code>{content}</code></div>
+    <div className={`message ${role}-message`}>
+        <div style={{ whiteSpace: 'pre-wrap' }}>
+            {content}
+        </div>
+    </div>
   );
 
 export default Message;  

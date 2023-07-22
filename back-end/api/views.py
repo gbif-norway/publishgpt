@@ -1,10 +1,8 @@
 from rest_framework import viewsets, status
-from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer
+from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer, AgentDatasetFrame, TaskSerializer
 from api.models import Dataset, DatasetFrame, Message, Agent, Task
 from rest_framework.response import Response
 from rest_framework.decorators import action 
-from django.contrib.postgres.fields import ArrayField
-import django_filters as filters
 
 
 class DatasetViewSet(viewsets.ModelViewSet):
@@ -25,19 +23,21 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         next_agent = dataset.agent_set.filter(completed=None).first()
         if not next_agent:
-            last_completed_agent = dataset.agent_set.exclude(completed=None)
+            last_completed_agent = dataset.agent_set.exclude(completed=None).first()
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
                 next_task = Task.objects.filter(id__gt=last_task_id).first()
                 if next_task:
                     next_task.create_agents(dataset=dataset)
+                    print('recursing')
                     return self.get_or_create_next_agent(request)
                 else:
                     return Response('ALL TASKS COMPLETE', status=status.HTTP_200_OK)
             else:
                 raise Exception('A dataset should be created by the serializer, which creates agents')
 
-        serializer = AgentSerializer(next_agent)
+        next_agent.get_next_assistant_message_for_user()
+        serializer = AgentSerializer(next_agent.refresh_from_db())
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -45,6 +45,12 @@ class DatasetFrameViewSet(viewsets.ModelViewSet):
     queryset = DatasetFrame.objects.all()
     serializer_class = DatasetFrameSerializer
     filterset_fields = ['dataset', 'title']
+
+
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    filterset_fields = '__all__'
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -62,8 +68,10 @@ class AgentViewSet(viewsets.ModelViewSet):
     def chat(self, request, *args, **kwargs):
         if self.request.method == 'POST':
             agent = self.get_object()
-            Message.objects.create(agent=agent, content=request.POST['message'], role=Message.Role.USER)
-            import pdb; pdb.set_trace()
+            content = request.data.get('content', None)
+            if 'content' in request.POST:  # I think this is how it is from DRF
+                content = request.POST['content']
+            Message.objects.create(agent=agent, content=content, role=Message.Role.USER, display_to_user=True)
             reply = agent.run()
             serializer = MessageSerializer(reply)
             return Response(serializer.data, status=status.HTTP_200_OK)

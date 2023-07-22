@@ -5,10 +5,12 @@ import Dataset from './components/Dataset';
 
 const Home = () => {
   return (
-    <main className={styles.main}>
-      <Dataset initialDatasetId={1} />
-      {/* other elements... null*/}
-    </main>
+    <div className="col-lg-8 mx-auto p-4 py-md-5">
+      <main className={styles.main}>
+        <Dataset initialDatasetId={null} />
+        {/* other elements... null*/}
+      </main>
+    </div>
   );
 };
 
