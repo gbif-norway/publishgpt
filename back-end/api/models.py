@@ -51,8 +51,8 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     def functions(self):
         return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
-    def create_agents(self, dataset:Dataset):
-        active_datasetframes = DatasetFrame.objects.filter(dataset=self, deleted=None)
+    def create_agents_with_system_messages(self, dataset:Dataset):
+        active_datasetframes = DatasetFrame.objects.filter(dataset=dataset, deleted=None)
         agents = []
         if self.per_datasetframe:  # One agent per datasetframe
             for dataset_frame in active_datasetframes:
@@ -93,6 +93,7 @@ class Agent(models.Model):
     def create_with_system_message(cls, dataset_frames, **kwargs):
         agent = cls.objects.create(**kwargs)
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_datasetframes': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
+        print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
 
@@ -110,13 +111,15 @@ class Agent(models.Model):
             # Sometimes GPT sends back message content as well as a function call, if it does then we may as well show it to the user
             if message_content:
                 Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
-
+                print(f'GPT function reply content message: {message_content}')
             function_model_class = getattr(agent_tools, function_name)
             try:
+                print(function_args)
                 function_model_obj = function_model_class(**function_args)
             except ValidationError as e:
                 import pdb; pdb.set_trace()
             function_result = function_model_obj.run()
+            print(f'FUNCTION RESULT: {function_result}')
             if function_result:
                 Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
                 return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
@@ -146,26 +149,37 @@ class DatasetFrame(models.Model):
         self.deleted = datetime.now()
         self.save()
     
-    def _snapshot_df(self, max_rows=5, max_columns=5, max_str_len=70):
-        max_rows = max(max_rows, 5)  # At least 5 to show truncation correctly
-        max_columns = max(max_columns, 5)  # At least 5 to show truncation correctly
+    def _snapshot_df(self):
+        max_rows, max_columns, max_str_len = 5, 5, 70
 
         # Truncate long strings in cells
         df = self.df.astype(str).applymap(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x)
 
+        # Truncate rows
         if len(df) > max_rows:
             top = df.head(max_rows // 2)
             bottom = df.tail(max_rows // 2)
-            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}), bottom])
+            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}, index=['...']), bottom])
 
+        # Truncate columns
         if len(df.columns) > max_columns:
-            df = df.iloc[:, :max_columns//2].join(pd.DataFrame({ '...': ['...']*len(df) })).join(df.iloc[:, -max_columns//2:])
-        return df
+            left = df.iloc[:, :max_columns//2]
+            right = df.iloc[:, -max_columns//2:]
+            middle = pd.DataFrame({ '...': ['...']*len(df) }, index=df.index)
+            df = pd.concat([left, middle, right], axis=1)
+        
+        return df.fillna('')
 
-    def __str__(self):
+    # def __str__(self):
+    #     original_rows, original_cols = self.df.shape
+    #     return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
+
+    @property
+    def str_snapshot(self):
         original_rows, original_cols = self.df.shape
-        return self._snapshot_df().to_string() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
+        return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
+    @property
     def html_snapshot(self):
         original_rows, original_cols = self.df.shape
         return self._snapshot_df().to_html() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"

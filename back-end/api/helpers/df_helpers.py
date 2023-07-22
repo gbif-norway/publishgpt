@@ -17,7 +17,7 @@ def trim_dataframe(df):
     if first_column.is_monotonic_increasing and first_column.min() in [0, 1] and np.all(np.diff(first_column) == 1):
         trimmed_df = trimmed_df.drop(trimmed_df.columns[0], axis=1)
 
-    return trimmed_df
+    return trimmed_df.fillna('')
 
 def extract_sub_tables_based_on_null_boundaries(df):
     larr = label(np.array(df.notnull()).astype("int"))

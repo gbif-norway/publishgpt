@@ -23,13 +23,15 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         next_agent = dataset.agent_set.filter(completed=None).first()
         if not next_agent:
-            print('No next agent found, making new agent for new task')
             last_completed_agent = dataset.agent_set.exclude(completed=None).first()
+            print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
+                print(f'Last task id {last_task_id}')
                 next_task = Task.objects.filter(id__gt=last_task_id).first()
+                print(f'Next task id {next_task.id}, {next_task.name}')
                 if next_task:
-                    new_agents = next_task.create_agents(dataset=dataset)
+                    next_task.create_agents_with_system_messages(dataset=dataset)
                     print('recursing')
                     return self.get_or_create_next_agent(request)
                 else:
@@ -37,7 +39,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
             else:
                 raise Exception('Agent set for this dataset appears to be empty')
 
-        next_agent.get_next_assistant_message_for_user()
+        next_message = next_agent.get_next_assistant_message_for_user()
+        if next_message is None:
+            return self.get_or_create_next_agent(request)
+        print('next agent about to be returned')
+        import pdb; pdb.set_trace()
         serializer = AgentSerializer(next_agent.refresh_from_db())
         return Response(serializer.data, status=status.HTTP_200_OK)
 

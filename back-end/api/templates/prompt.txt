@@ -13,15 +13,13 @@ class DatasetFrame(models.Model):
     deleted = models.DateTimeField(null=True, blank=True) # IMPORTANT - do datasetframe_obj.soft_delete() to delete an unnecessary dataframe
 
 Currently, you are working on preprocessing:
---- 
-{% for datasetframe in agent_datasetframes %}
-DatasetFrame id {{ datasetframe.id }} - sheet name {{ datasetframe.title }}.
-Snapshot of `DatasetFrame.objects.get(id={{ datasetframe.id }}).df`:
-{{ datasetframe.df }}
+--- {% for datasetframe in agent_datasetframes %}DatasetFrame id {{ datasetframe.id }} - sheet name {{ datasetframe.title }}. Snapshot of `DatasetFrame.objects.get(id={{ datasetframe.id }}).df`:
+{{ datasetframe.str_snapshot }}
+---
 {% endfor %}
 ---
 Your Task (#{{ agent.task.id }} of {{ all_tasks_count }}): {{ task_text }}
+If the user tries to ask for something complex which is not within the scope of your Task, explain that right now we are working through a series of steps in a particular order, and that their request will be dealt with in a later step.
 
-If the user tries to ask for something complex which is not within the scope of your task, explain that we have to follow a set of data preprocessing and cleaning tasks, and that this will be dealt with in a later step.
-
-If there is any ambiguity, be sure to engage with the user for feedback until you are both happy with the result, but if the Task is straightforward, simply mark it as complete using SetAgentTaskToComplete with agent_id = {{ agent.id }}.
+If there is any ambiguity in your task, be sure to engage with the user for feedback until you are both happy with the result. However, if the Task is straightforward, do not ask for user feedback.
+When you have fulfilled this Task, call the SetAgentTaskToComplete function with agent_id = {{ agent.id }} to mark your task as complete. This will trigger the next piece of dialogue with the user.
