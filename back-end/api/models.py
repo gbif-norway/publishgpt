@@ -109,9 +109,9 @@ class Agent(models.Model):
         message_content = response['choices'][0]['message'].get('content')
         print(f'Response message content: {message_content}')
         if function_name:
-            # Sometimes GPT sends back message content as well as a function call, if it does then let's store it, but not show it to the user
+            # Sometimes GPT sends back message content as well as a function call, if it does then let's store it and show it to the user
             if message_content:
-                Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
+                Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
                 print(f'GPT function reply content message: {message_content}')
             function_model_class = getattr(agent_tools, function_name)
             ()
