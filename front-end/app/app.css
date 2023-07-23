@@ -1,0 +1,25 @@
+.file-drop { 
+    text-align: center;
+    padding: 20px;
+    border-color: darkslategray;
+    border-width: 1px;
+    border-style: dashed;
+    margin: 10px 0;
+    padding-top: 40px;
+    padding-bottom: 30px;
+    cursor: pointer;
+}
+.messages { margin: 0 }
+.message {
+    padding: 15px;
+    border-radius: 15px;
+    margin: 10px 0;
+}
+.assistant-message {
+    background-color: #f4f8fc
+}
+.user-message { background-color: #e3eae2; }
+.agent-task h2 { font-size: 1em; font-weight: 500;}
+.messages h1 { font-size: 1.5em; font-weight: bold; }
+.complete h2 { color: #c0d6c5 }
+.user-input { margin-left: 2%; margin-right: 2%; width: 96% !important; margin-bottom: 20px; }
