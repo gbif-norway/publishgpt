@@ -25,7 +25,7 @@ const Agent = ({ agent, refreshAgents }) => {
 
         // Set an interval to fetch messages every 5 seconds
         const intervalId = setInterval(() => {
-          fetch(`http://publishgpt-back.local/api/agents/${agent.id}/`)
+          fetch(`http://localhost:8000/api/agents/${agent.id}/`)
             .then(response => response.json())
             .then(data => {
                 setMessages(data.message_set);
@@ -35,7 +35,7 @@ const Agent = ({ agent, refreshAgents }) => {
             });
         }, 5000);
         
-        fetch(`http://publishgpt-back.local/api/agents/${agent.id}/chat/`, {
+        fetch(`http://localhost:8000/api/agents/${agent.id}/chat/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: userInput })

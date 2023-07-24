@@ -11,10 +11,10 @@ const Dataset = ({ initialDatasetId }) => {
     const refreshAgents = useCallback((dataset) => {
       setDataset(dataset);
 
-      fetch(`http://publishgpt-back.local/api/datasets/${dataset.id}/get_or_create_next_agent`)
+      fetch(`http://localhost:8000/api/datasets/${dataset.id}/get_or_create_next_agent`)
       .then(response => response.json())
       .then(next_agent => {
-        fetch(`http://publishgpt-back.local/api/datasets/${dataset.id}/completed_agents`)
+        fetch(`http://localhost:8000/api/datasets/${dataset.id}/completed_agents`)
         .then(response => response.json())
         .then(completed_agents => {
           setAgents([...completed_agents, next_agent]);
@@ -28,7 +28,7 @@ const Dataset = ({ initialDatasetId }) => {
       const formData = new FormData();
       formData.append('file', file);
       
-      fetch('http://publishgpt-back.local/api/datasets/', {
+      fetch('http://localhost:8000/api/datasets/', {
         method: 'POST',
         body: formData
       })
@@ -45,7 +45,7 @@ const Dataset = ({ initialDatasetId }) => {
     // fetch dataset and first agent if initialDatasetId is provided
     useEffect(() => {
       if (initialDatasetId) {
-        fetch(`http://publishgpt-back.local/api/datasets/${initialDatasetId}`)
+        fetch(`http://localhost:8000/api/datasets/${initialDatasetId}`)
         .then(response => response.json())
         .then(data => {
             refreshAgents(data);
