@@ -8,13 +8,33 @@ const Agent = ({ agent, refreshAgents }) => {
     const wasComplete = useRef(isComplete);
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("Working...");
+
+    function fetchWithTimeout(resource, options = {}, timeout = 30000) {
+      return Promise.race([
+        fetch(resource, options),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timed out')), timeout)
+        )
+      ]);
+    }
+
+    const updateMessages = (newData) => {
+      const newMessages = [...messages, ...newData];
   
+      // Create a Map to eliminate duplicates based on the id
+      const uniqueMessagesMap = new Map(newMessages.map(msg => [msg.id, msg]));
+  
+      // Convert back to an array and sort based on the id
+      const uniqueSortedMessages = Array.from(uniqueMessagesMap.values())
+          .sort((a, b) => a.id - b.id);
+      console.log(uniqueSortedMessages);
+      setMessages(uniqueSortedMessages);
+    };
+
     const handleUserInput = (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        const updatedMessages = [...messages, { content: userInput, role: 'user', display_to_user: true }];
-        setMessages(updatedMessages);
-
+        
         setIsLoading(true);
         setLoadingMessage("Working...");
 
@@ -28,28 +48,40 @@ const Agent = ({ agent, refreshAgents }) => {
           fetch(`http://localhost:8000/api/agents/${agent.id}/`)
             .then(response => response.json())
             .then(data => {
-                setMessages(data.message_set);
+              updateMessages(data.message_set);
             })
             .catch((error) => {
                 console.error("Error:", error);
             });
         }, 5000);
         
-        fetch(`http://localhost:8000/api/agents/${agent.id}/chat/`, {
+        fetch(`http://localhost:8000/api/messages/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: userInput })
+            body: JSON.stringify({ content: userInput, display_to_user: true, role: 'user', agent: agent.id })
         })
         .then(response => response.json())
         .then(data => {
-            if (data.id) {
-                setMessages([...updatedMessages, { content: data.content, role: 'assistant' }]);
-            } else {
+            console.log(data);
+            updateMessages([data]);
+            console.log(messages);
+            fetch(`http://localhost:8000/api/agents/${agent.id}/next_agent_message`)
+            .then(response => response.json())
+            .then(data => {
+              if (data.id) {
+                console.log('agent not yet complete');
+                updateMessages([data]);
+                console.log(messages);
+              } else {
+                console.log('setting agent to complete');
+                console.log(agent)
                 setIsComplete(true);
-            }
-            setIsLoading(false);  // stop loading
-            clearTimeout(timeoutId);  // clear the timeout
-            clearInterval(intervalId);  // clear the interval
+                refreshAgents();
+              }
+              setIsLoading(false);  // stop loading
+              clearTimeout(timeoutId);  // clear the timeout
+              clearInterval(intervalId);  // clear the interval
+            })
         })
         .catch((error) => {
             console.error("Error:", error);
@@ -62,12 +94,12 @@ const Agent = ({ agent, refreshAgents }) => {
       }
     };
     
-    useEffect(() => {
-      if (!wasComplete.current && isComplete) {  // if agent was not complete and is now complete
-        refreshAgents(); // call the refreshAgents function
-      }
-      wasComplete.current = isComplete; // update the previous value of isComplete
-    }, [isComplete, refreshAgents]); // add isComplete and refreshAgents to the dependencies array
+    // useEffect(() => {
+    //   if (!wasComplete.current && isComplete) {  
+    //     refreshAgents({id: agent.dataset.id});
+    //   }
+    //   wasComplete.current = isComplete; 
+    // }, [isComplete, refreshAgents, agent.dataset]); // dependencies array
 
     // check if there are no messages and task is complete
     if (messages.filter(function(message) { return (message.display_to_user) }).length === 0 && isComplete) {
@@ -77,7 +109,7 @@ const Agent = ({ agent, refreshAgents }) => {
     return (
       <div className={`accordion-item agent-task ${agent.task.name} ${isComplete ? 'complete' : ''}`}>
         <h2 className="accordion-header">
-          <button className="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target={`#Agent${agent.id}`} aria-expanded="true" aria-controls={`Agent${agent.id}`}>
+          <button className={`accordion-button ${isComplete ? 'collapsed' : ''}`} type="button" data-bs-toggle="collapse" data-bs-target={`#Agent${agent.id}`} aria-expanded="true" aria-controls={`Agent${agent.id}`}>
             Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} {isComplete ? '(complete)' : ''}
           </button>
         </h2>
@@ -89,9 +121,9 @@ const Agent = ({ agent, refreshAgents }) => {
           
           {isLoading && (
             <div className="message assistant-message">
-              <div class="d-flex align-items-center">
+              <div className="d-flex align-items-center">
                 <strong>{loadingMessage}</strong>
-                <div class="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+                <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
               </div>
             </div>
           )}

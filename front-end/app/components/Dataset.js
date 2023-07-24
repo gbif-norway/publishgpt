@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';  // import useCallback
+import { useEffect, useState, useCallback } from 'react';  
 import { useDropzone } from 'react-dropzone';
 import Agent from './Agent';
 
@@ -6,22 +6,73 @@ const Dataset = ({ initialDatasetId }) => {
     const [error, setError] = useState(null);
     const [agents, setAgents] = useState([]);
     const [dataset, setDataset] = useState(null); 
-  
-    // using useCallback so that it doesn't change on each render
-    const refreshAgents = useCallback((dataset) => {
-      setDataset(dataset);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState("Working...");
 
-      fetch(`http://localhost:8000/api/datasets/${dataset.id}/get_or_create_next_agent`)
-      .then(response => response.json())
-      .then(next_agent => {
-        fetch(`http://localhost:8000/api/datasets/${dataset.id}/completed_agents`)
+    const fetchCompletedAgents = useCallback((datasetId) => {
+      return fetch(`http://localhost:8000/api/datasets/${datasetId}/completed_agents`)
         .then(response => response.json())
         .then(completed_agents => {
-          setAgents([...completed_agents, next_agent]);
+          setAgents(completed_agents);
         });
-      });
-    }, []); // dependencies array is empty because refreshAgents doesn't depend on any state/props
-  
+    }, []);
+
+    const refreshAgents = useCallback(() => {
+      setIsLoading(true);
+      console.log('refreshagents');
+      console.log(dataset);
+      
+      console.log('refreshagents');
+      console.log(dataset);
+      fetchCompletedAgents(dataset.id)
+      .then(() => {
+        fetch(`http://localhost:8000/api/datasets/${dataset.id}/get_or_create_next_agent`)
+          .then(response => response.json())
+          .then(next_agent => {
+
+            console.log('refreshagents');
+            console.log(dataset);
+            console.log(next_agent);
+            setAgents(prevAgents => [...prevAgents, next_agent]);
+            setIsLoading(false);
+          });
+      })
+    }, [fetchCompletedAgents, dataset]);
+
+    useEffect(() => {
+      if (isLoading) {
+        const timer = setTimeout(() => {
+          setLoadingMessage("Still working...");
+        }, 5000);
+
+        const interval = setInterval(() => {
+          fetchCompletedAgents(dataset.id);
+        }, 3000);
+
+        return () => {
+          clearTimeout(timer);
+          clearInterval(interval);
+        };
+      } else {
+        setLoadingMessage("Working...");
+      }
+    }, [isLoading, fetchCompletedAgents, dataset]);
+
+
+    // fetch dataset and first agent if initialDatasetId is provided
+    useEffect(() => {
+      if (initialDatasetId) {
+        fetch(`http://localhost:8000/api/datasets/${initialDatasetId}`)
+        .then(response => response.json())
+        .then(data => {
+          console.log(initialDatasetId);
+          console.log(data);
+          setDataset(data);
+        })
+        .catch(err => console.log(err.message));
+      }
+    }, [initialDatasetId]);
+    
     const onDrop = (acceptedFiles) => {
       setError(null); // reset error
       const file = acceptedFiles[0];
@@ -34,25 +85,19 @@ const Dataset = ({ initialDatasetId }) => {
       })
       .then(response => response.json())
       .then(data => {
-        refreshAgents(data);
+        setDataset(data);
       })
       .catch(err => setError(err.message));
     };
   
+    useEffect(() => {
+      if (dataset) {
+        refreshAgents();
+      }
+    }, [dataset, refreshAgents]); 
+
     // get root props and input props for the dropzone
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
-  
-    // fetch dataset and first agent if initialDatasetId is provided
-    useEffect(() => {
-      if (initialDatasetId) {
-        fetch(`http://localhost:8000/api/datasets/${initialDatasetId}`)
-        .then(response => response.json())
-        .then(data => {
-            refreshAgents(data);
-        })
-        .catch(err => console.log(err.message));
-      }
-    }, [initialDatasetId]);
   
     return (
       <div>
@@ -81,12 +126,21 @@ const Dataset = ({ initialDatasetId }) => {
 
         <div id="Agents">
         {agents.map(agent => (
-          <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents({id: agent.dataset})}/> // pass refreshAgents function to Agent component
+          <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()}/>
         ))}
         </div>
+
+        {isLoading && (
+            <div className="message assistant-message">
+              <div className="d-flex align-items-center">
+                <strong>{loadingMessage}</strong>
+                <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+              </div>
+            </div>
+        )}
       </div>
     );
-  };
-  
+};
+
 export default Dataset;
   

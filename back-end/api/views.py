@@ -72,21 +72,11 @@ class AgentViewSet(viewsets.ModelViewSet):
     serializer_class = AgentSerializer
     filterset_fields = ['created', 'completed', 'dataset', 'task']
 
-    @action(detail=True, methods=['get', 'post'])
-    def chat(self, request, *args, **kwargs):
-        if self.request.method == 'POST':
-            agent = self.get_object()
-            content = request.data.get('content', None)
-            if 'content' in request.POST:  # I think this is how it is from DRF
-                content = request.POST['content']
-            Message.objects.create(agent=agent, content=content, role=Message.Role.USER, display_to_user=True)
-            reply = agent.run()
-            serializer = MessageSerializer(reply)
+    @action(detail=True)
+    def next_agent_message(self, request, *args, **kwargs):
+        agent = self.get_object()
+        next_assistant_message = agent.get_next_assistant_message_for_user()
+        if next_assistant_message:
+            serializer = MessageSerializer(next_assistant_message)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        if self.request.method == 'GET':
-            agent = self.get_object()
-            next_assistant_message = agent.get_next_assistant_message_for_user()
-            if next_assistant_message:
-                serializer = MessageSerializer(next_assistant_message)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            return Response(None, status=status.HTTP_404_NOT_FOUND)  # This should happen only when the dataset is ready for publication
+        return Response({'id': None}, status=status.HTTP_200_OK)  # This should happen only when the dataset is ready for publication

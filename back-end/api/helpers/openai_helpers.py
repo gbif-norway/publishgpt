@@ -4,6 +4,7 @@ from pydantic.main import ModelMetaclass
 import json
 import openai
 from pprint import pprint
+from api import agent_tools
 
 
 def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0, model='gpt-4'):
@@ -64,9 +65,12 @@ def openai_function_details(response, choice=0):
         except (SyntaxError, ValueError):
             try:
                 args = json.loads(fc['arguments'], strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
-            except:
-                # args['__default__'] = fc['arguments']  # Sometimes it returns a string - note that args should always be a dict
-                import pdb; pdb.set_trace()
+            except json.decoder.JSONDecodeError:
+                required = getattr(agent_tools, fc['name']).openai_schema['parameters']['required']
+                if len(required) == 1:
+                    args = {required[0]: fc['arguments']}
+                else:
+                    import pdb; pdb.set_trace()
         except:
             import pdb; pdb.set_trace()
         return fc['name'], args
