@@ -4,15 +4,6 @@ import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';
 import Badge from 'react-bootstrap/Badge';
 import Modal from 'react-bootstrap/Modal';
-import {
-  DatatableWrapper,
-  Filter,
-  Pagination,
-  PaginationOpts,
-  TableBody,
-  TableHeader
-} from 'react-bs-datatable';
-import { Col, Row, Table } from 'react-bootstrap';
 
 const Agent = ({ agent, refreshAgents }) => {
     const [messages, setMessages] = useState(agent.message_set);
@@ -97,24 +88,40 @@ const Agent = ({ agent, refreshAgents }) => {
       return null; // return null to not render anything
     };
 
-    // Create table headers consisting of 4 columns.
-    const headers = [
-      { title: 'Username', prop: 'username' },
-      { title: 'Name', prop: 'realname' },
-      { title: 'Location', prop: 'location' }
-    ];
+    const data = [
+      {
+        "name": "Hines Fowler",
+        "company": "BUZZNESS",
+        "email": "hinesfowler@buzzness.com",
+        "phone": "+1 (869) 405-3127"
+      },
+      {
+        "name": "Hinasdfes Fowler",
+        "company": "BUZZNESS",
+        "email": "hinesfowler@buzzness.com",
+        "phone": "+1 (869) 405-3127"
+      }
+  ]
 
-    // Randomize data of the table columns.
-    // Note that the fields are all using the `prop` field of the headers.
-    const body = [{
-      username: 'i-am-billy',
-      realname: `Billy 34`,
-      location: 'Mars'
-    }, {
-    username: 'john-nhoj',
-    realname: `John 23`,
-    location: 'Saturn'
-  }];
+  const columns = [
+    {
+        title: "Name",
+        id: "name"
+    },
+    {
+        title: "Company",
+        id: "company"
+    },
+    {
+        title: "Email",
+        id: "email"
+    },
+    {
+        title: "Phone",
+        id: "phone"
+    }
+]
+
 
 
     return (
@@ -155,37 +162,7 @@ const Agent = ({ agent, refreshAgents }) => {
           </Modal.Header>
           <Modal.Body>
 
-          <DatatableWrapper body={body} headers={headers}>
-            <Row className="mb-4">
-              <Col
-                xs={12}
-                lg={4}
-                className="d-flex flex-col justify-content-end align-items-end"
-              >
-                <Filter />
-              </Col>
-              <Col
-                xs={12}
-                sm={6}
-                lg={4}
-                className="d-flex flex-col justify-content-lg-center align-items-center justify-content-sm-start mb-2 mb-sm-0"
-              >
-                <PaginationOpts />
-              </Col>
-              <Col
-                xs={12}
-                sm={6}
-                lg={4}
-                className="d-flex flex-col justify-content-end align-items-end"
-              >
-                <Pagination />
-              </Col>
-            </Row>
-            <Table>
-              <TableHeader />
-              <TableBody />
-            </Table>
-          </DatatableWrapper>
+          
 
           </Modal.Body>
           <Modal.Footer>
