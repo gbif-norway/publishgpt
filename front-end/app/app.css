@@ -12,16 +12,16 @@
 .messages { margin: 0 }
 .message {
     padding: 15px;
-    border-radius: 15px;
+    border-radius: 10px;
     margin: 10px 0;
 }
 .assistant-message {
-    background-color: #f4f8fc
+    background-color: rgb(196 255 122 / 10%);
 }
-.user-message { background-color: #e3eae2; }
+.user-message { background-color: rgb(178 194 255 / 10%) }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
-.complete h2 { color: #c0d6c5 }
+.complete h2 { color: #c0d6c5 } 
 .user-input { margin-left: 2%; margin-right: 2%; width: 96% !important; margin-bottom: 20px; }
 
 .text-bg-success { background-color: #90d28b}

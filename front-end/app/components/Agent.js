@@ -1,5 +1,9 @@
 import Message from './Message';
 import { useState, useEffect, useRef } from 'react';
+import Accordion from 'react-bootstrap/Accordion';
+import Button from 'react-bootstrap/Button';
+import Badge from 'react-bootstrap/Badge';
+
 
 const Agent = ({ agent, refreshAgents }) => {
     const [messages, setMessages] = useState(agent.message_set);
@@ -107,23 +111,22 @@ const Agent = ({ agent, refreshAgents }) => {
     }
 
     return (
-      <div className={`accordion-item agent-task ${agent.task.name} ${isComplete ? 'complete' : ''}`}>
-        <h2 className="accordion-header">
-          <button className={`accordion-button ${isComplete ? 'collapsed' : ''}`} type="button" data-bs-toggle="collapse" data-bs-target={`#Agent${agent.id}`} aria-expanded="true" aria-controls={`Agent${agent.id}`}>
-            Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} 
+        <Accordion.Item eventKey={agent.id}>
+          <Accordion.Header>
+            Task: {agent.id} {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
             {isComplete && (
-            <span style={{ marginLeft: 10 }}><span className="badge text-bg-success">complete <i className="bi-check-square"></i></span></span>
+            <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
             )}
-          </button>
-        </h2>
-        <div id={`Agent${agent.id}`} className={`accordion-collapse collapse ${isComplete ? '' : 'show'} messages`}>
-          <div className="accordion-body">
-          Working with <button type="button" class="btn btn-info">Dataframe ID 234 (Variables)</button> <button type="button" class="btn btn-info">Dataframe ID 234 (Variables)</button>
-
+          </Accordion.Header>
+          <Accordion.Body>
+          Working with&nbsp;
+          <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 234 (Species)</Button>{' '}
+          <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 1423 (Variables)</Button>{' '}
+          
           {messages.filter(function(message) { return (message.display_to_user) }).map((message, i) => (
             <Message key={i} role={message.role} content={message.content} />
           ))}
-          
+
           {isLoading && (
             <div className="message assistant-message">
               <div className="d-flex align-items-center">
@@ -133,9 +136,8 @@ const Agent = ({ agent, refreshAgents }) => {
             </div>
           )}
           {!isComplete && !isLoading && <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} />}
-          </div>
-        </div>
-      </div>
+          </Accordion.Body>
+        </Accordion.Item>
     );
   };
   

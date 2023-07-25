@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';  
 import { useDropzone } from 'react-dropzone';
 import Agent from './Agent';
+import Accordion from 'react-bootstrap/Accordion';
 
 const Dataset = ({ initialDatasetId }) => {
     const [error, setError] = useState(null);
@@ -8,6 +9,7 @@ const Dataset = ({ initialDatasetId }) => {
     const [dataset, setDataset] = useState(null); 
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("Working...");
+    const [activeAgentKey, setActiveAgentKey] = useState(null);
 
     const fetchCompletedAgents = useCallback((datasetId) => {
       return fetch(`http://localhost:8000/api/datasets/${datasetId}/completed_agents`)
@@ -19,22 +21,14 @@ const Dataset = ({ initialDatasetId }) => {
 
     const refreshAgents = useCallback(() => {
       setIsLoading(true);
-      console.log('refreshagents');
-      console.log(dataset);
-      
-      console.log('refreshagents');
-      console.log(dataset);
       fetchCompletedAgents(dataset.id)
       .then(() => {
         fetch(`http://localhost:8000/api/datasets/${dataset.id}/get_or_create_next_agent`)
           .then(response => response.json())
-          .then(next_agent => {
-
-            console.log('refreshagents');
-            console.log(dataset);
-            console.log(next_agent);
+          .then(next_agent => { 
             setAgents(prevAgents => [...prevAgents, next_agent]);
             setIsLoading(false);
+            setActiveAgentKey(next_agent.id);
           });
       })
     }, [fetchCompletedAgents, dataset]);
@@ -65,8 +59,6 @@ const Dataset = ({ initialDatasetId }) => {
         fetch(`http://localhost:8000/api/datasets/${initialDatasetId}`)
         .then(response => response.json())
         .then(data => {
-          console.log(initialDatasetId);
-          console.log(data);
           setDataset(data);
         })
         .catch(err => console.log(err.message));
@@ -124,11 +116,13 @@ const Dataset = ({ initialDatasetId }) => {
         </div></div>
         )}
 
-        <div id="Agents">
-        {agents.map(agent => (
-          <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()}/>
-        ))}
-        </div>
+        { Array.isArray(agents) && agents.length > 0 && 
+          <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
+          {agents.map(agent => (
+            <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()}/>
+          ))}
+          </Accordion>
+        }
 
         {isLoading && (
             <div className="message assistant-message">
