@@ -110,11 +110,16 @@ const Agent = ({ agent, refreshAgents }) => {
       <div className={`accordion-item agent-task ${agent.task.name} ${isComplete ? 'complete' : ''}`}>
         <h2 className="accordion-header">
           <button className={`accordion-button ${isComplete ? 'collapsed' : ''}`} type="button" data-bs-toggle="collapse" data-bs-target={`#Agent${agent.id}`} aria-expanded="true" aria-controls={`Agent${agent.id}`}>
-            Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} {isComplete ? '(complete)' : ''}
+            Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} 
+            {isComplete && (
+            <span style={{ marginLeft: 10 }}><span className="badge text-bg-success">complete <i className="bi-check-square"></i></span></span>
+            )}
           </button>
         </h2>
         <div id={`Agent${agent.id}`} className={`accordion-collapse collapse ${isComplete ? '' : 'show'} messages`}>
           <div className="accordion-body">
+          Working with <button type="button" class="btn btn-info">Dataframe ID 234 (Variables)</button> <button type="button" class="btn btn-info">Dataframe ID 234 (Variables)</button>
+
           {messages.filter(function(message) { return (message.display_to_user) }).map((message, i) => (
             <Message key={i} role={message.role} content={message.content} />
           ))}
