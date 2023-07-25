@@ -3,35 +3,30 @@ import { useState, useEffect, useRef } from 'react';
 import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';
 import Badge from 'react-bootstrap/Badge';
-
+import Modal from 'react-bootstrap/Modal';
+import {
+  DatatableWrapper,
+  Filter,
+  Pagination,
+  PaginationOpts,
+  TableBody,
+  TableHeader
+} from 'react-bs-datatable';
+import { Col, Row, Table } from 'react-bootstrap';
 
 const Agent = ({ agent, refreshAgents }) => {
     const [messages, setMessages] = useState(agent.message_set);
     const [isComplete, setIsComplete] = useState(agent.completed !== null);
     const [userInput, setUserInput] = useState("");
-    const wasComplete = useRef(isComplete);
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("Working...");
-
-    function fetchWithTimeout(resource, options = {}, timeout = 30000) {
-      return Promise.race([
-        fetch(resource, options),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Request timed out')), timeout)
-        )
-      ]);
-    }
+    const [showDataset, setShowDataset] = useState(false);
 
     const updateMessages = (newData) => {
       const newMessages = [...messages, ...newData];
-  
-      // Create a Map to eliminate duplicates based on the id
       const uniqueMessagesMap = new Map(newMessages.map(msg => [msg.id, msg]));
-  
-      // Convert back to an array and sort based on the id
       const uniqueSortedMessages = Array.from(uniqueMessagesMap.values())
           .sort((a, b) => a.id - b.id);
-      console.log(uniqueSortedMessages);
       setMessages(uniqueSortedMessages);
     };
 
@@ -66,19 +61,13 @@ const Agent = ({ agent, refreshAgents }) => {
         })
         .then(response => response.json())
         .then(data => {
-            console.log(data);
             updateMessages([data]);
-            console.log(messages);
             fetch(`http://localhost:8000/api/agents/${agent.id}/next_agent_message`)
             .then(response => response.json())
             .then(data => {
               if (data.id) {
-                console.log('agent not yet complete');
                 updateMessages([data]);
-                console.log(messages);
               } else {
-                console.log('setting agent to complete');
-                console.log(agent)
                 setIsComplete(true);
                 refreshAgents();
               }
@@ -97,20 +86,39 @@ const Agent = ({ agent, refreshAgents }) => {
         setUserInput("");
       }
     };
-    
-    // useEffect(() => {
-    //   if (!wasComplete.current && isComplete) {  
-    //     refreshAgents({id: agent.dataset.id});
-    //   }
-    //   wasComplete.current = isComplete; 
-    // }, [isComplete, refreshAgents, agent.dataset]); // dependencies array
 
-    // check if there are no messages and task is complete
+    function handleShowDataset(agent_id) {
+      setShowDataset(true);
+    };
+
+    const handleCloseDataset = () => setShowDataset(false);
+
     if (messages.filter(function(message) { return (message.display_to_user) }).length === 0 && isComplete) {
       return null; // return null to not render anything
-    }
+    };
+
+    // Create table headers consisting of 4 columns.
+    const headers = [
+      { title: 'Username', prop: 'username' },
+      { title: 'Name', prop: 'realname' },
+      { title: 'Location', prop: 'location' }
+    ];
+
+    // Randomize data of the table columns.
+    // Note that the fields are all using the `prop` field of the headers.
+    const body = [{
+      username: 'i-am-billy',
+      realname: `Billy 34`,
+      location: 'Mars'
+    }, {
+    username: 'john-nhoj',
+    realname: `John 23`,
+    location: 'Saturn'
+  }];
+
 
     return (
+      <>
         <Accordion.Item eventKey={agent.id}>
           <Accordion.Header>
             Task: {agent.id} {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
@@ -119,10 +127,12 @@ const Agent = ({ agent, refreshAgents }) => {
             )}
           </Accordion.Header>
           <Accordion.Body>
-          Working with&nbsp;
-          <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 234 (Species)</Button>{' '}
-          <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 1423 (Variables)</Button>{' '}
-          
+          <div className="dataset-info-wrapper">
+            Working with&nbsp;
+            <Button variant="info" size="sm" onClick={() => handleShowDataset(agent.id)}><i className="bi-table"></i>&nbsp;Dataframe ID 234 (Species)</Button>{' '}
+            <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 1423 (Variables)</Button>{' '}
+          </div>
+
           {messages.filter(function(message) { return (message.display_to_user) }).map((message, i) => (
             <Message key={i} role={message.role} content={message.content} />
           ))}
@@ -138,6 +148,56 @@ const Agent = ({ agent, refreshAgents }) => {
           {!isComplete && !isLoading && <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} />}
           </Accordion.Body>
         </Accordion.Item>
+        
+        <Modal show={showDataset} onHide={handleCloseDataset}>
+          <Modal.Header closeButton>
+            <Modal.Title>Modal heading</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+
+          <DatatableWrapper body={body} headers={headers}>
+            <Row className="mb-4">
+              <Col
+                xs={12}
+                lg={4}
+                className="d-flex flex-col justify-content-end align-items-end"
+              >
+                <Filter />
+              </Col>
+              <Col
+                xs={12}
+                sm={6}
+                lg={4}
+                className="d-flex flex-col justify-content-lg-center align-items-center justify-content-sm-start mb-2 mb-sm-0"
+              >
+                <PaginationOpts />
+              </Col>
+              <Col
+                xs={12}
+                sm={6}
+                lg={4}
+                className="d-flex flex-col justify-content-end align-items-end"
+              >
+                <Pagination />
+              </Col>
+            </Row>
+            <Table>
+              <TableHeader />
+              <TableBody />
+            </Table>
+          </DatatableWrapper>
+
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={handleCloseDataset}>
+              Close
+            </Button>
+            <Button variant="primary" onClick={handleCloseDataset}>
+              Save Changes
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      </>
     );
   };
   
