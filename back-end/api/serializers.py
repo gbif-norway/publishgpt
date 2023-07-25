@@ -74,6 +74,6 @@ class DatasetFrameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DatasetFrame
-        fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'parent']
+        fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'deleted', 'df_json']
 
     

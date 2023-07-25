@@ -147,6 +147,10 @@ class DatasetFrame(models.Model):
     # parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
     deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
 
+    @property
+    def df_json(self):
+        return self.df.to_json(orient='records', date_format='iso')
+
     def soft_delete(self):
         self.deleted = datetime.now()
         self.save()

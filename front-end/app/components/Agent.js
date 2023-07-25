@@ -4,6 +4,8 @@ import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';
 import Badge from 'react-bootstrap/Badge';
 import Modal from 'react-bootstrap/Modal';
+import DataTable from 'react-data-table-component';
+
 
 const Agent = ({ agent, refreshAgents }) => {
     const [messages, setMessages] = useState(agent.message_set);
@@ -12,6 +14,8 @@ const Agent = ({ agent, refreshAgents }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("Working...");
     const [showDataset, setShowDataset] = useState(false);
+    const [datasetData, setDatasetData] = useState([]);
+    const [datasetColumns, setDatasetColumns] = useState([]);
 
     const updateMessages = (newData) => {
       const newMessages = [...messages, ...newData];
@@ -78,8 +82,19 @@ const Agent = ({ agent, refreshAgents }) => {
       }
     };
 
-    function handleShowDataset(agent_id) {
-      setShowDataset(true);
+    const handleShowDataset = (datasetframe_id) => {
+      fetch(`http://localhost:8000/api/datasetframes/${datasetframe_id}`)
+        .then(response => response.json())
+        .then(df => { 
+          const df_json = JSON.parse(df.df_json);
+          const columns = Object.keys(df_json[0]).map((column) => ({
+              name: column,
+              selector: row => row[column],
+          }));
+          setDatasetColumns(columns);
+          setDatasetData(df_json);
+        })
+        .then(() => { setShowDataset(true); });
     };
 
     const handleCloseDataset = () => setShowDataset(false);
@@ -87,42 +102,6 @@ const Agent = ({ agent, refreshAgents }) => {
     if (messages.filter(function(message) { return (message.display_to_user) }).length === 0 && isComplete) {
       return null; // return null to not render anything
     };
-
-    const data = [
-      {
-        "name": "Hines Fowler",
-        "company": "BUZZNESS",
-        "email": "hinesfowler@buzzness.com",
-        "phone": "+1 (869) 405-3127"
-      },
-      {
-        "name": "Hinasdfes Fowler",
-        "company": "BUZZNESS",
-        "email": "hinesfowler@buzzness.com",
-        "phone": "+1 (869) 405-3127"
-      }
-  ]
-
-  const columns = [
-    {
-        title: "Name",
-        id: "name"
-    },
-    {
-        title: "Company",
-        id: "company"
-    },
-    {
-        title: "Email",
-        id: "email"
-    },
-    {
-        title: "Phone",
-        id: "phone"
-    }
-]
-
-
 
     return (
       <>
@@ -136,7 +115,7 @@ const Agent = ({ agent, refreshAgents }) => {
           <Accordion.Body>
           <div className="dataset-info-wrapper">
             Working with&nbsp;
-            <Button variant="info" size="sm" onClick={() => handleShowDataset(agent.id)}><i className="bi-table"></i>&nbsp;Dataframe ID 234 (Species)</Button>{' '}
+            <Button variant="info" size="sm" onClick={() => handleShowDataset(24)}><i className="bi-table"></i>&nbsp;Dataframe ID 234 (Species)</Button>{' '}
             <Button variant="info" size="sm"><i className="bi-table"></i>&nbsp;Dataframe ID 1423 (Variables)</Button>{' '}
           </div>
 
@@ -156,14 +135,12 @@ const Agent = ({ agent, refreshAgents }) => {
           </Accordion.Body>
         </Accordion.Item>
         
-        <Modal show={showDataset} onHide={handleCloseDataset}>
+        <Modal show={showDataset} onHide={handleCloseDataset} size="lg">
           <Modal.Header closeButton>
             <Modal.Title>Modal heading</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-
-          
-
+          <DataTable columns={datasetColumns} data={datasetData} pagination dense />
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseDataset}>
