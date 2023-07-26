@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 ENV PYTHONUNBUFFERED 1
 WORKDIR /app
-COPY ./secrets /srv/secrets
+# COPY ./secrets /srv/secrets
 RUN pip install --upgrade pip
 COPY ./requirements.txt /srv/requirements.txt
 RUN pip install -r /srv/requirements.txt
