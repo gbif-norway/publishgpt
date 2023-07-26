@@ -197,7 +197,7 @@ class Message(models.Model):
     content = models.CharField(max_length=9000, blank=True)
     function_name = models.CharField(max_length=200, blank=True)  # Only for function role messages
     display_to_user = models.BooleanField(default=False)
-    dataset_frames = models.ManyToManyField(Table)
+    dataset_frames = models.ManyToManyField(Table, blank=True)
 
     class Role(models.TextChoices):
         USER = 'user'
