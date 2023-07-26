@@ -79,7 +79,7 @@ const Dataset = ({ initialDatasetId }) => {
       .then(data => {
         setDataset(data);
       })
-      .catch(err => setError(err.message));
+      // .catch(err => setError(err.message));
     };
   
     useEffect(() => {

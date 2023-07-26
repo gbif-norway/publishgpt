@@ -41,7 +41,7 @@ class Dataset(models.Model):
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=300, unique=True)
     text = models.CharField(max_length=5000)
-    per_datasetframe = models.BooleanField()
+    per_table = models.BooleanField()
 
     class Meta:
         get_latest_by = 'id'
@@ -52,14 +52,14 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
     def create_agents_with_system_messages(self, dataset:Dataset):
-        active_datasetframes = DatasetFrame.objects.filter(dataset=dataset, deleted=None)
+        active_tables = Table.objects.filter(dataset=dataset, deleted=None)
         agents = []
-        if self.per_datasetframe:  # One agent per datasetframe
-            for dataset_frame in active_datasetframes:
+        if self.per_table:  # One agent per table
+            for dataset_frame in active_tables:
                 agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=[dataset_frame])
                 agents.append(agent)
-        else:  # One agent for all the datasetframes
-            agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=active_datasetframes)
+        else:  # One agent for all the tables
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=active_tables)
             agents.append(agent)
 
         return agents
@@ -92,7 +92,7 @@ class Agent(models.Model):
     @classmethod
     def create_with_system_message(cls, dataset_frames, **kwargs):
         agent = cls.objects.create(**kwargs)
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_datasetframes': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
@@ -137,14 +137,14 @@ class Agent(models.Model):
         return message
 
 
-class DatasetFrame(models.Model):
+class Table(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
-    # parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    # parent = models.ForeignKey('Table', on_delete=models.CASCADE, blank=True, null=True)
     deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
 
     @property
@@ -197,6 +197,7 @@ class Message(models.Model):
     content = models.CharField(max_length=9000, blank=True)
     function_name = models.CharField(max_length=200, blank=True)  # Only for function role messages
     display_to_user = models.BooleanField(default=False)
+    dataset_frames = models.ManyToManyField(Table)
 
     class Role(models.TextChoices):
         USER = 'user'

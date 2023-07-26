@@ -82,8 +82,8 @@ const Agent = ({ agent, refreshAgents }) => {
       }
     };
 
-    const handleShowDataset = (datasetframe_id) => {
-      fetch(`http://localhost:8000/api/datasetframes/${datasetframe_id}`)
+    const handleShowDataset = (table_id) => {
+      fetch(`http://localhost:8000/api/tables/${table_id}`)
         .then(response => response.json())
         .then(df => { 
           const df_json = JSON.parse(df.df_json);

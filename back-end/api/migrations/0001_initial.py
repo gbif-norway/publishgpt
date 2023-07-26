@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=300, unique=True)),
                 ('text', models.CharField(max_length=5000)),
-                ('per_datasetframe', models.BooleanField()),
+                ('per_table', models.BooleanField()),
             ],
             options={
                 'ordering': ['id'],
@@ -81,7 +81,7 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='DatasetFrame',
+            name='Table',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('created', models.DateTimeField(auto_now_add=True)),

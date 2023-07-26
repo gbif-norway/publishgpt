@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer, TaskSerializer
-from api.models import Dataset, DatasetFrame, Message, Agent, Task
+from api.serializers import DatasetSerializer, TableSerializer, MessageSerializer, AgentSerializer, TaskSerializer
+from api.models import Dataset, Table, Message, Agent, Task
 from rest_framework.response import Response
 from rest_framework.decorators import action 
 
@@ -49,9 +49,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class DatasetFrameViewSet(viewsets.ModelViewSet):
-    queryset = DatasetFrame.objects.all()
-    serializer_class = DatasetFrameSerializer
+class TableViewSet(viewsets.ModelViewSet):
+    queryset = Table.objects.all()
+    serializer_class = TableSerializer
     filterset_fields = ['dataset', 'title']
 
 

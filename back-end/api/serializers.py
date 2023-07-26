@@ -1,4 +1,4 @@
-from api.models import Dataset, DatasetFrame, Agent, Message, Task
+from api.models import Dataset, Table, Agent, Message, Task
 from rest_framework import serializers
 import pandas as pd
 from api.helpers.df_helpers import trim_dataframe, extract_sub_tables
@@ -9,7 +9,7 @@ from datetime import datetime
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = ['id', 'name', 'per_datasetframe']
+        fields = ['id', 'name', 'per_table']
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -49,7 +49,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             # Try to extract any sub tables which exist in the sheet. Because people do this, for some reason. We need to treat each one separately.
             distinct_tables = []
             for new_df in extract_sub_tables(df):
-                distinct_tables.append(DatasetFrame.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(new_df)))
+                distinct_tables.append(Table.objects.create(dataset=dataset, title=sheet_name, df=trim_dataframe(new_df)))
             
             task = Task.objects.get(name='extract_subtables')
             agent = task.create_agents_with_system_messages(dataset)[0]  # Only 1 agent should get created per sheet for this task
@@ -59,7 +59,7 @@ class DatasetSerializer(serializers.ModelSerializer):
                 agent.save()
             else:
                 Message.objects.create(agent=agent, function_name='ExtractSubTables', role=Message.Role.FUNCTION, content=distinct_tables) 
-                snapshots = '\n\n'.join([f'Sub-table #{idx} - (DatasetFrame.id: {d.id})\n{d.str_snapshot}' for idx, d in enumerate(distinct_tables)]) 
+                snapshots = '\n\n'.join([f'Sub-table #{idx} - (Table.id: {d.id})\n{d.str_snapshot}' for idx, d in enumerate(distinct_tables)]) 
                 if len(snapshots) > 4000:
                     snapshots = snapshots[0:4000] + '\n...'
                 explain_extracted_subtables = 'I just had a look at your spreadsheet "{title}". An important step in publishing your data is separating out each table so we can handle them separately. Based on the empty rows & columns which appear to be acting as "dividers", it looks like it actually contains {len} different, separate tables:\n{snapshots}\n\nIs this correct? Please let me know: a) if there are any separate sub-tables I missed which should be split off, and b) if there are any sub-tables that were incorrectly split, which should actually be joined to other sub-tables. '
@@ -69,11 +69,11 @@ class DatasetSerializer(serializers.ModelSerializer):
         return dataset
 
 
-class DatasetFrameSerializer(serializers.ModelSerializer):
+class TableSerializer(serializers.ModelSerializer):
     df_str = serializers.CharField(source='df', read_only=True)
 
     class Meta:
-        model = DatasetFrame
+        model = Table
         fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'deleted', 'df_json']
 
     

@@ -23,7 +23,7 @@ from website import views
 
 router = routers.DefaultRouter()
 router.register(r'datasets', api_views.DatasetViewSet)
-router.register(r'datasetframes', api_views.DatasetFrameViewSet)
+router.register(r'tables', api_views.TableViewSet)
 router.register(r'messages', api_views.MessageViewSet)
 router.register(r'agents', api_views.AgentViewSet)  
 
