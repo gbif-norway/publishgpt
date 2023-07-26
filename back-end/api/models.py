@@ -98,13 +98,9 @@ class Agent(models.Model):
         return agent
 
     def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
-        messages = self.message_set.all()
-        if not messages:
-            messages.append(Message.objects.create(agent=self, content=self.system_message, role=Message.Role.SYSTEM))
-
-        response = create_chat_completion(messages, self.callable_functions, call_first_function=(current_call == max_calls))
+        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
         
-        # Run a function if GPT has asked for a function to be called, and send the results back to GPT without user feedback
+        # Run a function if GPT has asked for a function to be called
         function_name, function_args = openai_function_details(response)
         message_content = response['choices'][0]['message'].get('content')
         print(f'Response message content: {message_content}')
@@ -114,16 +110,17 @@ class Agent(models.Model):
                 Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
                 print(f'GPT function reply content message: {message_content}')
             function_model_class = getattr(agent_tools, function_name)
-            ()
-            try:
-                print(f'function args: {function_args}')
-                function_model_obj = function_model_class(**function_args)
-            except ValidationError as e:
-                import pdb; pdb.set_trace()
+            
+            print(f'FUNCTION ARGS: {function_args}')
+            function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate
             function_result = function_model_obj.run()
+
+            Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
+            # TODO Get all Tables which are not linked to a message and are linked to this dataset, and link them to the 
             print(f'FUNCTION RESULT: {function_result}')
+            
+            # If there is a function result, we need to feed it back to GPT4, otherwise it has set the agent to be complete
             if function_result:
-                Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
                 return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
             return None  # If an agent is set to complete
 
