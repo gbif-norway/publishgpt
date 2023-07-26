@@ -1,15 +1,15 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
-from api.openai_wrapper import chat_completion, functions, prompts
-from api.helpers.openai import callable, openai_function_details, function_name_in_text
+from api import agent_tools
+from api.helpers.openai_helpers import openai_function_details, function_name_in_text, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
-import datetime
-import re
+from datetime import datetime
 from django.template.loader import render_to_string
 from os import path
-from django.db.models import Count, Max, F
+from django.db.models import Count, Max
+from pydantic import ValidationError
 
 
 class Dataset(models.Model):
@@ -29,60 +29,37 @@ class Dataset(models.Model):
         GBIF_RELEVE = 'gbif_releve'
     dwc_extensions = ArrayField(base_field=models.CharField(max_length=500, choices=DWCExtensions.choices), null=True, blank=True)
 
+    @property
     def filename(self):
         return path.basename(self.file.name)
     
     class Meta:
         get_latest_by = 'created'
         ordering = ['created']
-    
-    def get_or_create_next_agent(self):
-        next_agent = self.agent_set.filter(completed=None).first()
-        if next_agent:
-            return next_agent
-        
-        last_task_id = self.agent_set.all().order_by('completed').last().task.id
-        next_task = Task.objects.filter(id__gt=last_task_id).order_by('id').first()
-        if next_task:
-            return next_task.create_agents(dataset=self)
-
-        return None
-        
-    def get_active_datasetframes(self):
-        leaf_datasetframes = DatasetFrame.objects.filter(dataset=self).annotate(num_children=Count('datasetframe')).filter(num_children=0)
-        recent_datasetframes = DatasetFrame.objects.filter(dataset=self).values('parent').annotate(
-            recent_child_id=Max('id'),
-            recent_created=Max('created'),
-        ).filter(id=F('recent_child_id'))
-        return list(leaf_datasetframes) + list(recent_datasetframes)
 
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=300, unique=True)
-    system_message_template = models.CharField(max_length=5000)
-    per_datasetframe = models.BooleanField()
+    text = models.CharField(max_length=5000)
+    per_table = models.BooleanField()
+
+    class Meta:
+        get_latest_by = 'id'
+        ordering = ['id']
 
     @property
     def functions(self):
-        return [functions.Python.__name__, functions.SetTaskToComplete.__name__]
+        return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
-    def create_agents(self, dataset:Dataset):
-        active_datasetframes = dataset.get_active_datasetframes()
+    def create_agents_with_system_messages(self, dataset:Dataset):
+        active_tables = Table.objects.filter(dataset=dataset, deleted=None)
         agents = []
-
-        if self.per_datasetframe:
-            for datasetframe in active_datasetframes:
-                agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
-                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-                system_message = render_to_string('single_df.txt', context={ 'agent': agent, 'agent_datasetframes': datasetframe })
-                Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+        if self.per_table:  # One agent per table
+            for dataset_frame in active_tables:
+                agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=[dataset_frame])
                 agents.append(agent)
-        else:
-            agent = Agent.objects.create(functions=self.functions, dataset=dataset, task=self)
-            for datasetframe in active_datasetframes:
-                AgentDatasetFrame.objects.create(agent=agent, dataset_frame=datasetframe)
-            system_message = render_to_string('multi_df.txt', context={'agent': agent, 'agent_datasetframes': active_datasetframes })
-            Message.objects.create(agent=agent, content=system_message, role=Message.Role.SYSTEM)
+        else:  # One agent for all the tables
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=active_tables)
             agents.append(agent)
 
         return agents
@@ -91,13 +68,12 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
 class Agent(models.Model):  
     created = models.DateTimeField(auto_now_add=True)
     completed = models.DateTimeField(null=True, blank=True)
-    _functions = ArrayField(base_field=models.CharField(max_length=500))
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
     @property
     def callable_functions(self):
-        return [callable(f) for f in self._functions]
+        return [getattr(agent_tools, f) for f in self.task.functions]
 
     class Meta:
         get_latest_by = 'created'
@@ -113,70 +89,106 @@ class Agent(models.Model):
         
         return self.run(allow_user_feedack=True)
 
+    @classmethod
+    def create_with_system_message(cls, dataset_frames, **kwargs):
+        agent = cls.objects.create(**kwargs)
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
+        print(system_message_text)
+        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+        return agent
+
     def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
-        stop_loop = current_call == max_calls
-        response = chat_completion.create(self.message_set.all(), self.callable_functions, call_first_function=stop_loop)
+        messages = self.message_set.all()
+        if not messages:
+            messages.append(Message.objects.create(agent=self, content=self.system_message, role=Message.Role.SYSTEM))
+
+        response = create_chat_completion(messages, self.callable_functions, call_first_function=(current_call == max_calls))
         
         # Run a function if GPT has asked for a function to be called, and send the results back to GPT without user feedback
         function_name, function_args = openai_function_details(response)
+        message_content = response['choices'][0]['message'].get('content')
+        print(f'Response message content: {message_content}')
         if function_name:
-            Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response)
-            function_result = getattr(functions, function_name).run(**function_args)
-            import pdb; pdb.set_trace()
+            # Sometimes GPT sends back message content as well as a function call, if it does then let's store it and show it to the user
+            if message_content:
+                Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
+                print(f'GPT function reply content message: {message_content}')
+            function_model_class = getattr(agent_tools, function_name)
+            ()
+            try:
+                print(f'function args: {function_args}')
+                function_model_obj = function_model_class(**function_args)
+            except ValidationError as e:
+                import pdb; pdb.set_trace()
+            function_result = function_model_obj.run()
+            print(f'FUNCTION RESULT: {function_result}')
             if function_result:
                 Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
                 return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
-            return None
-
-        # Store GPT's message
-        message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response['choices'][0]['message']['content'])
+            return None  # If an agent is set to complete
 
         # If GPT didn't call the function properly or if we don't want user feedback, ask it to call a function
-        if not allow_user_feedack or function_name_in_text(self._functions, message.content):
+        if not allow_user_feedack or function_name_in_text(self.task.functions, message_content):
             message = Message.objects.create(agent=self, role=Message.Role.USER, content='Please respond with a function call, not text.')
             return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
 
-        # Return GPT's message for user feedback
+        # Store GPT's message
+        message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
         return message
 
 
-class DatasetFrame(models.Model):
+class Table(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
     problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
-    parent = models.ForeignKey('DatasetFrame', on_delete=models.CASCADE, blank=True, null=True)
+    # parent = models.ForeignKey('Table', on_delete=models.CASCADE, blank=True, null=True)
     deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
 
-    def __str__(self, max_rows=5, max_columns=5, max_str_len=70):
-        max_rows = max(max_rows, 5)  # At least 5 to show truncation correctly
-        max_columns = max(max_columns, 5)  # At least 5 to show truncation correctly
-        original_rows, original_cols = self.df.shape
+    @property
+    def df_json(self):
+        return self.df.to_json(orient='records', date_format='iso')
+
+    def soft_delete(self):
+        self.deleted = datetime.now()
+        self.save()
+    
+    def _snapshot_df(self):
+        max_rows, max_columns, max_str_len = 5, 5, 70
 
         # Truncate long strings in cells
         df = self.df.astype(str).applymap(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x)
 
+        # Truncate rows
         if len(df) > max_rows:
             top = df.head(max_rows // 2)
             bottom = df.tail(max_rows // 2)
-            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}), bottom])
+            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}, index=['...']), bottom])
 
+        # Truncate columns
         if len(df.columns) > max_columns:
-            df = df.iloc[:, :max_columns//2].join(pd.DataFrame({ '...': ['...']*len(df) })).join(df.iloc[:, -max_columns//2:])
+            left = df.iloc[:, :max_columns//2]
+            right = df.iloc[:, -max_columns//2:]
+            middle = pd.DataFrame({ '...': ['...']*len(df) }, index=df.index)
+            df = pd.concat([left, middle, right], axis=1)
+        
+        return df.fillna('')
 
-        return df.to_string() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
+    # def __str__(self):
+    #     original_rows, original_cols = self.df.shape
+    #     return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
+    @property
+    def str_snapshot(self):
+        original_rows, original_cols = self.df.shape
+        return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
-class AgentDatasetFrame(models.Model):
-    agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
-    dataset_frame = models.ForeignKey(DatasetFrame, on_delete=models.CASCADE)
-
-    def save(self, *args, **kwargs):
-        if self.agent.dataset != self.dataset_frame.dataset:
-            raise ValueError("Agent's Dataset and DatasetFrame's Dataset must be the same")
-        super().save(*args, **kwargs)
+    @property
+    def html_snapshot(self):
+        original_rows, original_cols = self.df.shape
+        return self._snapshot_df().to_html() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
 
 
 class Message(models.Model):
@@ -184,6 +196,8 @@ class Message(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     content = models.CharField(max_length=9000, blank=True)
     function_name = models.CharField(max_length=200, blank=True)  # Only for function role messages
+    display_to_user = models.BooleanField(default=False)
+    dataset_frames = models.ManyToManyField(Table)
 
     class Role(models.TextChoices):
         USER = 'user'

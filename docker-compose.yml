@@ -13,8 +13,10 @@ services:
       - ./back-end:/app
     depends_on:
       - db
-    expose:
-      - 80
+    # expose:
+      # - 80
+    ports:
+      - "8000:8000"
     env_file:
       - ./back-end/.env
   front-end:
@@ -23,14 +25,14 @@ services:
       - ./front-end:/app
     stdin_open: true
     tty: true
-    expose:
-      - 3000
+    ports:
+      - "3000:3000"
     env_file:
       - ./front-end/.env
     depends_on:
         - back-end
 
-networks:
-  default:
-    external:
-      name: nginx-proxy
+# networks:
+#   default:
+#     external:
+#       name: nginx-proxy

@@ -1,10 +1,8 @@
 from rest_framework import viewsets, status
-from api.serializers import DatasetSerializer, DatasetFrameSerializer, MessageSerializer, AgentSerializer
-from api.models import Dataset, DatasetFrame, Message, Agent
+from api.serializers import DatasetSerializer, TableSerializer, MessageSerializer, AgentSerializer, TaskSerializer
+from api.models import Dataset, Table, Message, Agent, Task
 from rest_framework.response import Response
 from rest_framework.decorators import action 
-from django.contrib.postgres.fields import ArrayField
-import django_filters as filters
 
 
 class DatasetViewSet(viewsets.ModelViewSet):
@@ -13,16 +11,54 @@ class DatasetViewSet(viewsets.ModelViewSet):
     filterset_fields = ['created', 'orcid']
 
     @action(detail=True)
+    def completed_agents(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        completed_agents = dataset.agent_set.exclude(completed=None).all()
+        serializer = AgentSerializer(completed_agents, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True)
     def get_or_create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
-        serializer = AgentSerializer(dataset.get_or_create_next_agent())
+
+        next_agent = dataset.agent_set.filter(completed=None).first()
+        if not next_agent:
+            last_completed_agent = dataset.agent_set.exclude(completed=None).last()
+            print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
+            if last_completed_agent:
+                last_task_id = last_completed_agent.task.id
+                print(f'Last task id {last_task_id}')
+                next_task = Task.objects.filter(id__gt=last_task_id).first()
+                print(f'Next task id {next_task.id}, {next_task.name}')
+                if next_task:
+                    next_task.create_agents_with_system_messages(dataset=dataset)
+                    print('recursing')
+                    return self.get_or_create_next_agent(request)
+                else:
+                    return Response('ALL TASKS COMPLETE', status=status.HTTP_200_OK)
+            else:
+                raise Exception('Agent set for this dataset appears to be empty')
+
+        next_message = next_agent.get_next_assistant_message_for_user()
+        if next_message is None:
+            return self.get_or_create_next_agent(request)
+        print('next agent about to be returned')
+        # import pdb; pdb.set_trace()
+        next_agent.refresh_from_db()
+        serializer = AgentSerializer(next_agent)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class DatasetFrameViewSet(viewsets.ModelViewSet):
-    queryset = DatasetFrame.objects.all()
-    serializer_class = DatasetFrameSerializer
+class TableViewSet(viewsets.ModelViewSet):
+    queryset = Table.objects.all()
+    serializer_class = TableSerializer
     filterset_fields = ['dataset', 'title']
+
+
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    filterset_fields = '__all__'
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -34,28 +70,13 @@ class MessageViewSet(viewsets.ModelViewSet):
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
-    filterset_overrides = {
-       ArrayField: {
-            'filter_class': filters.CharFilter,
-            'extra': lambda f: {
-                'lookup_expr': 'icontains',
-            },
-        },
-    }
+    filterset_fields = ['created', 'completed', 'dataset', 'task']
 
-    @action(detail=True, methods=['get', 'post'])
-    def chat(self, request, *args, **kwargs):
-        if self.request.method == 'POST':
-            agent = self.get_object()
-            Message.objects.create(agent=agent, content=request.POST['message'], role=Message.Role.USER)
-            import pdb; pdb.set_trace()
-            reply = agent.run()
-            serializer = MessageSerializer(reply)
+    @action(detail=True)
+    def next_agent_message(self, request, *args, **kwargs):
+        agent = self.get_object()
+        next_assistant_message = agent.get_next_assistant_message_for_user()
+        if next_assistant_message:
+            serializer = MessageSerializer(next_assistant_message)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        if self.request.method == 'GET':
-            agent = self.get_object()
-            next_assistant_message = agent.get_next_assistant_message_for_user()
-            if next_assistant_message:
-                serializer = MessageSerializer(next_assistant_message)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            return Response(None, status=status.HTTP_404_NOT_FOUND)  # This should happen only when the dataset is ready for publication
+        return Response({'id': None}, status=status.HTTP_200_OK)  # This should happen only when the dataset is ready for publication

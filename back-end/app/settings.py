@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-bvf31sz3*jl5l)!@e^!#%vq3hg@0$i*q80j9)_1v_0vtwcwkp4
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['publishgpt-back.local']
+ALLOWED_HOSTS = ['publishgpt-back.local', 'localhost']
 
 
 # Application definition
@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     "corsheaders",
     'api',
+    'website',
 ]
 
 MIDDLEWARE = [
