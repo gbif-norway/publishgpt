@@ -8,12 +8,10 @@ import pandas as pd
 from datetime import datetime
 from django.template.loader import render_to_string
 from os import path
-from django.db.models import Count, Max
-from pydantic import ValidationError
 
 
 class Dataset(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
 
@@ -32,6 +30,10 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return path.basename(self.file.name)
+    
+    @property
+    def active_tables(self):
+        Table.objects.filter(dataset=self, deleted=None, stale=None)
     
     class Meta:
         get_latest_by = 'created'
@@ -55,19 +57,19 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         active_tables = Table.objects.filter(dataset=dataset, deleted=None)
         agents = []
         if self.per_table:  # One agent per table
-            for dataset_frame in active_tables:
-                agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=[dataset_frame])
+            for table in active_tables:
+                agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=[table])
                 agents.append(agent)
         else:  # One agent for all the tables
-            agent = Agent.create_with_system_message(dataset=dataset, task=self, dataset_frames=active_tables)
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, table=active_tables)
             agents.append(agent)
 
         return agents
 
 
 class Agent(models.Model):  
-    created = models.DateTimeField(auto_now_add=True)
-    completed = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
 
@@ -87,62 +89,93 @@ class Agent(models.Model):
         if last_message.role == Message.Role.ASSISTANT:
             return last_message
         
-        return self.run(allow_user_feedack=True)
+        return self.run()
 
     @classmethod
-    def create_with_system_message(cls, dataset_frames, **kwargs):
+    def create_with_system_message(cls, table, **kwargs):
         agent = cls.objects.create(**kwargs)
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': dataset_frames, 'all_tasks_count': Task.objects.all().count() })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': table, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
 
-    def run(self, allow_user_feedack=True, current_call=0, max_calls=10):
+    def run(self, current_call=0, max_calls=10):
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
         
-        # Run a function if GPT has asked for a function to be called
-        function_name, function_args = openai_function_details(response)
+        # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
         message_content = response['choices'][0]['message'].get('content')
-        print(f'Response message content: {message_content}')
-        if function_name:
-            # Sometimes GPT sends back message content as well as a function call, if it does then let's store it and show it to the user
-            if message_content:
-                Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
-                print(f'GPT function reply content message: {message_content}')
-            function_model_class = getattr(agent_tools, function_name)
-            
-            print(f'FUNCTION ARGS: {function_args}')
-            function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate
-            function_result = function_model_obj.run()
+        message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
 
-            Message.objects.create(agent=self, role=Message.Role.FUNCTION, content=function_result, function_name=function_name)
-            # TODO Get all Tables which are not linked to a message and are linked to this dataset, and link them to the 
-            print(f'FUNCTION RESULT: {function_result}')
-            
+        function_name, function_args = openai_function_details(response)
+        if function_name:
+            if function_name_in_text(self.task.functions, message_content):
+                message = Message.objects.create(agent=self, role=Message.Role.USER, content='Please respond with a function call, not text.', faked=True)
+                return self.run(current_call=current_call+1, max_calls=max_calls)
+
+            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name)
+            function_result = self.run_function(function_name, function_args, function_message)
+            function_message.content =function_result
+            function_message.save()
+        
             # If there is a function result, we need to feed it back to GPT4, otherwise it has set the agent to be complete
             if function_result:
-                return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
-            return None  # If an agent is set to complete
+                return self.run(current_call=current_call+1, max_calls=max_calls)
+        
+            # TODO Do the Table comparison and check for CRUD ops, delete temp tables as necessary
 
-        # If GPT didn't call the function properly or if we don't want user feedback, ask it to call a function
-        if not allow_user_feedack or function_name_in_text(self.task.functions, message_content):
-            message = Message.objects.create(agent=self, role=Message.Role.USER, content='Please respond with a function call, not text.')
-            return self.run(allow_user_feedack=allow_user_feedack, current_call=current_call+1, max_calls=max_calls)
-
-        # Store GPT's message
-        message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content, display_to_user=True)
         return message
+    
+    def run_function(self, function_name, function_args, function_message):
+        function_model_class = getattr(agent_tools, function_name)
+        function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
+
+        if function_name == agent_tools.Python.__name__:
+            try:
+                duplicates = []
+                for t in self.dataset.active_tables:
+                    t.temporary_duplicate_of(t.pk)
+                    t.pk = None
+                    t.save()
+                    duplicates.append(t)
+                
+                result = function_model_obj.run()
+                
+                # Check for newly created tables, and link to message
+                for new_table in (self.dataset.active_tables - duplicates):
+                    function_message.function_tables.create(new_table, through_defaults={'operation': FunctionMessageTables.Operation.CREATE})
+                
+                # Check for deleted tables, soft delete them and link them to the message
+                for old_table in (duplicates - self.dataset.active_tables):
+                    old_table.deleted_at = datetime.now()
+                    old_table.save()
+                    function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.DELETE})
+
+                # Check for updated tables
+                for old_table in Table.objects.get(dataset=self.dataset, temporary_duplicate_of__isnull=False):
+                    if not old_table.df.equals(old_table.temporary_duplicate_of.df):
+                        old_table.temporary_duplicate_of = None
+                        old_table.save()
+                        function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.UPDATE})
+                    else:
+                        old_table.delete()
+
+                return result
+            except Exception as e:
+                result = repr(e)
+                return result
+        else:
+            return function_model_obj.run()
 
 
 class Table(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
-    problems = ArrayField(base_field=models.CharField(max_length=500), null=True, blank=True)
-    # parent = models.ForeignKey('Table', on_delete=models.CASCADE, blank=True, null=True)
-    deleted = models.DateTimeField(null=True, blank=True)  # Is null if the dataset is not deleted
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    stale_at = models.DateTimeField(null=True, blank=True)
+    temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True)
 
     @property
     def df_json(self):
@@ -173,28 +206,17 @@ class Table(models.Model):
         
         return df.fillna('')
 
-    # def __str__(self):
-    #     original_rows, original_cols = self.df.shape
-    #     return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
-
     @property
     def str_snapshot(self):
         original_rows, original_cols = self.df.shape
         return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
-    @property
-    def html_snapshot(self):
-        original_rows, original_cols = self.df.shape
-        return self._snapshot_df().to_html() + f"\n\nTitle {self.title}: [{original_rows} rows x {original_cols} columns]"
-
 
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     content = models.CharField(max_length=9000, blank=True)
-    function_name = models.CharField(max_length=200, blank=True)  # Only for function role messages
-    display_to_user = models.BooleanField(default=False)
-    dataset_frames = models.ManyToManyField(Table, blank=True)
+    faked = models.BooleanField(default=False)
 
     class Role(models.TextChoices):
         USER = 'user'
@@ -202,6 +224,10 @@ class Message(models.Model):
         ASSISTANT = 'assistant'
         FUNCTION = 'function'
     role = models.CharField(max_length=10, choices=Role.choices)
+
+    # Only for 'function' role messages
+    function_name = models.CharField(max_length=200, blank=True)
+    function_tables = models.ManyToManyField(Table, through='FunctionMessageTables', blank=True)
 
     @property
     def openai_schema(self):
@@ -214,8 +240,19 @@ class Message(models.Model):
         ordering = ['created']
 
 
+class FunctionMessageTables(models.Model):
+    message = models.ForeignKey(Message, on_delete=models.CASCADE)
+    table = models.ForeignKey(Table, on_delete=models.CASCADE)
+
+    class Operation(models.TextChoices):
+        CREATE = 'c'
+        UPDATE = 'u'
+        DELETE = 'd'
+    operation = models.CharField(max_length=1, choices=Operation.choices)
+
+
 class Metadata(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     title = models.CharField(max_length=500, blank=True)
     description = models.CharField(max_length=2000, blank=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
