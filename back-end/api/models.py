@@ -33,7 +33,7 @@ class Dataset(models.Model):
     
     @property
     def active_tables(self):
-        Table.objects.filter(dataset=self, deleted=None, stale=None)
+        Table.objects.filter(dataset=self, deleted_at__isnull=True, stale_at__isnull=True)
     
     class Meta:
         get_latest_by = 'created'
@@ -92,9 +92,9 @@ class Agent(models.Model):
         return self.run()
 
     @classmethod
-    def create_with_system_message(cls, table, **kwargs):
+    def create_with_system_message(cls, tables, **kwargs):
         agent = cls.objects.create(**kwargs)
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': table, 'all_tasks_count': Task.objects.all().count() })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
@@ -114,14 +114,12 @@ class Agent(models.Model):
 
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name)
             function_result = self.run_function(function_name, function_args, function_message)
-            function_message.content =function_result
+            function_message.content = function_result
             function_message.save()
         
             # If there is a function result, we need to feed it back to GPT4, otherwise it has set the agent to be complete
             if function_result:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
-        
-            # TODO Do the Table comparison and check for CRUD ops, delete temp tables as necessary
 
         return message
     
@@ -130,16 +128,8 @@ class Agent(models.Model):
         function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
 
         if function_name == agent_tools.Python.__name__:
-            try:
-                result = function_model_obj.run(dataset)
-                
-
-                return result
-            except Exception as e:
-                result = repr(e)
-                return result
-        else:
-            return function_model_obj.run()
+            return function_model_obj.run(function_message)
+        return function_model_obj.run()
 
 
 class Table(models.Model):
