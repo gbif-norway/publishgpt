@@ -131,33 +131,8 @@ class Agent(models.Model):
 
         if function_name == agent_tools.Python.__name__:
             try:
-                duplicates = []
-                for t in self.dataset.active_tables:
-                    t.temporary_duplicate_of(t.pk)
-                    t.pk = None
-                    t.save()
-                    duplicates.append(t)
+                result = function_model_obj.run(dataset)
                 
-                result = function_model_obj.run()
-                
-                # Check for newly created tables, and link to message
-                for new_table in (self.dataset.active_tables - duplicates):
-                    function_message.function_tables.create(new_table, through_defaults={'operation': FunctionMessageTables.Operation.CREATE})
-                
-                # Check for deleted tables, soft delete them and link them to the message
-                for old_table in (duplicates - self.dataset.active_tables):
-                    old_table.deleted_at = datetime.now()
-                    old_table.save()
-                    function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.DELETE})
-
-                # Check for updated tables
-                for old_table in Table.objects.get(dataset=self.dataset, temporary_duplicate_of__isnull=False):
-                    if not old_table.df.equals(old_table.temporary_duplicate_of.df):
-                        old_table.temporary_duplicate_of = None
-                        old_table.save()
-                        function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.UPDATE})
-                    else:
-                        old_table.delete()
 
                 return result
             except Exception as e:
