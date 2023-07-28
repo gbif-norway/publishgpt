@@ -8,12 +8,12 @@ from rest_framework.decorators import action
 class DatasetViewSet(viewsets.ModelViewSet):
     queryset = Dataset.objects.all()
     serializer_class = DatasetSerializer
-    filterset_fields = ['created', 'orcid']
+    filterset_fields = ['created_at', 'orcid']
 
     @action(detail=True)
     def completed_agents(self, request, *args, **kwargs):
         dataset = self.get_object()
-        completed_agents = dataset.agent_set.exclude(completed=None).all()
+        completed_agents = dataset.agent_set.exclude(completed_at=None).all()
         serializer = AgentSerializer(completed_agents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -21,9 +21,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
     def get_or_create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
 
-        next_agent = dataset.agent_set.filter(completed=None).first()
+        next_agent = dataset.agent_set.filter(completed_at=None).first()
         if not next_agent:
-            last_completed_agent = dataset.agent_set.exclude(completed=None).last()
+            last_completed_agent = dataset.agent_set.exclude(completed_at=None).last()
             print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
@@ -70,7 +70,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
-    filterset_fields = ['created', 'completed', 'dataset', 'task']
+    filterset_fields = ['created_at', 'completed_at', 'dataset', 'task']
 
     @action(detail=True)
     def next_agent_message(self, request, *args, **kwargs):

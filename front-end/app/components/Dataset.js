@@ -70,7 +70,6 @@ const Dataset = ({ initialDatasetId }) => {
       const file = acceptedFiles[0];
       const formData = new FormData();
       formData.append('file', file);
-      
       fetch('http://localhost:8000/api/datasets/', {
         method: 'POST',
         body: formData
@@ -79,7 +78,8 @@ const Dataset = ({ initialDatasetId }) => {
       .then(data => {
         setDataset(data);
       })
-      // .catch(err => setError(err.message));
+      .then(() => refreshAgents())
+      .catch(err => setError(err.message));
     };
   
     useEffect(() => {
@@ -112,7 +112,7 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
         ) : (
         <div className="messages"><div className="message assistant-message">
-            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created).toLocaleString()}</h1>
+            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
         </div></div>
         )}
 

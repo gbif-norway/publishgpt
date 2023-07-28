@@ -55,16 +55,16 @@ class Python(OpenAIBaseModel):
         return f'`{code}` executed, result: {str(result)[:2000]}'
 
     def handle_table_backups(function_message, duplicates):
-        from api.models import Table, FunctionMessageTables
+        from api.models import Table, MessageTableAssociation
 
         # Check for newly created tables, and link to message
         for new_table in (function_message.agent.dataset.active_tables - duplicates):
-            function_message.function_tables.create(new_table, through_defaults={'operation': FunctionMessageTables.Operation.CREATE})
+            function_message.tables.create(new_table, through_defaults={'operation': MessageTableAssociation.Operation.CREATE})
         
         # Check for deleted tables, soft delete them and link them to the message
         for old_table in (duplicates - function_message.agent.dataset.active_tables):
             old_table.soft_delete()
-            function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.DELETE})
+            function_message.tables.create(old_table, through_defaults={'operation': MessageTableAssociation.Operation.DELETE})
 
         # Check for updated tables which haven't been soft deleted
         for old_table in Table.objects.get(dataset=function_message.agent.dataset, temporary_duplicate_of__isnull=False, deleted_at__isnull=True):
@@ -72,7 +72,7 @@ class Python(OpenAIBaseModel):
                 old_table.temporary_duplicate_of = None
                 old_table.stale_at = datetime.now()
                 old_table.save()
-                function_message.function_tables.create(old_table, through_defaults={'operation': FunctionMessageTables.Operation.UPDATE})
+                function_message.tables.create(old_table, through_defaults={'operation': MessageTableAssociation.Operation.UPDATE})
             else:
                 old_table.delete()
 
@@ -85,7 +85,7 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
         from api.models import Agent
         try:
             agent = Agent.objects.get(id=self.agent_id)
-            agent.completed = datetime.now()
+            agent.completed_at = datetime.now()
             agent.save()
             # result = f"Task marked as complete for agent id {self.agent_id} ."
             return None

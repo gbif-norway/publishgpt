@@ -33,11 +33,11 @@ class Dataset(models.Model):
     
     @property
     def active_tables(self):
-        Table.objects.filter(dataset=self, deleted_at__isnull=True, stale_at__isnull=True)
+        return Table.objects.filter(dataset=self, deleted_at=None, stale_at=None, temporary_duplicate_of=None)
     
     class Meta:
-        get_latest_by = 'created'
-        ordering = ['created']
+        get_latest_by = 'created_at'
+        ordering = ['created_at']
 
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
@@ -54,14 +54,14 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
     def create_agents_with_system_messages(self, dataset:Dataset):
-        active_tables = Table.objects.filter(dataset=dataset, deleted=None)
+        active_tables = dataset.active_tables
         agents = []
         if self.per_table:  # One agent per table
             for table in active_tables:
                 agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=[table])
                 agents.append(agent)
         else:  # One agent for all the tables
-            agent = Agent.create_with_system_message(dataset=dataset, task=self, table=active_tables)
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=active_tables)
             agents.append(agent)
 
         return agents
@@ -78,11 +78,11 @@ class Agent(models.Model):
         return [getattr(agent_tools, f) for f in self.task.functions]
 
     class Meta:
-        get_latest_by = 'created'
-        ordering = ['created']
+        get_latest_by = 'created_at'
+        ordering = ['created_at']
 
     def get_next_assistant_message_for_user(self):
-        if self.completed:
+        if self.completed_at is not None:
             return None
         
         last_message = self.message_set.last()
@@ -96,7 +96,9 @@ class Agent(models.Model):
         agent = cls.objects.create(**kwargs)
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
-        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+        system_message = Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+        for table in tables:
+            MessageTableAssociation.objects.create(message=system_message, table=table)
         return agent
 
     def run(self, current_call=0, max_calls=10):
@@ -180,7 +182,7 @@ class Table(models.Model):
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
-    content = models.CharField(max_length=9000, blank=True)
+    content = models.CharField(max_length=10000, blank=True)
     faked = models.BooleanField(default=False)
 
     class Role(models.TextChoices):
@@ -192,7 +194,9 @@ class Message(models.Model):
 
     # Only for 'function' role messages
     function_name = models.CharField(max_length=200, blank=True)
-    function_tables = models.ManyToManyField(Table, through='FunctionMessageTables', blank=True)
+
+    # For system and function messages
+    tables = models.ManyToManyField(Table, through='MessageTableAssociation', blank=True)
 
     @property
     def openai_schema(self):
@@ -201,11 +205,11 @@ class Message(models.Model):
         return { 'content': self.content, 'role': self.role }
 
     class Meta:
-        get_latest_by = 'created'
-        ordering = ['created']
+        get_latest_by = 'created_at'
+        ordering = ['created_at']
 
 
-class FunctionMessageTables(models.Model):
+class MessageTableAssociation(models.Model):
     message = models.ForeignKey(Message, on_delete=models.CASCADE)
     table = models.ForeignKey(Table, on_delete=models.CASCADE)
 
@@ -213,7 +217,7 @@ class FunctionMessageTables(models.Model):
         CREATE = 'c'
         UPDATE = 'u'
         DELETE = 'd'
-    operation = models.CharField(max_length=1, choices=Operation.choices)
+    operation = models.CharField(max_length=1, choices=Operation.choices, null=True, blank=True)
 
 
 class Metadata(models.Model):

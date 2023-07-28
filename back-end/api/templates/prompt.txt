@@ -4,13 +4,12 @@ NOTE! Users are field biologists and ecologists with no knowledge of data scienc
 A user has uploaded a spreadsheet {{ agent.dataset.filename }} containing {{ agent.dataset.table_set.count }} sheet{{ agent.dataset.table_set.count|pluralize }}, which {{ agent.dataset.table_set.count|pluralize:"has,have each" }} been converted into a pandas dataframe with dtype='str', header=None. In this system, dataframes are stored in the `df` field of a Django model called Table, which is associated with a Dataset model:
 
 class Dataset(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 class Table(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True) # Name of spreadsheet
     df = PickledObjectField() # Contains dataframe
-    deleted = models.DateTimeField(null=True, blank=True) # IMPORTANT - do table_obj.soft_delete() to delete an unnecessary dataframe
 
 Currently, you are working on preprocessing:
 --- {% for table in agent_tables %}Table id {{ table.id }} - sheet name {{ table.title }}. Snapshot of `Table.objects.get(id={{ table.id }}).df`:

@@ -1,4 +1,4 @@
-from api.models import Dataset, Table, Agent, Message, Task
+from api.models import Dataset, Table, Agent, Message, Task, MessageTableAssociation
 from rest_framework import serializers
 import pandas as pd
 from api.helpers.df_helpers import trim_dataframe, extract_sub_tables
@@ -12,7 +12,15 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'per_table']
 
 
+class MessageTableAssociationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageTableAssociation
+        fields = '__all__'
+
+
 class MessageSerializer(serializers.ModelSerializer):
+    tables = MessageTableAssociationSerializer(source='messagetableassociation_set', many=True, read_only=True)
+
     class Meta:
         model = Message
         fields = '__all__'
@@ -55,7 +63,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             agent = task.create_agents_with_system_messages(dataset)[0]  # Only 1 agent should get created per sheet for this task
                 
             if len(distinct_tables) == 1:
-                agent.completed = datetime.now()
+                agent.completed_at = datetime.now()
                 agent.save()
             else:
                 Message.objects.create(agent=agent, function_name='ExtractSubTables', role=Message.Role.FUNCTION, content=distinct_tables) 
@@ -64,7 +72,7 @@ class DatasetSerializer(serializers.ModelSerializer):
                     snapshots = snapshots[0:4000] + '\n...'
                 explain_extracted_subtables = 'I just had a look at your spreadsheet "{title}". An important step in publishing your data is separating out each table so we can handle them separately. Based on the empty rows & columns which appear to be acting as "dividers", it looks like it actually contains {len} different, separate tables:\n{snapshots}\n\nIs this correct? Please let me know: a) if there are any separate sub-tables I missed which should be split off, and b) if there are any sub-tables that were incorrectly split, which should actually be joined to other sub-tables. '
                 text = explain_extracted_subtables.format(title=sheet_name, len=len(distinct_tables), snapshots=snapshots)
-                Message.objects.create(agent=agent, role=Message.Role.ASSISTANT, content=text, display_to_user=True)  
+                Message.objects.create(agent=agent, role=Message.Role.ASSISTANT, content=text)  
         
         return dataset
 
@@ -74,6 +82,5 @@ class TableSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Table
-        fields = fields = ['id', 'created', 'dataset', 'title', 'df_str', 'description', 'problems', 'deleted', 'df_json']
+        fields = ['id', 'created_at', 'dataset', 'title', 'df_str', 'description', 'deleted_at', 'stale_at', 'df_json']
 
-    
