@@ -143,6 +143,7 @@ class Table(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     stale_at = models.DateTimeField(null=True, blank=True)
     temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True)
+    # Could have 'update_of' foreign key to self, in order to at least try and track a little bit of changes?
 
     @property
     def df_json(self):

@@ -10,9 +10,9 @@ from datetime import datetime
 
 class Python(OpenAIBaseModel):
     """
-    Run python code with access to pandas (pd), numpy (np), and Django database ORM models `Table` and `Dataset`
+    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and Django database ORM models `Table` and `Dataset`
     E.g. `df_obj = Table.objects.get(id=df_id); print(df_obj.df.to_string());`
-    Notes: - Do not edit objects, Use save() on instances to persist changes or create new objects e.g. `df_obj.save()` 
+    Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). A backup of all Table objects is made before running your code.
     - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
     - State does not persist - the slate is wiped clean every time this function is called. 
     """
@@ -67,7 +67,7 @@ class Python(OpenAIBaseModel):
             function_message.tables.create(old_table, through_defaults={'operation': MessageTableAssociation.Operation.DELETE})
 
         # Check for updated tables which haven't been soft deleted
-        for old_table in Table.objects.get(dataset=function_message.agent.dataset, temporary_duplicate_of__isnull=False, deleted_at__isnull=True):
+        for old_table in Table.objects.filter(dataset=function_message.agent.dataset, temporary_duplicate_of__isnull=False, deleted_at__isnull=True):
             if not old_table.df.equals(old_table.temporary_duplicate_of.df):
                 old_table.temporary_duplicate_of = None
                 old_table.stale_at = datetime.now()
