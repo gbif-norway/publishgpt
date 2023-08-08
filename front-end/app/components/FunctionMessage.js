@@ -4,6 +4,7 @@ import Collapse from 'react-bootstrap/Collapse';
 import TableModal from './TableModal';
 
 function FunctionMessage(message) {
+  console.log(message.message);
   const [open, setOpen] = useState(false);
   const [showTable, setShowTable] = useState(false);
   const [tableId, setTableId] = useState(null);
@@ -19,7 +20,7 @@ function FunctionMessage(message) {
         <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message.id}`} aria-expanded={open}>Show work</Button>
         <Collapse in={open}><div id={`collapseFor${message.id}`}>{message.content}</div></Collapse>
         Resulting tables - updated, deleted, created:&nbsp;
-        {message.tables.map(table => (
+        {message.message.tables.map(table => (
             <Button variant="info" size="sm" onClick={() => handleShowTable(table.id)}><i className="bi-table"></i>&nbsp;Table ID {table.id} ({table.sheet_name})</Button>
         ))}
     </div>

@@ -24,25 +24,20 @@ class Python(OpenAIBaseModel):
         old_stdout = sys.stdout
         new_stdout = StringIO()
         sys.stdout = new_stdout
-        result = ""
+        result = ''
         try:
             from api.models import Dataset, Table
 
             # Make identical duplicate of all the active tables, used for displaying changes to the user but also acts as backups
-            duplicates = []
-            for t in function_message.agent.dataset.active_tables:
-                t.temporary_duplicate_of(t.pk)
-                t.pk = None
-                t.save()
-                duplicates.append(t)
+            duplicate_ids = function_message.agent.dataset.backup_tables_and_get_ids()
 
             locals = {}
             globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np }
             exec(code, globals, locals)
             stdout_value = new_stdout.getvalue()
             
-            # Handle table backups
-            self.handle_table_backups(function_message, duplicates)
+            # Duplicate ids have to be passed to the backups, as it's not possible to retrieve them otherwise, unless the models are refactored... which perhaps it should be
+            self.handle_table_backups(function_message, duplicate_ids)
 
             if stdout_value:
                 result = stdout_value
@@ -54,25 +49,32 @@ class Python(OpenAIBaseModel):
             sys.stdout = old_stdout
         return f'`{code}` executed, result: {str(result)[:2000]}'
 
-    def handle_table_backups(function_message, duplicates):
+    @classmethod
+    def handle_table_backups(cls, function_message, duplicate_ids):
         from api.models import Table, MessageTableAssociation
 
-        # Check for newly created tables, and link to message
-        for new_table in (function_message.agent.dataset.active_tables - duplicates):
-            function_message.tables.create(new_table, through_defaults={'operation': MessageTableAssociation.Operation.CREATE})
-        
-        # Check for deleted tables, soft delete them and link them to the message
-        for old_table in (duplicates - function_message.agent.dataset.active_tables):
-            old_table.soft_delete()
-            function_message.tables.create(old_table, through_defaults={'operation': MessageTableAssociation.Operation.DELETE})
+        new_tables = function_message.agent.dataset.active_tables
+        duplicates = Table.objects.filter(id__in=duplicate_ids)
 
+        # Check for deleted tables, soft delete them and link them to the message
+        for old_table in duplicates.filter(temporary_duplicate_of=None):
+            old_table.soft_delete()
+            MessageTableAssociation.objects.create(table=old_table, message=function_message, operation=MessageTableAssociation.Operation.DELETE)
+
+        # Check for newly created tables, and link to message
+        for new_table in [t for t in new_tables if t.id not in duplicates.values_list('temporary_duplicate_of__id', flat=True)]:
+            MessageTableAssociation.objects.create(table=new_table, message=function_message, operation=MessageTableAssociation.Operation.CREATE)
+        
         # Check for updated tables which haven't been soft deleted
-        for old_table in Table.objects.filter(dataset=function_message.agent.dataset, temporary_duplicate_of__isnull=False, deleted_at__isnull=True):
-            if not old_table.df.equals(old_table.temporary_duplicate_of.df):
-                old_table.temporary_duplicate_of = None
+        remaining_tables = duplicates.exclude(temporary_duplicate_of=None)
+        for old_table in remaining_tables:
+            new_table = old_table.temporary_duplicate_of
+            if not old_table.df.equals(new_table.df):
+                old_table.temporary_duplicate_of = None  # Hmm... do we want to actually keep track of which table inherits from which?
                 old_table.stale_at = datetime.now()
                 old_table.save()
-                function_message.tables.create(old_table, through_defaults={'operation': MessageTableAssociation.Operation.UPDATE})
+                # MessageTableAssociation.objects.create(table=old_table, message=function_message, operation=MessageTableAssociation.Operation.UPDATE)
+                MessageTableAssociation.objects.create(table=new_table, message=function_message, operation=MessageTableAssociation.Operation.UPDATE)
             else:
                 old_table.delete()
 
@@ -87,8 +89,8 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent = Agent.objects.get(id=self.agent_id)
             agent.completed_at = datetime.now()
             agent.save()
-            # result = f"Task marked as complete for agent id {self.agent_id} ."
-            return None
+            print('Marking as complete...')
+            return f'Task marked as complete for agent id {self.agent_id} .'
         except Exception as e:
             return repr(e)[:2000]
 

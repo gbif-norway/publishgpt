@@ -8,7 +8,6 @@ const Home = () => {
     <div className="col-lg-8 mx-auto p-4 py-md-5">
       <main>
         <Dataset initialDatasetId={null} />
-        {/* other elements... 20*/}
       </main>
     </div>
   );

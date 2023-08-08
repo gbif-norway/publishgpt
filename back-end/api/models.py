@@ -35,6 +35,15 @@ class Dataset(models.Model):
     def active_tables(self):
         return Table.objects.filter(dataset=self, deleted_at=None, stale_at=None, temporary_duplicate_of=None)
     
+    def backup_tables_and_get_ids(self):
+        backup_ids = []
+        for t in self.active_tables:
+            t.temporary_duplicate_of_id = t.id
+            t.id = None
+            t.save()
+            backup_ids.append(t.id)
+        return backup_ids
+
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
@@ -106,21 +115,19 @@ class Agent(models.Model):
         
         # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
         message_content = response['choices'][0]['message'].get('content')
-        message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
+        if message_content:
+            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
 
         function_name, function_args = openai_function_details(response)
         if function_name:
-            if function_name_in_text(self.task.functions, message_content):
-                message = Message.objects.create(agent=self, role=Message.Role.USER, content='Please respond with a function call, not text.', faked=True)
-                return self.run(current_call=current_call+1, max_calls=max_calls)
-
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name)
             function_result = self.run_function(function_name, function_args, function_message)
+            print(f'Function result: {function_result}')
             function_message.content = function_result
             function_message.save()
         
-            # If there is a function result, we need to feed it back to GPT4, otherwise it has set the agent to be complete
-            if function_result:
+            # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
+            if function_name != agent_tools.SetAgentTaskToComplete.__name__:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
 
         return message
@@ -142,15 +149,16 @@ class Table(models.Model):
     description = models.CharField(max_length=2000, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     stale_at = models.DateTimeField(null=True, blank=True)
-    temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True)
+    temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True) 
     # Could have 'update_of' foreign key to self, in order to at least try and track a little bit of changes?
+    # Or... an alternative and slightly scary thought... maybe remove the fk constraint and just store the pk as an int?
 
     @property
     def df_json(self):
         return self.df.to_json(orient='records', date_format='iso')
 
     def soft_delete(self):
-        self.deleted = datetime.now()
+        self.deleted_at = datetime.now()
         self.save()
     
     def _snapshot_df(self):
