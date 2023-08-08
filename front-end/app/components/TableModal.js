@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-bootstrap/Modal';
 import DataTable from 'react-data-table-component';
 import Button from 'react-bootstrap/Button';
-
+ 
 const TableModal = ({ showTable, handleCloseTable, table_id }) => {
     const [tableData, setTableData] = useState([]);
     const [tableColumns, setTableColumns] = useState([]);
@@ -26,20 +26,15 @@ const TableModal = ({ showTable, handleCloseTable, table_id }) => {
     };
 
     return (
-        <Modal show={showTable} onHide={handleCloseTable} size="lg">
-            <Modal.Header closeButton>
-                <Modal.Title>Modal heading</Modal.Title>
+        <Modal show={showTable} onHide={(event) => handleCloseTable(event)} size="lg">
+            <Modal.Header>
+                <Modal.Title>Table {table_id}</Modal.Title>
             </Modal.Header>
             <Modal.Body>
                 <DataTable columns={tableColumns} data={tableData} pagination dense />
             </Modal.Body>
             <Modal.Footer>
-                <Button variant="secondary" onClick={handleCloseTable}>
-                    Close
-                </Button>
-                <Button variant="primary" onClick={handleCloseTable}>
-                    Save Changes
-                </Button>
+                <Button onClick={(event) => handleCloseTable(event)}>Close</Button>
             </Modal.Footer>
         </Modal>
     );

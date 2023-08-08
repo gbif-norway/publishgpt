@@ -129,6 +129,8 @@ class Agent(models.Model):
             # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
             if function_name != agent_tools.SetAgentTaskToComplete.__name__:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
+            else:
+                message = function_message
 
         return message
     

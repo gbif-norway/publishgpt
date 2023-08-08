@@ -2,6 +2,7 @@ import Message from './Message';
 import { useState, useEffect, useRef } from 'react';
 import Accordion from 'react-bootstrap/Accordion';
 import Badge from 'react-bootstrap/Badge';
+import TableAssociations from './TableAssociations';
 
 
 const Agent = ({ agent, refreshAgents }) => {
@@ -21,19 +22,20 @@ const Agent = ({ agent, refreshAgents }) => {
       }
     };
 
-    const getNextMessage = async () => {
-      try {
-        const response = await fetch(`http://localhost:8000/api/agents/${agent.id}/next_agent_message`);
-        const data = await response.json();
-        if (data.id) {
-          updateMessages();
-        } else {
-          setIsComplete(true);
-          refreshAgents();
-        }
-      } catch (error) {
-        console.error("Error:", error);
-      }
+    const getNextMessage = () => {
+      return new Promise((resolve, reject) => {
+        fetch(`http://localhost:8000/api/agents/${agent.id}/next_agent_message`)
+          .then(response => response.json())
+          .then(data => {
+            updateMessages().then(resolve);
+            if (data.id && data.function_name == "SetAgentTaskToComplete") {
+              console.log('Setting is complete and calling refreshAgents');
+              setIsComplete(true);
+              refreshAgents();
+            }
+          })
+          .catch(reject);
+      });
     }
 
     const handleUserInput = (event) => {
@@ -75,16 +77,16 @@ const Agent = ({ agent, refreshAgents }) => {
       <>
         <Accordion.Item eventKey={agent.id}>
           <Accordion.Header>
-            Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
+            {agent.id} / Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
             {isComplete && (
             <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
             )}
+            &nbsp;
+            <TableAssociations key={messages[0].id} associations={messages[0].message_table_associations} />
           </Accordion.Header>
           <Accordion.Body>
 
-          {messages.filter(function(message) { 
-            return !(message.faked || message.role == 'system') 
-          }).map((message) => (
+          {messages.filter(function(message) { return message.role != 'system' }).map((message) => (
             <Message key={message.id} message={message} />
           ))}
           
