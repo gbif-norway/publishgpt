@@ -1,7 +1,7 @@
 - model: api.task
   fields:
     name: extract_subtables
-    per_table: false
+    per_table: true
     text: >
       Separate out any sub tables in this dataframe into new, separate Tables. 
 

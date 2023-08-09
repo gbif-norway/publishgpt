@@ -1,6 +1,4 @@
 import numpy as np
-import pandas as pd
-from skimage.measure import label, regionprops
 
 def trim_dataframe(df):
     # Replace empty spaces with NaN
@@ -18,24 +16,6 @@ def trim_dataframe(df):
         trimmed_df = trimmed_df.drop(trimmed_df.columns[0], axis=1)
 
     return trimmed_df.fillna('')
-
-def extract_sub_tables_based_on_null_boundaries(df):
-    larr = label(np.array(df.notnull()).astype("int"))
-    dfs = []
-    for s in regionprops(larr):
-        sub_df = df.iloc[s.bbox[0]:s.bbox[2], s.bbox[1]:s.bbox[3]]
-        dfs.append(sub_df)
-
-    # Start from the second last dataframe and work up to the first
-    for i in range(len(dfs) - 2, -1, -1):
-        # If the dataframe has only 1 or 2 rows and the number of columns matches
-        if len(dfs[i]) <= 2 and dfs[i].shape[1] == dfs[i + 1].shape[1]:
-            # Append it to the dataframe below it
-            dfs[i + 1] = pd.concat([dfs[i], dfs[i + 1]]).reset_index(drop=True)
-            # Remove the merged dataframe from the list
-            del dfs[i]
-    
-    return [df.reset_index(drop=True) for df in dfs]
 
 def extract_sub_tables(df, min_rows=2):
     all_null_rows = df.isnull().all(axis=1)

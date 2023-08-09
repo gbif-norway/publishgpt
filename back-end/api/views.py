@@ -8,22 +8,15 @@ from rest_framework.decorators import action
 class DatasetViewSet(viewsets.ModelViewSet):
     queryset = Dataset.objects.all()
     serializer_class = DatasetSerializer
-    filterset_fields = ['created', 'orcid']
+    filterset_fields = ['created_at', 'orcid']
 
     @action(detail=True)
-    def completed_agents(self, request, *args, **kwargs):
-        dataset = self.get_object()
-        completed_agents = dataset.agent_set.exclude(completed=None).all()
-        serializer = AgentSerializer(completed_agents, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @action(detail=True)
-    def get_or_create_next_agent(self, request, *args, **kwargs):
+    def create_next_agent(self, request, *args, **kwargs):
         dataset = self.get_object()
 
-        next_agent = dataset.agent_set.filter(completed=None).first()
+        next_agent = dataset.agent_set.filter(completed_at=None).first()
         if not next_agent:
-            last_completed_agent = dataset.agent_set.exclude(completed=None).last()
+            last_completed_agent = dataset.agent_set.exclude(completed_at=None).last()
             print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 last_task_id = last_completed_agent.task.id
@@ -33,7 +26,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 if next_task:
                     next_task.create_agents_with_system_messages(dataset=dataset)
                     print('recursing')
-                    return self.get_or_create_next_agent(request)
+                    return self.create_next_agent(request)
                 else:
                     return Response('ALL TASKS COMPLETE', status=status.HTTP_200_OK)
             else:
@@ -41,11 +34,12 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         next_message = next_agent.get_next_assistant_message_for_user()
         if next_message is None:
-            return self.get_or_create_next_agent(request)
+            return self.agents(request)
         print('next agent about to be returned')
         # import pdb; pdb.set_trace()
-        next_agent.refresh_from_db()
-        serializer = AgentSerializer(next_agent)
+        dataset.refresh_from_db()
+
+        serializer = AgentSerializer(dataset.agent_set, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -70,7 +64,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
-    filterset_fields = ['created', 'completed', 'dataset', 'task']
+    filterset_fields = ['created_at', 'completed_at', 'dataset', 'task']
 
     @action(detail=True)
     def next_agent_message(self, request, *args, **kwargs):
@@ -79,4 +73,4 @@ class AgentViewSet(viewsets.ModelViewSet):
         if next_assistant_message:
             serializer = MessageSerializer(next_assistant_message)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response({'id': None}, status=status.HTTP_200_OK)  # This should happen only when the dataset is ready for publication
+        return Response({'id': None}, status=status.HTTP_200_OK) 

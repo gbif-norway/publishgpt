@@ -11,27 +11,31 @@ const Dataset = ({ initialDatasetId }) => {
     const [loadingMessage, setLoadingMessage] = useState("Working...");
     const [activeAgentKey, setActiveAgentKey] = useState(null);
 
-    const fetchCompletedAgents = useCallback((datasetId) => {
-      return fetch(`http://localhost:8000/api/datasets/${datasetId}/completed_agents`)
-        .then(response => response.json())
-        .then(completed_agents => {
-          setAgents(completed_agents);
-        });
-    }, []);
-
     const refreshAgents = useCallback(() => {
-      setIsLoading(true);
-      fetchCompletedAgents(dataset.id)
-      .then(() => {
-        fetch(`http://localhost:8000/api/datasets/${dataset.id}/get_or_create_next_agent`)
-          .then(response => response.json())
-          .then(next_agent => { 
-            setAgents(prevAgents => [...prevAgents, next_agent]);
+      return fetch(`http://localhost:8000/api/agents?dataset=${dataset.id}`)
+        .then(response => response.json())
+        .then(agents => {
+          console.log('refresh agents called');
+          console.log(agents);
+          var last_non_complete_agent_index = agents.findIndex(agent => agent.completed_at === null);
+          if(last_non_complete_agent_index === -1) {
+            setAgents(agents);
+            fetch(`http://localhost:8000/api/datasets/${dataset.id}/create_next_agent`)
+              .then(response => response.json())
+              .then(created => { 
+                if(created == null) { console.log('ALL TASKS COMPLETE'); }
+                else { refreshAgents(); }
+              })
+          }
+          else {
+            var visible_agents = agents.slice(0, last_non_complete_agent_index + 1);
             setIsLoading(false);
-            setActiveAgentKey(next_agent.id);
-          });
-      })
-    }, [fetchCompletedAgents, dataset]);
+            setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
+            setAgents(visible_agents);
+          }
+        });
+    }, [dataset]);
+
 
     useEffect(() => {
       if (isLoading) {
@@ -40,7 +44,7 @@ const Dataset = ({ initialDatasetId }) => {
         }, 5000);
 
         const interval = setInterval(() => {
-          fetchCompletedAgents(dataset.id);
+          refreshAgents(dataset.id);
         }, 3000);
 
         return () => {
@@ -50,7 +54,7 @@ const Dataset = ({ initialDatasetId }) => {
       } else {
         setLoadingMessage("Working...");
       }
-    }, [isLoading, fetchCompletedAgents, dataset]);
+    }, [isLoading, refreshAgents, dataset]);
 
 
     // fetch dataset and first agent if initialDatasetId is provided
@@ -70,7 +74,6 @@ const Dataset = ({ initialDatasetId }) => {
       const file = acceptedFiles[0];
       const formData = new FormData();
       formData.append('file', file);
-      
       fetch('http://localhost:8000/api/datasets/', {
         method: 'POST',
         body: formData
@@ -79,7 +82,8 @@ const Dataset = ({ initialDatasetId }) => {
       .then(data => {
         setDataset(data);
       })
-      // .catch(err => setError(err.message));
+      .then(() => refreshAgents())
+      .catch(err => setError(err.message));
     };
   
     useEffect(() => {
@@ -112,7 +116,7 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
         ) : (
         <div className="messages"><div className="message assistant-message">
-            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created).toLocaleString()}</h1>
+            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
         </div></div>
         )}
 
