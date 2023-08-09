@@ -27,12 +27,15 @@ const Agent = ({ agent, refreshAgents }) => {
         fetch(`http://localhost:8000/api/agents/${agent.id}/next_agent_message`)
           .then(response => response.json())
           .then(data => {
-            updateMessages().then(resolve);
-            if (data.id && data.function_name == "SetAgentTaskToComplete") {
-              console.log('Setting is complete and calling refreshAgents');
-              setIsComplete(true);
-              refreshAgents();
-            }
+            updateMessages().then(() => {
+              if (data.id && data.function_name == "SetAgentTaskToComplete") {
+                console.log('Setting is complete and calling refreshAgents');
+                setIsComplete(true);
+                refreshAgents().then(resolve);
+              } else {
+                resolve();
+              }
+            });
           })
           .catch(reject);
       });
@@ -77,7 +80,7 @@ const Agent = ({ agent, refreshAgents }) => {
       <>
         <Accordion.Item eventKey={agent.id}>
           <Accordion.Header>
-            {agent.id} / Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
+            Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
             {isComplete && (
             <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
             )}

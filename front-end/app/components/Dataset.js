@@ -20,11 +20,11 @@ const Dataset = ({ initialDatasetId }) => {
           var last_non_complete_agent_index = agents.findIndex(agent => agent.completed_at === null);
           if(last_non_complete_agent_index === -1) {
             setAgents(agents);
-            fetch(`http://localhost:8000/api/datasets/${dataset.id}/create_next_agent`)
+            return fetch(`http://localhost:8000/api/datasets/${dataset.id}/create_next_agent`)
               .then(response => response.json())
               .then(created => { 
                 if(created == null) { console.log('ALL TASKS COMPLETE'); }
-                else { refreshAgents(); }
+                else { return refreshAgents(); }
               })
           }
           else {
@@ -35,7 +35,6 @@ const Dataset = ({ initialDatasetId }) => {
           }
         });
     }, [dataset]);
-
 
     useEffect(() => {
       if (isLoading) {

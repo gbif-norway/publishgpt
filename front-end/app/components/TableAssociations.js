@@ -19,7 +19,7 @@ function TableAssociations({ associations }) {
     <>
     {associations.map(a => (
     <><Button variant="info" size="sm" key={a.table.id} onClick={(event) => handleShowTable(event, a.table.id)}>
-        <i className="bi-table"></i>&nbsp;{a.table.title} (Table ID {a.table.id} - {a.operation})
+        <i className="bi-table"></i>&nbsp;{a.table.title} ( Table ID {a.table.id} {a.operation})
     </Button>&nbsp;</>
     ))}
     {showTable && <TableModal showTable={showTable} table_id={tableId} handleCloseTable={handleCloseTable} />}
