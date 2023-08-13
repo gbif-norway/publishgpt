@@ -10,6 +10,7 @@ function FunctionMessage({ message }) {
 
   if (!message.content && message.message_table_associations.length === 0) { return null; }
   if (message.function_name == 'SetAgentTaskToComplete') { return null; }
+  var content = message.content.replace('` executed, result:', '\n').replace('`', '')
 
   return (
     <div className={`message function-message`}>
@@ -17,8 +18,8 @@ function FunctionMessage({ message }) {
           <>
             <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message.id}`} aria-expanded={open}>Show work</Button>
             <Collapse in={open}>
-            <div id={`collapseFor${message.id}`}>
-              <CodeBlock text={message.content} language="python" theme={dracula} />
+              <div id={`collapseFor${message.id}`}>
+                <CodeBlock text={content} language="python" theme={dracula} />
               </div>
             </Collapse>
           </>
