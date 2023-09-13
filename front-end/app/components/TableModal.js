@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-bootstrap/Modal';
 import DataTable from 'react-data-table-component';
 import Button from 'react-bootstrap/Button';
- 
+import config from '../config.js';
+
 const TableModal = ({ showTable, handleCloseTable, table_id }) => {
     const [tableData, setTableData] = useState([]);
     const [tableColumns, setTableColumns] = useState([]);
@@ -12,9 +13,9 @@ const TableModal = ({ showTable, handleCloseTable, table_id }) => {
     }, [table_id]);
 
     const fetchTableData = (table_id) => {
-        fetch(`http://localhost:8000/api/tables/${table_id}`)
+        fetch(`${config.baseApiUrl}/pi/tables/${table_id}`)
         .then(response => response.json())
-        .then(df => { 
+        .then(df => {
             const df_json = JSON.parse(df.df_json);
             const columns = Object.keys(df_json[0]).map((column) => ({
                 name: column,
