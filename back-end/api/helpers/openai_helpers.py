@@ -7,7 +7,7 @@ from pprint import pprint
 from api import agent_tools
 
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0, model='gpt-4'): # gpt-3.5-turbo
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4'): # gpt-3.5-turbo
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
