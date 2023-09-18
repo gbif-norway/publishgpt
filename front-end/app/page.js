@@ -7,7 +7,7 @@ const Home = () => {
   return (
     <div className="col-lg-8 mx-auto p-4 py-md-5">
       <main>
-        <Dataset initialDatasetId={20} />
+        <Dataset initialDatasetId={null} />
       </main>
     </div>
   );
