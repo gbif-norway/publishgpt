@@ -44,9 +44,10 @@ class Python(OpenAIBaseModel):
     """
     Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and Django database ORM models `Table` and `Dataset`
     E.g. `df_obj = Table.objects.get(id=df_id); print(df_obj.df.to_string());`
-    Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). A backup of all Table objects is made before running your code, so it is possible to roll back.
+    Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). 
     - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
-    - IMPORTANT: State does not persist - Every time this function is called, the slate is wiped clean and you will not have access to any objects created previously.
+    - IMPORTANT NOTE #1: State does not persist - Every time this function is called, the slate is wiped clean and you will not have access to any objects created previously.
+    - IMPORTANT NOTE #2: If you merge or create a new Table based on old Tables, tidy up after yourself and delete any irrelevant/out of date Tables.
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 
