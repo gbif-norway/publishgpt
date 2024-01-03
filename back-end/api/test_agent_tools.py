@@ -68,7 +68,7 @@ class TestHandleTableBackups(TestCase):
         self.assertTrue(tables[0].deleted_at != None)
         self.assertTrue(MessageTableAssociation.objects.filter(message=self.message, table=tables[0], operation=MessageTableAssociation.Operation.DELETE).exists())
 
-    def test_handle_edits(self):
+    def test_edits(self):
         duplicates = self.dataset.backup_tables_and_get_ids()
         self.table1.df = pd.DataFrame(['updated data'])
         self.table1.save()
@@ -85,7 +85,6 @@ class TestHandleTableBackups(TestCase):
 
         # There should be a new table with the new dataframe 
         new_table = tables.exclude(id=self.table1.id).first()
-        # new_tables = self.function_message.agent.dataset.active_tables
         assert_frame_equal(new_table.df, pd.DataFrame(['updated data']))
 
         # Check the many-to-many link

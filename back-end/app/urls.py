@@ -20,12 +20,16 @@ from rest_framework import routers
 from api import views as api_views
 from drf_spectacular.views import SpectacularAPIView
 from website import views
+from django.conf import settings
+from django.conf.urls.static import static
+
 
 router = routers.DefaultRouter()
 router.register(r'datasets', api_views.DatasetViewSet)
 router.register(r'tables', api_views.TableViewSet)
 router.register(r'messages', api_views.MessageViewSet)
 router.register(r'agents', api_views.AgentViewSet)  
+router.register(r'message-table-associations', api_views.MessageTableAssociationViewSet)  
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -35,3 +39,5 @@ urlpatterns = [
     path('chat/', views.Chat.as_view(), name='chat_create'),
     path('chat/<int:pk>/', views.DatasetDetailView.as_view(), name='chat_detail'),
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

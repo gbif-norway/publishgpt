@@ -8,17 +8,21 @@
     padding-top: 40px;
     padding-bottom: 30px;
     cursor: pointer;
+    background-color: black;
 }
+p.intro { font-size: 1.5em; font-weight: bold }
 .messages { margin: 0 }
 .message {
     padding: 15px;
     border-radius: 10px;
     margin: 10px 0;
 }
+.assistant-message, .user-message { display: flex; }
 .assistant-message {
-    background-color: rgb(196 255 122 / 10%);
+    background-color: rgb(196 255 122 / 15%);
 }
 .user-message { background-color: rgb(178 194 255 / 10%) }
+.avatar img { width: 40px; height: 40px; margin-right: 20px; }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
 .complete h2 { color: #c0d6c5 } 

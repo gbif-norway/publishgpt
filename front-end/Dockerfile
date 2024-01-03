@@ -5,6 +5,6 @@ WORKDIR /app
 #COPY . ./
 #CMD ["npm", "start"]
 #EXPOSE 3000
-CMD ["tail", "-f", "/dev/null"]
+# CMD ["tail", "-f", "/dev/null"]
 
 # npm run dev

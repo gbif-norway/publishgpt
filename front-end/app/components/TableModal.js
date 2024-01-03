@@ -13,7 +13,7 @@ const TableModal = ({ showTable, handleCloseTable, table_id }) => {
     }, [table_id]);
 
     const fetchTableData = (table_id) => {
-        fetch(`${config.baseApiUrl}/pi/tables/${table_id}`)
+        fetch(`${config.baseApiUrl}/api/tables/${table_id}`)
         .then(response => response.json())
         .then(df => {
             const df_json = JSON.parse(df.df_json);

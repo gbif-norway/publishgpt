@@ -2,12 +2,14 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import openai_function_details, function_name_in_text, create_chat_completion
+from api.helpers.openai_helpers import openai_function_details, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
 from datetime import datetime
 from django.template.loader import render_to_string
 from os import path
+from django.dispatch import receiver
+from django.db.models.signals import pre_save
 
 
 class Dataset(models.Model):
@@ -95,6 +97,7 @@ class Agent(models.Model):
             return None
         
         last_message = self.message_set.last()
+        # import pdb; pdb.set_trace()
         if last_message.role == Message.Role.ASSISTANT:
             return last_message
         
@@ -104,7 +107,10 @@ class Agent(models.Model):
     def create_with_system_message(cls, tables, **kwargs):
         agent = cls.objects.create(**kwargs)
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
+        if agent.task.name == 'mapping':
+            system_message_text += render_to_string('dwc.txt')
         print(system_message_text)
+
         system_message = Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         for table in tables:
             MessageTableAssociation.objects.create(message=system_message, table=table)
@@ -117,6 +123,7 @@ class Agent(models.Model):
         message_content = response['choices'][0]['message'].get('content')
         if message_content:
             message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
+            print('message created')
 
         function_name, function_args = openai_function_details(response)
         if function_name:
@@ -157,7 +164,10 @@ class Table(models.Model):
 
     @property
     def df_json(self):
-        return self.df.to_json(orient='records', date_format='iso')
+        try:
+            return self.df.to_json(orient='records', date_format='iso')
+        except ValueError:
+            self.df = self.df
 
     def soft_delete(self):
         self.deleted_at = datetime.now()
@@ -188,6 +198,17 @@ class Table(models.Model):
     def str_snapshot(self):
         original_rows, original_cols = self.df.shape
         return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
+
+@receiver(pre_save, sender=Table)
+def rename_duplicate_columns(sender, instance, **kwargs):
+    df = instance.df
+
+    cols = pd.Series(df.columns)
+    for dup in cols[cols.duplicated()].unique():
+        cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup for i in range(sum(cols == dup))]
+    df.columns = cols
+
+    instance.df = df
 
 
 class Message(models.Model):

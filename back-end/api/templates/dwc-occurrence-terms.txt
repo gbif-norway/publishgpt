@@ -1,0 +1,41 @@
+Term	Description	Example
+identificationQualifier	"A brief phrase or a standard term (""cf."", ""aff."") to express the determiner's doubts about the Identification"	"aff. agrifolia var. oxyadenia (for Quercus aff. agrifolia var. oxyadenia with accompanying values Quercus in genus, agrifolia in specificEpithet, oxyadenia in infraspecificEpithet, and var. in taxonRank)"
+identifiedBy	"A list (concatenated and separated) of names of people, groups, or organizations who assigned the Taxon to the subject"	"James L. Patton, Theodore Pappenfuss "
+identifiedByID	"A list (concatenated and separated) of the globally unique identifier for the person, people, groups, or organizations responsible for assigning the Taxon to the subject"	"https://orcid.org/0000-0002-1825-0097 (for an individual), https://orcid.org/0000-0002-1825-0097 "
+dateIdentified	The date on which the subject was determined as representing the Taxon	see eventDate examples
+identificationRemarks	Comments or notes about the Identification	Distinguished between Anthus correndera and Anthus hellmayri based on the comparative lengths of the claws.
+occurrenceID	"An identifier for the Occurrence, construct one using UUIDv4 if none exists"	"http://arctos.database.museum/guid/MSB:Mamm:233627, 000866d2-c177-4648-a200-ead4007051b9, urn:catalog:UWBM:Bird:89776"
+catalogNumber	An identifier (preferably unique) for the record within the data set or collection	"145732, 145732a, 2008.1334, R-4313"
+recordNumber	"An identifier given to the Occurrence at the time it was recorded. Often serves as a link between field notes and an Occurrence record, such as a specimen collector's number"	OPP 7101
+recordedBy	"A list (concatenated and separated) of names of people, groups, or organizations responsible for recording the original Occurrence. The primary collector or observer, especially one who applies a personal identifier (recordNumber), should be listed first"	José E. Crespo|Oliver P. Pearson 
+recordedByID	"A list (concatenated and separated) of the globally unique identifier for the person, people, groups, or organizations responsible for recording the original Occurrence"	https://orcid.org/0000-0002-1825-0097|https://orcid.org/0000-0002-1825-0097 
+individualCount	The number of individuals present at the time of the Occurrence	"0, 1, 25"
+organismQuantity	A number or enumeration value for the quantity of organisms	27 (organismQuantity) with individuals (organismQuantityType). 12.5 (organismQuantity) with % biomass (organismQuantityType). r (organismQuantity) with Braun Blanquet Scale (organismQuantityType). many (organismQuantity) with individuals (organismQuantityType).
+organismQuantityType	The type of quantification system used for the quantity of organisms	27 (organismQuantity) with individuals (organismQuantityType). 12.5 (organismQuantity) with %biomass (organismQuantityType). r (organismQuantity) with BraunBlanquetScale (organismQuantityType).
+sex	The sex of the biological individual(s) represented in the Occurrence	"female, male, hermaphrodite"
+lifeStage	The age class or life stage of the Organism(s) at the time the Occurrence was recorded	"zygote, larva, juvenile, adult, seedling, flowering, fruiting"
+reproductiveCondition	The reproductive condition of the biological individual represented in the Occurrence	"non-reproductive, pregnant, in bloom, fruit-bearing"
+behavior	The behavior shown by the subject at the time the Occurrence was recorded	"roosting, foraging, running"
+establishmentMeans	Statement about whether an organism or organisms have been introduced to a given place and time through the direct or indirect activity of modern humans	"native, nativeReintroduced, introduced, introducedAssistedColonisation, vagrant, uncertain"
+degreeOfEstablishment	"The degree to which an Organism survives, reproduces, and expands its range at the given place and time"	"native, captive, cultivated, released, failing, casual, reproducing, established, colonising, invasive, widespreadInvasive"
+occurrenceStatus	A statement about the presence or absence of a Taxon at a Location	"present, absent"
+preparations	A list (concatenated and separated) of preparations and preservation methods for a specimen	"fossil, photograph, DNA extract, skin "
+occurrenceRemarks	Comments or notes about the Occurrence	found dead on road
+organismID	An identifier for the Organism instance (as opposed to a particular digital record of the Organism). May be a globally unique identifier or an identifier specific to the data set	http://arctos.database.museum/guid/WNMU:Mamm:1249
+organismRemarks	Comments or notes about the Organism instance	One of a litter of six
+basisOfRecord	The specific nature of the data record	"PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, Event, HumanObservation, MachineObservation, Taxon, Occurrence, MaterialCitation"
+scientificName	"The full scientific name, with authorship and date information if known. When forming part of an Identification, this should be the name in lowest level taxonomic rank that can be determined"	Coleoptera (order). Vespertilionidae (family). Manis (genus). Ctenomys sociabilis (genus + specificEpithet)
+kingdom		"Animalia, Archaea, Bacteria, Chromista, Fungi, Plantae, Protozoa, Viruses"
+phylum		Chordata (phylum). Bryophyta (division).
+class		"Mammalia, Hepaticopsida"
+order		"Carnivora, Monocleales"
+family		"Felidae, Monocleaceae"
+subfamily		"Periptyctinae, Orchidoideae"
+genus		"Puma, Monoclea"
+subgenus	Values should include the genus to avoid homonym confusion	"Strobus, Amerigo"
+infragenericEpithet	The infrageneric part of a binomial name at ranks above species but below genus	"Abacetillus (for scientificName ""Abacetus (Abacetillus) ambiguus"")"
+specificEpithet	The name of the first or species epithet of the scientificName	"concolor, gottschei"
+infraspecificEpithet	"The name of the lowest or terminal infraspecific epithet of the scientificName, excluding any rank designation"	"concolor (for scientificName ""Puma concolor concolor"")"
+cultivarEpithet	"Part of the name of a cultivar, cultivar group or grex that follows the scientific name"	King Edward
+vernacularName	A common name	Andean Condor
+taxonRemarks	Comments or notes about the taxon or name	Examples: this name is a misspelling in common use

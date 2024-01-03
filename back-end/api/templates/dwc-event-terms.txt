@@ -1,0 +1,27 @@
+Term	Description	Example
+eventID	"An identifier for an Event (e.g. something that occurs at a place and time, e.g. an observation of an organism, a marine sample taken from a ship, etc)."	e54377f7-4452-4315-b676-40679b10c4d9
+parentEventID	Events can be nested - this is an identifier for the parent Event that groups this and potentially other events.	"A1 (parentEventID to identify the main Whittaker Plot in nested samples, each with its own eventID - A1:1, A1:2)."
+samplingProtocol	"The names of, references to, or descriptions of the methods or protocols used during an event"	"UV light trap, mist net, bottom trawl, ad hoc observation "
+sampleSizeValue	"A numeric value for a measurement of the size (time duration, length, area, or volume) of a sample in a sampling event"	5 for sampleSizeValue with metre for sampleSizeUnit.
+sampleSizeUnit	"The unit of measurement of the size (time duration, length, area, or volume) of a sample in a sampling event"	"minute, hour, day, metre, square metre, cubic metre"
+samplingEffort	The amount of effort expended during an Event	"40 trap-nights, 10 observer-hours, 10 km by foot, 30 km by car"
+eventDate	The date-time or interval during which an event occurred or was recorded. Not suitable for a time in a geological context	1906-06 (some time in June 1906). 1971 (some time in the year 1971). 2007-03-01T13:00:00Z/2008-05-11T15:30:00Z (some time during the interval between 1 March 2007 1pm UTC and 11 May 2008 3:30pm UTC). 1900/1909 (some time during the interval between the beginning of the year 1900 and the end of the year 1909). 2007-11-13/15 (some time in the interval between 13 November 2007 and 15 November 2007).
+habitat	A category or description of the habitat in which the Event occurred	"oak savanna, pre-cordilleran steppe"
+fieldNumber	An identifier given to the event in the field. Often serves as a link between field notes and the Event.	RV Sol 87-03-08
+fieldNotes	"One of a) an indicator of the existence of, b) a reference to (publication, URI), or c) the text of notes taken in the field about the Event"	Notes available in the Grinnell-Miller Library.
+eventRemarks	Comments or notes about the Event	After the recent rains the river was nearly at flood stage.
+waterBody	The name of the water body in which the Event occurred	"Indian Ocean, Hudson River, Lago Nahuel Huapi"
+countryCode	The standard code for the country in which the Event occurred	"AR, SV"
+locality	The specific description of the place where the Event occurred	"Bariloche, 25 km NNE via Ruta Nacional 40 (=Ruta 237), Queets Rainforest, Olympic National Park"
+minimumElevationInMeters	"The lower limit of the range of elevation (altitude, usually above sea level), in meters"	"-100, 802"
+maximumElevationInMeters	"The upper limit of the range of elevation (altitude, usually above sea level), in meters"	"-205, 1236"
+minimumDepthInMeters	"The lesser depth of a range of depth below the local surface, in meters"	"0, 100"
+maximumDepthInMeters	"The greater depth of a range of depth below the local surface, in meters"	"0, 200"
+locationRemarks	Comments or notes about the Location	under water since 2005
+decimalLatitude	"The geographic longitude (in decimal degrees, using the spatial reference system given in geodeticDatum) of the geographic center of the event"	-41.0983423
+decimalLongitude	See decimalLatitude	-121.1761111
+geodeticDatum	"The ellipsoid, geodetic datum, or spatial reference system (SRS) upon which the geographic coordinates given in decimalLatitude and decimalLongitude as based"	"EPSG:4326, WGS84, NAD27"
+coordinateUncertaintyInMeters	"The horizontal distance (in meters) from the given decimalLatitude and decimalLongitude describing the smallest circle containing the whole of the Location. Leave the value empty if the uncertainty is unknown, cannot be estimated, or is not applicable (because there are no coordinates). Zero is not a valid value for this term"	30 (reasonable lower limit on or after 2020-05-01 of a GPS reading under good conditions if the actual precision was not recorded at the time)
+footprintWKT	"A Well-Known Text (WKT) representation of the shape (footprint, geometry) that defines the Location. A Location may have both a point-radius representation (see decimalLatitude) and a footprint representation, and they may differ from each other"	"POLYGON ((10 20, 11 20, 11 21, 10 21, 10 20))"
+language	A language of the resource	"en (for English), es (for Spanish)"
+dynamicProperties	"A list of additional measurements, facts, characteristics, or assertions about the record. Meant to provide a mechanism for structured content"	"Examples: {""heightInMeters"":1.5}, {""natureOfID"":""expert identification"", ""identificationEvidence"":""cytochrome B sequence""}"

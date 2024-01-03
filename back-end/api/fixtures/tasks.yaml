@@ -31,7 +31,10 @@
     name: set_core_and_extensions
     per_table: false
     text: >  
-      Carefully examine the contents of each of these dataframes. Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
+      Carefully examine each of these dataframes, pay close attention to the column headers and the data they hold. Based on the data and the column headings, make a guess at what DwC core this dataset should use, and then discuss it with the user until you are both happy.
+      Available DwC cores: 
+      1. Event-occurrence core: for data related to the existence of an Organism at a particular place at a particular time. E.g. Vegetation plot samples, marine samples, observations of birds. Requires 2 dataframes (event & occurrence): one event -> many occurrences, with an eventID connecting the two. You can generate a v4 UUID as the eventIDs and occurrenceIDs.
+      2. Taxonomy core: for checklists of organisms considered by taxonomists to form a homogeneous unit. E.g. A checklist of red listed plants of South Africa, A checklist of birds for Northern Norway. Requires 1 dataframe.
 
 - model: api.task
   fields:

@@ -7,7 +7,10 @@ const Message = ({ message }) => {
                 <FunctionMessage key={message.id} message={message} />
             ) : (
             <div className={`message ${message.role}-message`}>
-                <div style={{ whiteSpace: 'pre-wrap' }}>
+                <div className="avatar">
+                    <img src={`http://localhost:8000/static/images/${message.role === 'assistant' ? 'bot.png' : 'user.png'}`}></img>
+                </div>
+                <div className="message-content" style={{ whiteSpace: 'pre-wrap' }}>
                     {message.content}
                 </div>
             </div>

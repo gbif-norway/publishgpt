@@ -20,6 +20,7 @@ const Dataset = ({ initialDatasetId }) => {
       .then(response => response.json())
       .then(agents => {
         console.log('refresh agents called');
+        // var agents = agents['results'];
         console.log(agents);
         var last_non_complete_agent_index = agents.findIndex(agent => agent.completed_at === null);
         if (last_non_complete_agent_index === -1) {
@@ -104,14 +105,20 @@ const Dataset = ({ initialDatasetId }) => {
         <div className="agent-task initialise">
           <div className="messages">
             <div className="message assistant-message">
-              I can help you publish your biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>. Let's start by taking a look at your data file.
-              <div {...getRootProps()} className="file-drop">
-                <input {...getInputProps()} />
-                {
-                  isDragActive ?
-                    <p>Drop the files here ...</p> :
-                    <p>Drag and drop some files here, or click to select files</p>
-                }
+              <div className="avatar">
+                <img src="http://localhost:8000/static/images/bot.png"></img>
+              </div>
+              <div>
+                <p className="intro">Hi! I'm a biodiversity data publishing bot. </p>
+                I can help you publish your biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>. Let's start by taking a look at your data file.
+                <div {...getRootProps()} className="file-drop">
+                  <input {...getInputProps()} />
+                  {
+                    isDragActive ?
+                      <p>Drop the files here ...</p> :
+                      <p>Drag and drop some files here, or click to select files</p>
+                  }
+                </div>
               </div>
             </div>
             {error && <div className="message assistant-message assistant-message-error">{error}</div>}

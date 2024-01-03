@@ -42,12 +42,12 @@ def extract_sub_tables(df, min_rows=2):
 
 class Python(OpenAIBaseModel):
     """
-    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and Django database ORM models `Table` and `Dataset`
+    Run python with `exec(code, globals=globals, {})`, where globals = pandas as pd, numpy as np, re, dateutil & Django models `Table` & `Dataset`. You cannot import other libraries.
     E.g. `df_obj = Table.objects.get(id=df_id); print(df_obj.df.to_string());`
-    Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). 
+    Notes: - Edit, delete or create new Table objects as required - remember to SAVE changes to the database (e.g. `df_obj.save()`). 
     - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
-    - IMPORTANT NOTE #1: State does not persist - Every time this function is called, the slate is wiped clean and you will not have access to any objects created previously.
-    - IMPORTANT NOTE #2: If you merge or create a new Table based on old Tables, tidy up after yourself and delete any irrelevant/out of date Tables.
+    - IMPORTANT NOTE #1: State does not persist - Every time this function is called, the slate is wiped clean, you will not have access to any objects created previously.
+    - IMPORTANT NOTE #2: If you merge or create a new Table based on old Tables, tidy up after yourself and delete any irrelevant/out of date Tables. A backup system may create old snapshot Tables after your code has run, these are also stored in this database. Therefore you should use `id` to load Tables again for future work. 
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 
@@ -60,12 +60,13 @@ class Python(OpenAIBaseModel):
         result = ''
         try:
             from api.models import Dataset, Table
+            import dateutil
 
             # Make identical duplicate of all the active tables, used for displaying changes to the user but also acts as backups
             duplicate_ids = function_message.agent.dataset.backup_tables_and_get_ids()
 
             locals = {}
-            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np }
+            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 're': re, 'dateutil': dateutil }
             exec(code, globals, locals)
             stdout_value = new_stdout.getvalue()
             

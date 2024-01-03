@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from api.serializers import DatasetSerializer, TableSerializer, MessageSerializer, AgentSerializer, TaskSerializer
-from api.models import Dataset, Table, Message, Agent, Task
+from api.serializers import DatasetSerializer, TableSerializer, MessageSerializer, AgentSerializer, TaskSerializer, MessageTableAssociationSerializer
+from api.models import Dataset, Table, Message, Agent, Task, MessageTableAssociation
 from rest_framework.response import Response
 from rest_framework.decorators import action 
 
@@ -58,6 +58,12 @@ class TaskViewSet(viewsets.ModelViewSet):
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
+    filterset_fields = '__all__'
+
+
+class MessageTableAssociationViewSet(viewsets.ModelViewSet):
+    queryset = MessageTableAssociation.objects.all()
+    serializer_class = MessageTableAssociationSerializer
     filterset_fields = '__all__'
 
 
