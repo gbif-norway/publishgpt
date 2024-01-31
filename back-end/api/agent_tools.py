@@ -88,8 +88,6 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent.completed_at = datetime.now()
             agent.save()
             print('Marking as complete...')
-
-            # TODO Agent should always have just 1 t
             return f'Task marked as complete for agent id {self.agent_id} .'
         except Exception as e:
             return repr(e)[:2000]
