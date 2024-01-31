@@ -61,17 +61,11 @@ class Python(OpenAIBaseModel):
         try:
             from api.models import Dataset, Table
 
-            # Make identical duplicate of all the active tables, used for displaying changes to the user but also acts as backups
-            duplicate_ids = function_message.agent.dataset.backup_tables_and_get_ids()
-
             locals = {}
             globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np }
             exec(code, globals, locals)
             stdout_value = new_stdout.getvalue()
             
-            # Duplicate ids have to be passed to the backups, as it's not possible to retrieve them otherwise, unless the models are refactored... which perhaps it should be
-            self.handle_table_backups(function_message, duplicate_ids)
-
             if stdout_value:
                 result = stdout_value
             else:
