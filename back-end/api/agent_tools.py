@@ -82,41 +82,6 @@ class Python(OpenAIBaseModel):
             sys.stdout = old_stdout
         return f'`{code}` executed, result: {str(result)[:2000]}'
 
-    @classmethod
-    def handle_table_backups(cls, function_message, duplicate_ids):
-        from api.models import Table, MessageTableAssociation
-
-        new_tables = function_message.agent.dataset.active_tables
-        duplicates = Table.objects.filter(id__in=duplicate_ids)
-
-        # Check for deleted tables, soft delete them and link them to the message
-        for backup_table in duplicates.filter(temporary_duplicate_of=None):
-            backup_table.soft_delete()
-            MessageTableAssociation.objects.create(table=backup_table, message=function_message, operation=MessageTableAssociation.Operation.DELETE)
-
-        # Check for newly created tables, and link to message
-        for new_table in [t for t in new_tables if t.id not in duplicates.values_list('temporary_duplicate_of__id', flat=True)]:
-            MessageTableAssociation.objects.create(table=new_table, message=function_message, operation=MessageTableAssociation.Operation.CREATE)
-        
-        # Check for updated tables which haven't been soft deleted
-        remaining_tables = duplicates.exclude(temporary_duplicate_of=None)
-        for backup_table in remaining_tables:
-            updated_table = backup_table.temporary_duplicate_of
-            unchanged = backup_table.df.equals(updated_table.df)
-            if unchanged:
-                backup_table.delete()  # No changes have happened, we don't need to store the backup
-            else:
-                # Replace the original Table with the backup so we don't have to change any foreign keys
-                updated_df = updated_table.df.copy()
-                updated_table.df = backup_table.df.copy()
-                updated_table.stale_at = datetime.now()
-                updated_table.save()
-
-                backup_table.temporary_duplicate_of = None  # Hmm... do we want to actually keep track of which table inherits from which?
-                backup_table.df = updated_df
-                backup_table.save()
-                MessageTableAssociation.objects.create(table=backup_table, message=function_message, operation=MessageTableAssociation.Operation.UPDATE)
-
 
 class SetAgentTaskToComplete(OpenAIBaseModel):
     """Mark an Agent's task as complete"""
@@ -129,6 +94,8 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent.completed_at = datetime.now()
             agent.save()
             print('Marking as complete...')
+
+            # TODO Agent should always have just 1 t
             return f'Task marked as complete for agent id {self.agent_id} .'
         except Exception as e:
             return repr(e)[:2000]

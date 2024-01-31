@@ -2,10 +2,9 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import openai_function_details, function_name_in_text, create_chat_completion
+from api.helpers.openai_helpers import openai_function_details, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
-from datetime import datetime
 from django.template.loader import render_to_string
 from os import path
 
@@ -30,19 +29,6 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return path.basename(self.file.name)
-    
-    @property
-    def active_tables(self):
-        return Table.objects.filter(dataset=self, deleted_at=None, stale_at=None, temporary_duplicate_of=None)
-    
-    def backup_tables_and_get_ids(self):
-        backup_ids = []
-        for t in self.active_tables:
-            t.temporary_duplicate_of_id = t.id
-            t.id = None
-            t.save()
-            backup_ids.append(t.id)
-        return backup_ids
 
     class Meta:
         get_latest_by = 'created_at'
@@ -63,14 +49,14 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
 
     def create_agents_with_system_messages(self, dataset:Dataset):
-        active_tables = dataset.active_tables
+        tables = Table.objects.filter(dataset=dataset)
         agents = []
         if self.per_table:  # One agent per table
-            for table in active_tables:
+            for table in tables:
                 agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=[table])
                 agents.append(agent)
         else:  # One agent for all the tables
-            agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=active_tables)
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=tables)
             agents.append(agent)
 
         return agents
@@ -105,9 +91,7 @@ class Agent(models.Model):
         agent = cls.objects.create(**kwargs)
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
-        system_message = Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
-        for table in tables:
-            MessageTableAssociation.objects.create(message=system_message, table=table)
+        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
 
     def run(self, current_call=0, max_calls=10):
@@ -149,19 +133,10 @@ class Table(models.Model):
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    stale_at = models.DateTimeField(null=True, blank=True)
-    temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True) 
-    # Could have 'update_of' foreign key to self, in order to at least try and track a little bit of changes?
-    # Or... an alternative and slightly scary thought... maybe remove the fk constraint and just store the pk as an int?
 
     @property
     def df_json(self):
         return self.df.to_json(orient='records', date_format='iso')
-
-    def soft_delete(self):
-        self.deleted_at = datetime.now()
-        self.save()
     
     def _snapshot_df(self):
         max_rows, max_columns, max_str_len = 5, 5, 70
@@ -205,30 +180,18 @@ class Message(models.Model):
 
     # Only for 'function' role messages
     function_name = models.CharField(max_length=200, blank=True)
-
-    # For system and function messages
-    tables = models.ManyToManyField(Table, through='MessageTableAssociation', blank=True)
+    function_id = models.CharField(max_length=200, blank=True)
 
     @property
     def openai_schema(self):
+        schema = { 'content': self.content, 'role': self.role }
         if self.role == Message.Role.FUNCTION:
-            return { 'content': self.content, 'role': self.role, 'name': self.function_name }
-        return { 'content': self.content, 'role': self.role }
+            schema.update({ 'name': self.function_name, 'id': self.function_id })
+        return schema
 
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
-
-
-class MessageTableAssociation(models.Model):
-    message = models.ForeignKey(Message, on_delete=models.CASCADE)
-    table = models.ForeignKey(Table, on_delete=models.CASCADE)
-
-    class Operation(models.TextChoices):
-        CREATE = 'c'
-        UPDATE = 'u'
-        DELETE = 'd'
-    operation = models.CharField(max_length=1, choices=Operation.choices, null=True, blank=True)
 
 
 class Metadata(models.Model):

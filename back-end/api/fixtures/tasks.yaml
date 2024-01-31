@@ -3,7 +3,14 @@
     name: extract_subtables
     per_table: true
     text: >
-      Separate out any sub tables in this dataframe into new, separate Tables. 
+      Separate out any sub tables in this dataframe into new, separate Tables.
+
+- model: api.task
+  fields:
+    name: delete_unnecessary_tables
+    per_table: false
+    text: >
+      Delete any tables which are not primary data - i.e. which can be derived from other tables. If the data is cryptic or the column headers are not obvious check with the user before doing a deletion. 
 
 - model: api.task
   fields:
@@ -50,7 +57,7 @@
 - model: api.task
   fields:
     name: validation
-    per_table: false
+    per_table: true
     text: >  
       Check each of the newly mapped darwin core fields for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
 
