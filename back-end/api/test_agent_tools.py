@@ -1,5 +1,5 @@
 from django.test import TestCase
-from api.models import Dataset, Agent, Task, Table, Message, MessageTableAssociation
+from api.models import Dataset, Agent, Task, Message
 from api.agent_tools import Python
 import pandas as pd
 from pandas.testing import assert_frame_equal

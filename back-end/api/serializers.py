@@ -1,4 +1,4 @@
-from api.models import Dataset, Table, Agent, Message, Task, MessageTableAssociation
+from api.models import Dataset, Table, Agent, Message, Task
 from rest_framework import serializers
 import pandas as pd
 from api.helpers.df_helpers import extract_sub_tables
