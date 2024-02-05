@@ -104,7 +104,7 @@ class Agent(models.Model):
 
         function_name, function_args = openai_function_details(response)
         if function_name:
-            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name)
+            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name, function_id='placeholder')
             function_result = self.run_function(function_name, function_args, function_message)
             print(f'Function result: {function_result}')
             function_message.content = function_result
@@ -186,7 +186,7 @@ class Message(models.Model):
     def openai_schema(self):
         schema = { 'content': self.content, 'role': self.role }
         if self.role == Message.Role.FUNCTION:
-            schema.update({ 'name': self.function_name, 'id': self.function_id })
+            schema.update({ 'name': self.function_name, 'tool_call_id': self.function_id })
         return schema
 
     class Meta:
