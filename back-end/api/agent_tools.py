@@ -24,8 +24,7 @@ def trim_dataframe(df):
         trimmed_df = trimmed_df.drop(trimmed_df.columns[0], axis=1)
 
     return trimmed_df.fillna('')
-
-
+ 
 def extract_sub_tables(df, min_rows=2):
     all_null_rows = df.isnull().all(axis=1)
     start = 0
@@ -38,6 +37,39 @@ def extract_sub_tables(df, min_rows=2):
     if len(df) - start >= min_rows:
         tables.append(df.iloc[start:])
     return [trim_dataframe(t) for t in tables]
+
+class ExtractSubTables(OpenAIBaseModel):
+    """
+    Find and extract nested tables. 
+    If only one Table is found (i.e., there are no sub tables), it returns False. 
+    If multiple Tables are found, the old composite Table is deleted and the new Tables are saved - the total number of new Tables, new Table snapshots and new Table ids are returned.
+    """
+    table_id: PositiveInt = Field(...)
+
+    def run(self):
+        from api.models import Table
+        try:
+            table = Table.objects.get(id=self.table_id)
+            sub_tables = extract_sub_tables(table.df)
+            text = False
+
+            if len(sub_tables) > 1:
+                distinct_tables = []
+                for idx, new_df in enumerate(sub_tables):
+                    new_table = Table.objects.create(dataset=table.dataset, title=f'{table.title} - {idx}', df=new_df)
+                    distinct_tables.append(new_table)
+
+                snapshots = '\n\n'.join([f'Sub-table #{idx} - (Table.id: {d.id})\n{d.str_snapshot}' for idx, d in enumerate(distinct_tables)])
+                if len(snapshots) > 4000:
+                    snapshots = snapshots[0:4000] + '\n...'
+                text = f'Table id {self.table_id} divided into {len(distinct_tables)} new, separate tables:\n{snapshots}\n\n'
+
+                table.delete()
+            
+            print('Extract Sub Tables results:' + text)
+            return text
+        except Exception as e:
+            return repr(e)[:2000]
 
 
 class Python(OpenAIBaseModel):

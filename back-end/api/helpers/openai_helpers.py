@@ -49,27 +49,29 @@ class OpenAIBaseModel(BaseModel, metaclass=OpenAIBaseMeta):
     pass
 
 
-def openai_function_details(response, choice=0):
-    message = response['choices'][choice]['message']
+def check_function_args(response, choice=0):
+    message = response.choices[choice].message
     args = {}
-    if 'function_call' in message:
-        fc = message['function_call']
+    if message.tool_calls:
+        fc = message.tool_calls[0]
         try:
-            args = ast.literal_eval(fc['arguments'])
+            args = ast.literal_eval(fc.function.arguments)
         except (SyntaxError, ValueError):
             try:
-                args = json.loads(fc['arguments'], strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
+                args = json.loads(fc.function.arguments, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
             except json.decoder.JSONDecodeError:
-                required = getattr(agent_tools, fc['name']).openai_schema['parameters']['required']
+                required = getattr(agent_tools, fc.function.name).openai_schema['parameters']['required']
                 if len(required) == 1:
-                    args = {required[0]: fc['arguments']}
+                    args = {required[0]: fc.function.arguments}
                 else:
                     import pdb; pdb.set_trace()
         except:
             import pdb; pdb.set_trace()
-        return fc['name'], args
 
-    return None, None
+        fc.function.arguments = args
+        return fc
+
+    return None
 
 
 def openai_message_content(response, choice=0):

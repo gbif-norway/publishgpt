@@ -2,7 +2,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import openai_function_details, create_chat_completion
+from api.helpers.openai_helpers import check_function_args, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
@@ -39,6 +39,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     name = models.CharField(max_length=300, unique=True)
     text = models.CharField(max_length=5000)
     per_table = models.BooleanField()
+    additional_function = models.CharField(max_length=300, null=True, blank=True)
 
     class Meta:
         get_latest_by = 'id'
@@ -46,7 +47,10 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
 
     @property
     def functions(self):
-        return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
+        functions = [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
+        if self.additional_function:
+            functions.append(self.additional_function)
+        return functions
 
     def create_agents_with_system_messages(self, dataset:Dataset):
         tables = Table.objects.filter(dataset=dataset)
@@ -102,28 +106,25 @@ class Agent(models.Model):
         if message_content:
             message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
 
-        function_name, function_args = openai_function_details(response)
-        if function_name:
-            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name, function_id='placeholder')
-            function_result = self.run_function(function_name, function_args, function_message)
+        function_details = check_function_args(response)
+        if function_details:
+            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_details.function.name, function_id=function_details.id)
+            function_result = self.run_function(function_details)
             print(f'Function result: {function_result}')
             function_message.content = function_result
             function_message.save()
         
             # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
-            if function_name != agent_tools.SetAgentTaskToComplete.__name__:
+            if function_details.function.name != agent_tools.SetAgentTaskToComplete.__name__:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
             else:
                 message = function_message
 
         return message
     
-    def run_function(self, function_name, function_args, function_message):
-        function_model_class = getattr(agent_tools, function_name)
-        function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
-
-        if function_name == agent_tools.Python.__name__:
-            return function_model_obj.run(function_message)
+    def run_function(self, function_details):
+        function_model_class = getattr(agent_tools, function_details.function.name)
+        function_model_obj = function_model_class(**function_details.function.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
         return function_model_obj.run()
 
 
