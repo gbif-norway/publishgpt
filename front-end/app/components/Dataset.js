@@ -101,6 +101,7 @@ const Dataset = ({ initialDatasetId }) => {
   return (
     <div>
       {!dataset ? (
+      <div className="col-lg-8 mx-auto p-4 py-md-5">
         <div className="agent-task initialise">
           <div className="messages">
             <div className="message assistant-message">
@@ -117,27 +118,38 @@ const Dataset = ({ initialDatasetId }) => {
             {error && <div className="message assistant-message assistant-message-error">{error}</div>}
           </div>
         </div>
+      </div>
       ) : (
-        <div className="messages"><div className="message assistant-message">
-          <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
-        </div></div>
-      )}
-
-      {Array.isArray(agents) && agents.length > 0 &&
-        <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
-          {agents.map(agent => (
-            <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} />
-          ))}
-        </Accordion>
-      }
-
-      {isLoading && (
-        <div className="message assistant-message">
-          <div className="d-flex align-items-center">
-            <strong>{loadingMessage}</strong>
-            <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+      <div>
+        <div class="row mx-auto p-4">
+          <div className="col-12">
+            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
           </div>
         </div>
+        <div class="row mx-auto p-4">
+          <div className="col-5">
+            {Array.isArray(agents) && agents.length > 0 &&
+              <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
+                {agents.map(agent => (
+                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} />
+                ))}
+              </Accordion>
+            }
+
+            {isLoading && (
+              <div className="message assistant-message">
+                <div className="d-flex align-items-center">
+                  <strong>{loadingMessage}</strong>
+                  <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="col-7">
+            
+          </div>
+        </div>
+      </div>
       )}
     </div>
   );
