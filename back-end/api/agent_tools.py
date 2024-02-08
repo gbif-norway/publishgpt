@@ -65,8 +65,8 @@ class ExtractSubTables(OpenAIBaseModel):
                 text = f'Table id {self.table_id} divided into {len(distinct_tables)} new, separate tables:\n{snapshots}\n\n'
 
                 table.delete()
-            
-            print('Extract Sub Tables results:' + text)
+            if text:
+                print(f'Extract Sub Tables results: {text}')
             return text
         except Exception as e:
             return repr(e)[:2000]
@@ -83,7 +83,7 @@ class Python(OpenAIBaseModel):
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
 
-    def run(self, function_message):
+    def run(self):
         code = re.sub(r"^(\s|`)*(?i:python)?\s*", "", self.code)
         code = re.sub(r"(\s|`)*$", "", code)
         old_stdout = sys.stdout

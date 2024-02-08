@@ -1,7 +1,6 @@
 from api.models import Dataset, Table, Agent, Message, Task
 from rest_framework import serializers
 import pandas as pd
-from agent_tools import ExtractSubTables
 
 
 class TaskSerializer(serializers.ModelSerializer):

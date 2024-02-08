@@ -3,7 +3,7 @@
     name: extract_subtables
     per_table: true
     text: >
-      Separate out any sub tables in this dataframe into new, separate Tables. Users frequently squeeze two or more tables into one spreadsheet, which then gets loaded as a single table. A single table is one block of related data with consistent columns and rows. A good rule of thumb is that if you find a user has drawn a border as a divider or is using formatting to split up data, it should be separated.
+      Separate out any sub tables in this dataframe into new, separate Tables. Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. A single table should be one block of related data with consistent columns and rows. IMPORTANT: Start by using the ExtractSubTables method.
     additional_function: ExtractSubTables
 
 - model: api.task
