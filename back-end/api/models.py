@@ -2,10 +2,9 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import openai_function_details, function_name_in_text, create_chat_completion
+from api.helpers.openai_helpers import check_function_args, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
-from datetime import datetime
 from django.template.loader import render_to_string
 from os import path
 
@@ -30,19 +29,6 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return path.basename(self.file.name)
-    
-    @property
-    def active_tables(self):
-        return Table.objects.filter(dataset=self, deleted_at=None, stale_at=None, temporary_duplicate_of=None)
-    
-    def backup_tables_and_get_ids(self):
-        backup_ids = []
-        for t in self.active_tables:
-            t.temporary_duplicate_of_id = t.id
-            t.id = None
-            t.save()
-            backup_ids.append(t.id)
-        return backup_ids
 
     class Meta:
         get_latest_by = 'created_at'
@@ -53,6 +39,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     name = models.CharField(max_length=300, unique=True)
     text = models.CharField(max_length=5000)
     per_table = models.BooleanField()
+    additional_function = models.CharField(max_length=300, null=True, blank=True)
 
     class Meta:
         get_latest_by = 'id'
@@ -60,17 +47,20 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
 
     @property
     def functions(self):
-        return [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
+        functions = [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
+        if self.additional_function:
+            functions.append(self.additional_function)
+        return functions
 
     def create_agents_with_system_messages(self, dataset:Dataset):
-        active_tables = dataset.active_tables
+        tables = Table.objects.filter(dataset=dataset)
         agents = []
         if self.per_table:  # One agent per table
-            for table in active_tables:
+            for table in tables:
                 agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=[table])
                 agents.append(agent)
         else:  # One agent for all the tables
-            agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=active_tables)
+            agent = Agent.create_with_system_message(dataset=dataset, task=self, tables=tables)
             agents.append(agent)
 
         return agents
@@ -105,41 +95,40 @@ class Agent(models.Model):
         agent = cls.objects.create(**kwargs)
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
         print(system_message_text)
-        system_message = Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
-        for table in tables:
-            MessageTableAssociation.objects.create(message=system_message, table=table)
+        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
 
     def run(self, current_call=0, max_calls=10):
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
         
         # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
-        message_content = response['choices'][0]['message'].get('content')
+        message_content = response.choices[0].message.content
         if message_content:
             message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
 
-        function_name, function_args = openai_function_details(response)
-        if function_name:
-            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_name)
-            function_result = self.run_function(function_name, function_args, function_message)
+        function_call = check_function_args(response)
+        if function_call:
+            import pdb; pdb.set_trace()
+            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
+            if function_call.id:
+                function_message.function_id = function_call.id
+                function_message.save()
+            function_result = self.run_function(function_call)
             print(f'Function result: {function_result}')
             function_message.content = function_result
             function_message.save()
         
             # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
-            if function_name != agent_tools.SetAgentTaskToComplete.__name__:
+            if function_call.name != agent_tools.SetAgentTaskToComplete.__name__:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
             else:
                 message = function_message
 
         return message
     
-    def run_function(self, function_name, function_args, function_message):
-        function_model_class = getattr(agent_tools, function_name)
-        function_model_obj = function_model_class(**function_args)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
-
-        if function_name == agent_tools.Python.__name__:
-            return function_model_obj.run(function_message)
+    def run_function(self, function_call):
+        function_model_class = getattr(agent_tools, function_call.name)
+        function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
         return function_model_obj.run()
 
 
@@ -149,31 +138,23 @@ class Table(models.Model):
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
     description = models.CharField(max_length=2000, blank=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    stale_at = models.DateTimeField(null=True, blank=True)
-    temporary_duplicate_of = models.ForeignKey('self', on_delete=models.SET_NULL, null=True) 
-    # Could have 'update_of' foreign key to self, in order to at least try and track a little bit of changes?
-    # Or... an alternative and slightly scary thought... maybe remove the fk constraint and just store the pk as an int?
 
     @property
     def df_json(self):
         return self.df.to_json(orient='records', date_format='iso')
-
-    def soft_delete(self):
-        self.deleted_at = datetime.now()
-        self.save()
     
     def _snapshot_df(self):
         max_rows, max_columns, max_str_len = 5, 5, 70
 
         # Truncate long strings in cells
-        df = self.df.astype(str).applymap(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x)
+        df = self.df.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
 
-        # Truncate rows
+        # Truncate rows
         if len(df) > max_rows:
             top = df.head(max_rows // 2)
             bottom = df.tail(max_rows // 2)
-            df = pd.concat([top, pd.DataFrame({col: ['...'] for col in df.columns}, index=['...']), bottom])
+            middle = pd.DataFrame({col: ['...'] for col in df.columns}, index=[0])  # Use a temporary numeric index for middle
+            df = pd.concat([top, middle, bottom], ignore_index=True)
 
         # Truncate columns
         if len(df.columns) > max_columns:
@@ -183,6 +164,7 @@ class Table(models.Model):
             df = pd.concat([left, middle, right], axis=1)
         
         return df.fillna('')
+
 
     @property
     def str_snapshot(self):
@@ -194,7 +176,6 @@ class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     content = models.CharField(max_length=10000, blank=True)
-    faked = models.BooleanField(default=False)
 
     class Role(models.TextChoices):
         USER = 'user'
@@ -205,30 +186,20 @@ class Message(models.Model):
 
     # Only for 'function' role messages
     function_name = models.CharField(max_length=200, blank=True)
-
-    # For system and function messages
-    tables = models.ManyToManyField(Table, through='MessageTableAssociation', blank=True)
+    function_id = models.CharField(max_length=200, blank=True)
 
     @property
     def openai_schema(self):
+        schema = { 'content': self.content, 'role': self.role }
         if self.role == Message.Role.FUNCTION:
-            return { 'content': self.content, 'role': self.role, 'name': self.function_name }
-        return { 'content': self.content, 'role': self.role }
+            schema.update({ 'name': self.function_name })
+            if self.function_id:
+                schema.update({ 'tool_call_id': self.function_id })
+        return schema
 
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
-
-
-class MessageTableAssociation(models.Model):
-    message = models.ForeignKey(Message, on_delete=models.CASCADE)
-    table = models.ForeignKey(Table, on_delete=models.CASCADE)
-
-    class Operation(models.TextChoices):
-        CREATE = 'c'
-        UPDATE = 'u'
-        DELETE = 'd'
-    operation = models.CharField(max_length=1, choices=Operation.choices, null=True, blank=True)
 
 
 class Metadata(models.Model):

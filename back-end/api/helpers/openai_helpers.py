@@ -2,30 +2,26 @@ import ast
 from pydantic import BaseModel
 from pydantic.main import ModelMetaclass
 import json
-import openai
+from openai import OpenAI
 from pprint import pprint
 from api import agent_tools
 
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4'): # gpt-3.5-turbo
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4-turbo-preview'): # gpt-3.5-turbo
+    # model = 'gpt-3.5-turbo'
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
     args = {'model': model, 'temperature': temperature, 'messages': messages }
     if functions:
-        args['functions'] = [f.openai_schema for f in functions]
+        args['tools'] = [{'type': 'function', 'function': f.openai_schema} for f in functions]
+        pprint(args['tools'])
+        import pdb; pdb.set_trace()
         if call_first_function:
-            args['function_call'] = {'name': args['functions'][0]['name']}
-        else:
-            args['function_call'] = 'auto'
-    # printargs = args.copy()
-    # if len(printargs['messages']) > 1:
-    #     printargs['messages'] = printargs['messages'][1:]
-    # else:
-    #     printargs['messages'] = '[System message]'
-    # pprint(printargs)
+            args['tool_choice'] = {'name': args['tools'][0]['name']}
     print('---')
-    response = openai.ChatCompletion.create(**args)  
+    with OpenAI() as client:
+        response = client.chat.completions.create(**args)  
     print('---Response---')
     pprint(response)
     print('---')
@@ -55,27 +51,30 @@ class OpenAIBaseModel(BaseModel, metaclass=OpenAIBaseMeta):
     pass
 
 
-def openai_function_details(response, choice=0):
-    message = response['choices'][choice]['message']
-    args = {}
-    if 'function_call' in message:
-        fc = message['function_call']
-        try:
-            args = ast.literal_eval(fc['arguments'])
-        except (SyntaxError, ValueError):
-            try:
-                args = json.loads(fc['arguments'], strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
-            except json.decoder.JSONDecodeError:
-                required = getattr(agent_tools, fc['name']).openai_schema['parameters']['required']
-                if len(required) == 1:
-                    args = {required[0]: fc['arguments']}
-                else:
-                    import pdb; pdb.set_trace()
-        except:
+def load_openai_json_args(json_args, function_name):
+    try:
+        return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
+    except json.decoder.JSONDecodeError:
+        required = getattr(agent_tools, function_name).openai_schema['parameters']['required']
+        if len(required) == 1:
+            return {required[0]: json_args}
+        else:
             import pdb; pdb.set_trace()
-        return fc['name'], args
 
-    return None, None
+
+def check_function_args(response, choice=0):
+    message = response.choices[choice].message
+    if message.function_call:
+        message.function_call.arguments = load_openai_json_args(message.function_call.arguments, message.function_call.name)
+        return message.function_call
+    if message.tool_calls:
+        tool = message.tool_calls[0]
+        fn = tool.function
+        fn.arguments = load_openai_json_args(fn.arguments,fn.name)
+        if tool.id:
+            fn.id = tool.id
+        return fn
+    return None
 
 
 def openai_message_content(response, choice=0):

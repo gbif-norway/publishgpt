@@ -2,7 +2,6 @@ import Message from './Message';
 import { useState, useEffect, useRef } from 'react';
 import Accordion from 'react-bootstrap/Accordion';
 import Badge from 'react-bootstrap/Badge';
-import TableAssociations from './TableAssociations';
 import config from '../config.js';
 
 
@@ -86,7 +85,6 @@ const Agent = ({ agent, refreshAgents }) => {
             <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
           )}
           &nbsp;
-          <TableAssociations key={messages[0].id} associations={messages[0].message_table_associations} />
         </Accordion.Header>
         <Accordion.Body>
 
