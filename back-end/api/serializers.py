@@ -14,13 +14,13 @@ class TableSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Table
-        fields = ['id', 'created_at', 'dataset', 'title', 'df_str', 'description', 'df_json']
+        fields = ['id', 'created_at', 'updated_at', 'dataset', 'title', 'df_str', 'description', 'df_json']
 
 
 class TableShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Table
-        fields = ['id', 'title']
+        fields = ['id', 'title', 'updated_at']
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -40,6 +40,12 @@ class AgentSerializer(serializers.ModelSerializer):
 
 class DatasetSerializer(serializers.ModelSerializer):
     agent_set = AgentSerializer(many=True, read_only=True)
+    table_set = serializers.SerializerMethodField()
+
+    def get_table_set(self, obj):
+        tables = Table.objects.filter(dataset=obj).order_by('id')
+        serializer = TableShortSerializer(tables, many=True, read_only=True)
+        return serializer.data
 
     class Meta:
         model = Dataset

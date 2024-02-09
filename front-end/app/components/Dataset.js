@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import Agent from './Agent';
 import Accordion from 'react-bootstrap/Accordion';
+import DataTable from 'react-data-table-component';
+import Tabs from 'react-bootstrap/Tabs';
+import Tab from 'react-bootstrap/Tab';
 import config from '../config.js';
 
 
@@ -11,6 +14,10 @@ const Dataset = ({ initialDatasetId }) => {
   const [error, setError] = useState(null);
   const [agents, setAgents] = useState([]);
   const [dataset, setDataset] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [activeTableId, setActiveTableId] = useState(null);
+  const [tableData, setTableData] = useState([]);
+  const [tableColumns, setTableColumns] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
   const [activeAgentKey, setActiveAgentKey] = useState(null);
@@ -67,10 +74,37 @@ const Dataset = ({ initialDatasetId }) => {
         .then(response => response.json())
         .then(data => {
           setDataset(data);
+          setTables(data.table_set);
+          const mostRecentTable = data.table_set[0]; // Assuming table_set is ordered by updated_at DESC
+          setActiveTableId(mostRecentTable.id);
+          fetchTableData(mostRecentTable.id);
         })
         .catch(err => console.log(err.message));
     }
   }, [initialDatasetId]);
+
+
+  const fetchTableData = useCallback((tableId) => {
+    fetch(`${config.baseApiUrl}/api/tables/${tableId}`)
+      .then(response => response.json())
+      .then(df => {
+        const df_json = JSON.parse(df.df_json);
+        const columns = Object.keys(df_json[0]).map((column) => ({
+          name: column,
+          selector: row => row[column],
+          sortable: true,
+        }));
+        setTableColumns(columns);
+        setTableData(df_json);
+      })
+      .catch(err => console.log(err.message));
+  }, []);
+
+  useEffect(() => {
+    if (activeTableId) {
+      fetchTableData(activeTableId);
+    }
+  }, [activeTableId, fetchTableData]);
 
   const onDrop = (acceptedFiles) => {
     setError(null); // reset error
@@ -98,6 +132,55 @@ const Dataset = ({ initialDatasetId }) => {
   // get root props and input props for the dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
+  const darkThemeStyles = {
+      rows: {
+        style: {
+          minHeight: '72px', // override the row height
+          backgroundColor: '#333', // dark row background
+          color: '#FFF', // text color
+        },
+      },
+      headCells: {
+        style: {
+          paddingLeft: '8px', // override the cell padding for head cells
+          paddingRight: '8px',
+          backgroundColor: '#555', // dark head cell background
+          color: '#FFF', // text color
+        },
+      },
+      cells: {
+        style: {
+          paddingLeft: '8px', // override the cell padding for cells
+          paddingRight: '8px',
+          backgroundColor: '#333', // dark cell background
+          color: '#FFF', // text color
+        },
+      },
+      pagination: {
+        style: {
+          backgroundColor: '#333', // dark background for pagination
+          color: '#FFF', // text color
+        },
+        pageButtonsStyle: {
+          backgroundColor: '#555', // button background
+          minHeight: '40px', // button height, increase if necessary
+          minWidth: '40px', // button width, increase if necessary
+          borderRadius: '50%', // button border radius
+          margin: '0px 5px', // margin between buttons
+          cursor: 'pointer', // cursor type
+          '&:hover': {
+            backgroundColor: '#666', // hover background color
+          },
+          '&:disabled': {
+            cursor: 'not-allowed', // cursor type when disabled
+            backgroundColor: '#333', // background when disabled
+            color: '#777', // text color when disabled
+          },
+        },
+      },
+    };
+  
+
   return (
     <div>
       {!dataset ? (
@@ -121,12 +204,12 @@ const Dataset = ({ initialDatasetId }) => {
       </div>
       ) : (
       <div>
-        <div class="row mx-auto p-4">
+        <div className="row mx-auto p-4">
           <div className="col-12">
             <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
           </div>
         </div>
-        <div class="row mx-auto p-4">
+        <div className="row mx-auto p-4">
           <div className="col-5">
             {Array.isArray(agents) && agents.length > 0 &&
               <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
@@ -147,6 +230,16 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
           <div className="col-7">
             
+            {tables.length > 0 && (
+              <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
+                {tables.map((table) => (
+                  <Tab eventKey={table.id} title={table.title} key={table.id}>
+                    <DataTable columns={tableColumns} data={tableData} customStyles={darkThemeStyles} pagination dense />
+                  </Tab>
+                ))}
+              </Tabs>
+            )}
+
           </div>
         </div>
       </div>

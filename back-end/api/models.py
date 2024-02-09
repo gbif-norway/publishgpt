@@ -134,6 +134,7 @@ class Agent(models.Model):
 
 class Table(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
@@ -141,7 +142,16 @@ class Table(models.Model):
 
     @property
     def df_json(self):
-        return self.df.to_json(orient='records', date_format='iso')
+        try: 
+            return self.df.to_json(orient='records', date_format='iso')
+        except ValueError:
+            df = self.df
+            cols = pd.Series(df.columns)
+            for dup in cols[cols.duplicated()].unique():
+                cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup for i in range(sum(cols == dup))]
+            df.columns = cols
+            self.save()
+            return df.to_json(orient='records', date_format='iso')
     
     def _snapshot_df(self):
         max_rows, max_columns, max_str_len = 5, 5, 70
