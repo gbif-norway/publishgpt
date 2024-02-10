@@ -7,20 +7,27 @@ import Tabs from 'react-bootstrap/Tabs';
 import Tab from 'react-bootstrap/Tab';
 import config from '../config.js';
 
-
 const Dataset = ({ initialDatasetId }) => {
-  console.log(config.baseApiUrl);
-  console.log(process.env);
   const [error, setError] = useState(null);
   const [agents, setAgents] = useState([]);
   const [dataset, setDataset] = useState(null);
-  const [tables, setTables] = useState([]);
   const [activeTableId, setActiveTableId] = useState(null);
-  const [tableData, setTableData] = useState([]);
-  const [tableColumns, setTableColumns] = useState([]);
+  const [tableDataMap, setTableDataMap] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
   const [activeAgentKey, setActiveAgentKey] = useState(null);
+
+  const refreshTables = useCallback(() => {
+    fetch(`${config.baseApiUrl}/api/datasets/${dataset.id}`)
+    .then(response => response.json())
+    .then(data => {
+      setDataset(data);
+    })
+    .then(data => {
+      setActiveTableId(data.table_set[0]?.id);
+    })
+    .catch(err => console.log(err.message));
+  }, [dataset]);
 
   const refreshAgents = useCallback(() => {
     return fetch(`${config.baseApiUrl}/api/agents?dataset=${dataset.id}`)
@@ -44,6 +51,7 @@ const Dataset = ({ initialDatasetId }) => {
           setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
           setAgents(visible_agents);
         }
+        refreshTables(dataset.id);
       });
   }, [dataset]);
 
@@ -66,45 +74,40 @@ const Dataset = ({ initialDatasetId }) => {
     }
   }, [isLoading, refreshAgents, dataset]);
 
-
-  // fetch dataset and first agent if initialDatasetId is provided
+  // fetch dataset, first agent and tables if initialDatasetId is provided
   useEffect(() => {
     if (initialDatasetId) {
       fetch(`${config.baseApiUrl}/api/datasets/${initialDatasetId}`)
         .then(response => response.json())
         .then(data => {
-          setDataset(data);
-          setTables(data.table_set);
-          const mostRecentTable = data.table_set[0]; // Assuming table_set is ordered by updated_at DESC
-          setActiveTableId(mostRecentTable.id);
-          fetchTableData(mostRecentTable.id);
+          setDataset(data);        
+          const sortedTables = data.table_set.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+          setActiveTableId(sortedTables[0]?.id);
+          data.table_set.forEach(table => fetchTableData(table.id));
         })
         .catch(err => console.log(err.message));
     }
   }, [initialDatasetId]);
 
-
   const fetchTableData = useCallback((tableId) => {
     fetch(`${config.baseApiUrl}/api/tables/${tableId}`)
       .then(response => response.json())
-      .then(df => {
-        const df_json = JSON.parse(df.df_json);
-        const columns = Object.keys(df_json[0]).map((column) => ({
-          name: column,
-          selector: row => row[column],
-          sortable: true,
+      .then(data => {
+        // Update tableDataMap with table data and metadata
+        setTableDataMap(prevDataMap => ({
+          ...prevDataMap,
+          [data.id]: { ...data, data: JSON.parse(data.df_json) }
         }));
-        setTableColumns(columns);
-        setTableData(df_json);
+        if (!activeTableId) setActiveTableId(data.id); // Set active table if not set
       })
       .catch(err => console.log(err.message));
-  }, []);
+  }, [activeTableId]);
 
-  useEffect(() => {
-    if (activeTableId) {
-      fetchTableData(activeTableId);
-    }
-  }, [activeTableId, fetchTableData]);
+  const handleTableDataCheck = useCallback(() => {
+    refreshTables
+    dataset.table_set.forEach(table => fetchTableData(table.id));
+    // fetchTableData();
+  }, [fetchTableData]);
 
   const onDrop = (acceptedFiles) => {
     setError(null); // reset error
@@ -124,12 +127,9 @@ const Dataset = ({ initialDatasetId }) => {
   };
 
   useEffect(() => {
-    if (dataset) {
-      refreshAgents();
-    }
+    if (dataset) { refreshAgents(); }
   }, [dataset, refreshAgents]);
 
-  // get root props and input props for the dropzone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
   const darkThemeStyles = {
@@ -180,7 +180,6 @@ const Dataset = ({ initialDatasetId }) => {
       },
     };
   
-
   return (
     <div>
       {!dataset ? (
@@ -214,7 +213,7 @@ const Dataset = ({ initialDatasetId }) => {
             {Array.isArray(agents) && agents.length > 0 &&
               <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
                 {agents.map(agent => (
-                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} />
+                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} handleTableDataCheck={handleTableDataCheck} />
                 ))}
               </Accordion>
             }
@@ -229,17 +228,25 @@ const Dataset = ({ initialDatasetId }) => {
             )}
           </div>
           <div className="col-7">
-            
-            {tables.length > 0 && (
+            {Object.keys(tableDataMap).length > 0 && (
               <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
-                {tables.map((table) => (
+                {Object.values(tableDataMap).map((table) => (
                   <Tab eventKey={table.id} title={table.title} key={table.id}>
-                    <DataTable columns={tableColumns} data={tableData} customStyles={darkThemeStyles} pagination dense />
+                    <DataTable 
+                      columns={table.data[0] ? Object.keys(table.data[0]).map(column => ({
+                        name: column,
+                        selector: row => row[column],
+                        sortable: true,
+                      })) : []}
+                      data={table.data} 
+                      customStyles={darkThemeStyles} 
+                      pagination 
+                      dense 
+                    />
                   </Tab>
                 ))}
               </Tabs>
             )}
-
           </div>
         </div>
       </div>
