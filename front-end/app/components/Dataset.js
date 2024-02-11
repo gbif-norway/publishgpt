@@ -14,8 +14,6 @@ const Dataset = ({ initialDatasetId }) => {
   const [activeAgentKey, setActiveAgentKey] = useState(null);
   const [tables, setTables] = useState({});
   const [activeTableId, setActiveTableId] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("Working...");
 
   const refreshTables = useCallback(() => {
     fetch(`${config.baseApiUrl}/api/tables?dataset=${dataset.id}`)
@@ -51,32 +49,12 @@ const Dataset = ({ initialDatasetId }) => {
         }
         else {
           var visible_agents = agents.slice(0, last_non_complete_agent_index + 1);
-          setIsLoading(false);
           setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
           setAgents(visible_agents);
         }
         refreshTables(dataset.id);
       });
   }, [dataset]);
-
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setLoadingMessage("Still working...");
-      }, 5000);
-
-      const interval = setInterval(() => {
-        refreshAgents(dataset.id);
-      }, 3000);
-
-      return () => {
-        clearTimeout(timer);
-        clearInterval(interval);
-      };
-    } else {
-      setLoadingMessage("Working...");
-    }
-  }, [isLoading, refreshAgents, dataset]);
 
   // fetch dataset, first agent and tables if initialDatasetId is provided
   useEffect(() => {
@@ -149,15 +127,6 @@ const Dataset = ({ initialDatasetId }) => {
                 ))}
               </Accordion>
             }
-
-            {isLoading && (
-              <div className="message assistant-message">
-                <div className="d-flex align-items-center">
-                  <strong>{loadingMessage}</strong>
-                  <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
-                </div>
-              </div>
-            )}
           </div>
           <div className="col-7">
             {tables.length > 0 && (
