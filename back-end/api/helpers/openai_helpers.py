@@ -17,7 +17,6 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     if functions:
         args['tools'] = [{'type': 'function', 'function': f.openai_schema} for f in functions]
         pprint(args['tools'])
-        import pdb; pdb.set_trace()
         if call_first_function:
             args['tool_choice'] = {'name': args['tools'][0]['name']}
     print('---')

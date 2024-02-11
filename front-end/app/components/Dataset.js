@@ -9,22 +9,26 @@ import config from '../config.js';
 
 const Dataset = ({ initialDatasetId }) => {
   const [error, setError] = useState(null);
-  const [agents, setAgents] = useState([]);
   const [dataset, setDataset] = useState(null);
+  const [agents, setAgents] = useState([]);
+  const [activeAgentKey, setActiveAgentKey] = useState(null);
+  const [tables, setTables] = useState({});
   const [activeTableId, setActiveTableId] = useState(null);
-  const [tableDataMap, setTableDataMap] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
-  const [activeAgentKey, setActiveAgentKey] = useState(null);
 
   const refreshTables = useCallback(() => {
-    fetch(`${config.baseApiUrl}/api/datasets/${dataset.id}`)
+    fetch(`${config.baseApiUrl}/api/tables?dataset=${dataset.id}`)
     .then(response => response.json())
-    .then(data => {
-      setDataset(data);
-    })
-    .then(data => {
-      setActiveTableId(data.table_set[0]?.id);
+    .then(data => { 
+      const updatedData = data.map(item => {
+        const df = JSON.parse(item.df_json);
+        delete item.df_json;
+        return { ...item, df };
+      });
+      setTables(updatedData); 
+      const sortedTables = data.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      setActiveTableId(sortedTables[0]?.id);
     })
     .catch(err => console.log(err.message));
   }, [dataset]);
@@ -79,35 +83,11 @@ const Dataset = ({ initialDatasetId }) => {
     if (initialDatasetId) {
       fetch(`${config.baseApiUrl}/api/datasets/${initialDatasetId}`)
         .then(response => response.json())
-        .then(data => {
-          setDataset(data);        
-          const sortedTables = data.table_set.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-          setActiveTableId(sortedTables[0]?.id);
-          data.table_set.forEach(table => fetchTableData(table.id));
-        })
+        .then(data => { setDataset(data); })
+        .then(() => { refreshTables(); })
         .catch(err => console.log(err.message));
     }
   }, [initialDatasetId]);
-
-  const fetchTableData = useCallback((tableId) => {
-    fetch(`${config.baseApiUrl}/api/tables/${tableId}`)
-      .then(response => response.json())
-      .then(data => {
-        // Update tableDataMap with table data and metadata
-        setTableDataMap(prevDataMap => ({
-          ...prevDataMap,
-          [data.id]: { ...data, data: JSON.parse(data.df_json) }
-        }));
-        if (!activeTableId) setActiveTableId(data.id); // Set active table if not set
-      })
-      .catch(err => console.log(err.message));
-  }, [activeTableId]);
-
-  const handleTableDataCheck = useCallback(() => {
-    refreshTables
-    dataset.table_set.forEach(table => fetchTableData(table.id));
-    // fetchTableData();
-  }, [fetchTableData]);
 
   const onDrop = (acceptedFiles) => {
     setError(null); // reset error
@@ -132,54 +112,6 @@ const Dataset = ({ initialDatasetId }) => {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
-  const darkThemeStyles = {
-      rows: {
-        style: {
-          minHeight: '72px', // override the row height
-          backgroundColor: '#333', // dark row background
-          color: '#FFF', // text color
-        },
-      },
-      headCells: {
-        style: {
-          paddingLeft: '8px', // override the cell padding for head cells
-          paddingRight: '8px',
-          backgroundColor: '#555', // dark head cell background
-          color: '#FFF', // text color
-        },
-      },
-      cells: {
-        style: {
-          paddingLeft: '8px', // override the cell padding for cells
-          paddingRight: '8px',
-          backgroundColor: '#333', // dark cell background
-          color: '#FFF', // text color
-        },
-      },
-      pagination: {
-        style: {
-          backgroundColor: '#333', // dark background for pagination
-          color: '#FFF', // text color
-        },
-        pageButtonsStyle: {
-          backgroundColor: '#555', // button background
-          minHeight: '40px', // button height, increase if necessary
-          minWidth: '40px', // button width, increase if necessary
-          borderRadius: '50%', // button border radius
-          margin: '0px 5px', // margin between buttons
-          cursor: 'pointer', // cursor type
-          '&:hover': {
-            backgroundColor: '#666', // hover background color
-          },
-          '&:disabled': {
-            cursor: 'not-allowed', // cursor type when disabled
-            backgroundColor: '#333', // background when disabled
-            color: '#777', // text color when disabled
-          },
-        },
-      },
-    };
-  
   return (
     <div>
       {!dataset ? (
@@ -213,7 +145,7 @@ const Dataset = ({ initialDatasetId }) => {
             {Array.isArray(agents) && agents.length > 0 &&
               <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
                 {agents.map(agent => (
-                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} handleTableDataCheck={handleTableDataCheck} />
+                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} refreshTables={() => refreshTables()} />
                 ))}
               </Accordion>
             }
@@ -228,18 +160,18 @@ const Dataset = ({ initialDatasetId }) => {
             )}
           </div>
           <div className="col-7">
-            {Object.keys(tableDataMap).length > 0 && (
+            {tables.length > 0 && (
               <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
-                {Object.values(tableDataMap).map((table) => (
+                {tables.map((table) => (
                   <Tab eventKey={table.id} title={table.title} key={table.id}>
                     <DataTable 
-                      columns={table.data[0] ? Object.keys(table.data[0]).map(column => ({
+                      columns={table.df[0] ? Object.keys(table.df[0]).map(column => ({
                         name: column,
                         selector: row => row[column],
                         sortable: true,
                       })) : []}
-                      data={table.data} 
-                      customStyles={darkThemeStyles} 
+                      data={table.df} 
+                      theme="dark"
                       pagination 
                       dense 
                     />

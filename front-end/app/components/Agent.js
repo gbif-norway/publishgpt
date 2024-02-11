@@ -5,7 +5,7 @@ import Badge from 'react-bootstrap/Badge';
 import config from '../config.js';
 
 
-const Agent = ({ agent, refreshAgents, handleTableDataCheck }) => {
+const Agent = ({ agent, refreshAgents, refreshTables }) => {
   const [messages, setMessages] = useState(agent.message_set);
   const [isComplete, setIsComplete] = useState(agent.completed_at !== null);
   const [userInput, setUserInput] = useState("");
@@ -27,13 +27,13 @@ const Agent = ({ agent, refreshAgents, handleTableDataCheck }) => {
       fetch(`${config.baseApiUrl}/api/agents/${agent.id}/next_agent_message`)
         .then(response => response.json())
         .then(data => {
-          handleTableDataCheck();
           updateMessages().then(() => {
             if (data.id && data.function_name == "SetAgentTaskToComplete") {
               console.log('Setting is complete and calling refreshAgents');
               setIsComplete(true);
               refreshAgents().then(resolve);
             } else {
+              refreshTables();
               resolve();
             }
           });

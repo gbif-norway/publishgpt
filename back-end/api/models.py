@@ -108,7 +108,6 @@ class Agent(models.Model):
 
         function_call = check_function_args(response)
         if function_call:
-            import pdb; pdb.set_trace()
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
             if function_call.id:
                 function_message.function_id = function_call.id
