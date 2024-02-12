@@ -55,7 +55,7 @@ def load_openai_json_args(json_args, function_name):
     try:
         return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
     except json.decoder.JSONDecodeError:
-        required = getattr(agent_tools, function_name).openai_schema['parameters']['required']
+        required = getattr(agent_tools, function_name.capitalize()).openai_schema['parameters']['required']
         if len(required) == 1:
             return {required[0]: json_args}
         else:

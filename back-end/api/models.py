@@ -126,7 +126,7 @@ class Agent(models.Model):
         return message
     
     def run_function(self, function_call):
-        function_model_class = getattr(agent_tools, function_call.name)
+        function_model_class = getattr(agent_tools, function_call.name.capitalize())
         function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
         return function_model_obj.run()
 
