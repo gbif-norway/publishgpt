@@ -147,20 +147,15 @@ class Table(models.Model):
 
     @property
     def df_json(self):
-        return self.df.to_json(orient='records', date_format='iso')
+        df = self.make_columns_unique(self.df)
+        import pdb; pdb.set_trace()
+        return df.to_json(orient='records', date_format='iso')
 
-    def _snapshot_df(self):
+    def _snapshot_df(self, df_obj):
         max_rows, max_columns, max_str_len = 5, 5, 70
 
         # Truncate long strings in cells
-        df = self.df.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
-
-        # Truncate rows
-        if len(df) > max_rows:
-            top = df.head(max_rows // 2)
-            bottom = df.tail(max_rows // 2)
-            middle = pd.DataFrame({col: ['...'] for col in df.columns}, index=[0])  # Use a temporary numeric index for middle
-            df = pd.concat([top, middle, bottom], ignore_index=True)
+        df = df_obj.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
 
         # Truncate columns
         if len(df.columns) > max_columns:
@@ -169,24 +164,30 @@ class Table(models.Model):
             middle = pd.DataFrame({ '...': ['...']*len(df) }, index=df.index)
             df = pd.concat([left, middle, right], axis=1)
         
-        return df.fillna('')
+        df.fillna('', inplace=True)
+
+        # Truncate rows
+        if len(df) > max_rows:
+            top = df.head(max_rows // 2)
+            bottom = df.tail(max_rows // 2)
+            middle = pd.DataFrame({col: ['...'] for col in df.columns}, index=[0])  # Use a temporary numeric index for middle
+            df = pd.concat([top, middle, bottom], ignore_index=True)
+            # df = '\n'.join([top, middle, bottom])
+
+        return df
 
     @property
     def str_snapshot(self):
-        self.make_columns_unique(self.df)
+        df = self.make_columns_unique(self.df)
         original_rows, original_cols = self.df.shape
-        return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
+        return self._snapshot_df(df).to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
-    def save(self, *args, **kwargs):
-        self.df = self.make_columns_unique(self.df)
-        super().save(*args, **kwargs)
-    
     def make_columns_unique(self, df):
         cols = pd.Series(df.columns)
-        for dup in cols[cols.duplicated()].unique():  # Iterate over unique duplicates.
-            dup_indices = cols[cols == dup].index  # Get indices of all occurrences of the duplicate.
+        for dup in cols[cols.duplicated()].unique():
+            dup_indices = cols[cols == dup].index
             for i, idx in enumerate(dup_indices):
-                cols[idx] = f"{dup}_{i+1}" if i != 0 else dup  # Rename duplicates uniquely, preserve first occurrence name.
+                cols[idx] = f"{dup} ({i+1})" if i != 0 else dup
         df.columns = cols
         return df
 

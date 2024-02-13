@@ -105,7 +105,7 @@ const Dataset = ({ initialDatasetId }) => {
               </Accordion>
             }
           </div>
-          <div className="col-7">
+          <div className="col-7 sticky-col">
             {tables.length > 0 && (
               <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
                 {tables.map((table) => (

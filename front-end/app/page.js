@@ -6,7 +6,7 @@ import Dataset from './components/Dataset';
 const Home = () => {
   return (
     <main>
-      <Dataset initialDatasetId={null} />
+      <Dataset initialDatasetId={8} />
     </main>
   );
 };
