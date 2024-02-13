@@ -85,6 +85,12 @@ class Agent(models.Model):
             return None
         
         last_message = self.message_set.last()
+        if not last_message:
+            print('-------No last message for this:-------')
+            print(self.task.name)
+            self.task.create_agents_with_system_messages(dataset=self.dataset)
+            last_message = self.message_set.last() 
+            return last_message
         if last_message.role == Message.Role.ASSISTANT:
             return last_message
         
@@ -126,7 +132,7 @@ class Agent(models.Model):
         return message
     
     def run_function(self, function_call):
-        function_model_class = getattr(agent_tools, function_call.name.capitalize())
+        function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
         function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
         return function_model_obj.run()
 
@@ -141,17 +147,8 @@ class Table(models.Model):
 
     @property
     def df_json(self):
-        try: 
-            return self.df.to_json(orient='records', date_format='iso')
-        except ValueError:
-            df = self.df
-            cols = pd.Series(df.columns)
-            for dup in cols[cols.duplicated()].unique():
-                cols[cols[cols == dup].index.values.tolist()] = [dup + '_' + str(i) if i != 0 else dup for i in range(sum(cols == dup))]
-            df.columns = cols
-            self.save()
-            return df.to_json(orient='records', date_format='iso')
-    
+        return self.df.to_json(orient='records', date_format='iso')
+
     def _snapshot_df(self):
         max_rows, max_columns, max_str_len = 5, 5, 70
 
@@ -174,12 +171,24 @@ class Table(models.Model):
         
         return df.fillna('')
 
-
     @property
     def str_snapshot(self):
+        self.make_columns_unique(self.df)
         original_rows, original_cols = self.df.shape
         return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
+    def save(self, *args, **kwargs):
+        self.df = self.make_columns_unique(self.df)
+        super().save(*args, **kwargs)
+    
+    def make_columns_unique(self, df):
+        cols = pd.Series(df.columns)
+        for dup in cols[cols.duplicated()].unique():  # Iterate over unique duplicates.
+            dup_indices = cols[cols == dup].index  # Get indices of all occurrences of the duplicate.
+            for i, idx in enumerate(dup_indices):
+                cols[idx] = f"{dup}_{i+1}" if i != 0 else dup  # Rename duplicates uniquely, preserve first occurrence name.
+        df.columns = cols
+        return df
 
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)

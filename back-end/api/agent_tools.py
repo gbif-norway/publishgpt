@@ -40,7 +40,7 @@ def extract_sub_tables(df, min_rows=2):
 
 class ExtractSubTables(OpenAIBaseModel):
     """
-    Find and extract nested tables. 
+    A basic method to find and extract nested tables based on empty rows and columns. NB - Should only be used as a first pass, and further checks should be carried out. 
     If only one Table is found (i.e., there are no sub tables), it returns False. 
     If multiple Tables are found, the old composite Table is deleted and the new Tables are saved - the total number of new Tables, new Table snapshots and new Table ids are returned.
     """
@@ -74,7 +74,7 @@ class ExtractSubTables(OpenAIBaseModel):
 
 class Python(OpenAIBaseModel):
     """
-    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and Django database ORM models `Table` and `Dataset`
+    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and a Django database with models `Table` and `Dataset`
     E.g. `df_obj = Table.objects.get(id=df_id); print(df_obj.df.to_string());`
     Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). 
     - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
