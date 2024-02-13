@@ -29,11 +29,3 @@
 .function-message .show { margin-bottom: 10px; }
 .rdt_Pagination svg { fill: #FFF !important; }
 h1 small { font-size: 0.5em; }
-.sticky-col {
-    position: -webkit-sticky; /* Safari */
-    position: sticky;
-    top: 0;
-    height: auto; /* Adjust height as needed */
-    overflow-y: auto; /* Allows internal scrolling if the content is too long */
-  }
-  

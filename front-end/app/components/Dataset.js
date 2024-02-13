@@ -72,7 +72,7 @@ const Dataset = ({ initialDatasetId }) => {
   }, [dataset, refreshAgents]);
 
   return (
-    <div>
+    <div class="container-fluid">
       {!dataset ? (
       <div className="col-lg-8 mx-auto p-4 py-md-5">
         <div className="agent-task initialise">
@@ -105,26 +105,28 @@ const Dataset = ({ initialDatasetId }) => {
               </Accordion>
             }
           </div>
-          <div className="col-7 sticky-col">
-            {tables.length > 0 && (
-              <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
-                {tables.map((table) => (
-                  <Tab eventKey={table.id} title={table.title} key={table.id}>
-                    <DataTable 
-                      columns={table.df[0] ? Object.keys(table.df[0]).map(column => ({
-                        name: column,
-                        selector: row => row[column],
-                        sortable: true,
-                      })) : []}
-                      data={table.df} 
-                      theme="dark"
-                      pagination 
-                      dense 
-                    />
-                  </Tab>
-                ))}
-              </Tabs>
-            )}
+          <div className="col-7">
+            <div className="sticky-top">
+              {tables.length > 0 && (
+                <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
+                  {tables.map((table) => (
+                    <Tab eventKey={table.id} title={table.title} key={table.id}>
+                      <DataTable 
+                        columns={table.df[0] ? Object.keys(table.df[0]).map(column => ({
+                          name: column,
+                          selector: row => row[column],
+                          sortable: true,
+                        })) : []}
+                        data={table.df} 
+                        theme="dark"
+                        pagination 
+                        dense 
+                      />
+                    </Tab>
+                  ))}
+                </Tabs>
+              )}
+            </div>
           </div>
         </div>
       </div>
