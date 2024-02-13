@@ -148,7 +148,6 @@ class Table(models.Model):
     @property
     def df_json(self):
         df = self.make_columns_unique(self.df)
-        import pdb; pdb.set_trace()
         return df.to_json(orient='records', date_format='iso')
 
     def _snapshot_df(self, df_obj):
@@ -184,10 +183,17 @@ class Table(models.Model):
 
     def make_columns_unique(self, df):
         cols = pd.Series(df.columns)
-        for dup in cols[cols.duplicated()].unique():
-            dup_indices = cols[cols == dup].index
-            for i, idx in enumerate(dup_indices):
-                cols[idx] = f"{dup} ({i+1})" if i != 0 else dup
+        nan_count = 0
+        for i, col in enumerate(cols):
+            if pd.isna(col):
+                nan_count += 1
+                cols[i] = f"NaN ({nan_count})"
+            elif (cols == col).sum() > 1:
+                dup_indices = cols[cols == col].index
+                for j, idx in enumerate(dup_indices, start=1):
+                    if j > 1:
+                        cols[idx] = f"{col} ({j})"
+        
         df.columns = cols
         return df
 
