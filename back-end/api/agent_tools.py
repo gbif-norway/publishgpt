@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from api.helpers.openai_helpers import OpenAIBaseModel
 from datetime import datetime
+import uuid
 
 
 def trim_dataframe(df):
@@ -72,6 +73,17 @@ class ExtractSubTables(OpenAIBaseModel):
             return repr(e)[:2000]
 
 
+class ValidateDwCTerms(OpenAIBaseModel):
+    """
+    Checks that column names for a given Table comply with the Darwin Core standard
+    Returns a list of column names which are incorrect. 
+    """
+    table_id: PositiveInt = Field(...)
+
+    def run(self):
+        pass
+
+
 class Python(OpenAIBaseModel):
     """
     Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and a Django database with models `Table` and `Dataset`
@@ -94,7 +106,7 @@ class Python(OpenAIBaseModel):
             from api.models import Dataset, Table
 
             locals = {}
-            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np }
+            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid }
             exec(code, globals, locals)
             stdout_value = new_stdout.getvalue()
             
