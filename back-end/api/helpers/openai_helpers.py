@@ -9,6 +9,7 @@ from api import agent_tools
 
 def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4-turbo-preview'): # gpt-3.5-turbo
     # model = 'gpt-3.5-turbo'
+    # model = 'gpt-4'
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
@@ -16,7 +17,6 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     if functions:
         args['tools'] = [{'type': 'function', 'function': f.openai_schema} for f in functions]
         pprint(args['tools'])
-        import pdb; pdb.set_trace()
         if call_first_function:
             args['tool_choice'] = {'name': args['tools'][0]['name']}
     print('---')
@@ -55,7 +55,7 @@ def load_openai_json_args(json_args, function_name):
     try:
         return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
     except json.decoder.JSONDecodeError:
-        required = getattr(agent_tools, function_name).openai_schema['parameters']['required']
+        required = getattr(agent_tools, function_name[0].upper() + function_name[1:]).openai_schema['parameters']['required']
         if len(required) == 1:
             return {required[0]: json_args}
         else:

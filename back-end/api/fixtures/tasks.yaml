@@ -57,6 +57,13 @@
 
 - model: api.task
   fields:
+    name: unique_ids
+    per_table: true
+    text: >  
+      Ensure that every row for each Table has a unique identifier. If there isn't an obvious one present, generate uuids.
+
+- model: api.task
+  fields:
     name: validation
     per_table: true
     text: >  

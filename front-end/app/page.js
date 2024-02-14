@@ -5,11 +5,9 @@ import Dataset from './components/Dataset';
 
 const Home = () => {
   return (
-    <div className="col-lg-8 mx-auto p-4 py-md-5">
-      <main>
-        <Dataset initialDatasetId={null} />
-      </main>
-    </div>
+    <main>
+      <Dataset initialDatasetId={10} />
+    </main>
   );
 };
 

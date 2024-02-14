@@ -47,6 +47,7 @@ class TableViewSet(viewsets.ModelViewSet):
     queryset = Table.objects.all()
     serializer_class = TableSerializer
     filterset_fields = ['dataset', 'title']
+    ordering = ['-updated_at']
 
 
 class TaskViewSet(viewsets.ModelViewSet):

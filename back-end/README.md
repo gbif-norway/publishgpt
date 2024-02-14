@@ -9,7 +9,7 @@ Check http://localhost:8000/api
 
 # Wipe database and make migrations
 `docker rm -v publishgpt-db-1`, then start up the container again and don't forget
-`./manage.py makemigrations & ./manage.py migrate`
+`./manage.py makemigrations && ./manage.py migrate && ./manage.py loaddata tasks`
 
 # Run frontend
 `docker exec -it publishgpt-front-end-1 /bin/bash`

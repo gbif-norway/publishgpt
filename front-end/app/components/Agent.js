@@ -5,7 +5,7 @@ import Badge from 'react-bootstrap/Badge';
 import config from '../config.js';
 
 
-const Agent = ({ agent, refreshAgents }) => {
+const Agent = ({ agent, refreshAgents, refreshTables }) => {
   const [messages, setMessages] = useState(agent.message_set);
   const [isComplete, setIsComplete] = useState(agent.completed_at !== null);
   const [userInput, setUserInput] = useState("");
@@ -33,6 +33,7 @@ const Agent = ({ agent, refreshAgents }) => {
               setIsComplete(true);
               refreshAgents().then(resolve);
             } else {
+              refreshTables();
               resolve();
             }
           });

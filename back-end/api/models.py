@@ -85,6 +85,12 @@ class Agent(models.Model):
             return None
         
         last_message = self.message_set.last()
+        if not last_message:
+            print('-------No last message for this:-------')
+            print(self.task.name)
+            self.task.create_agents_with_system_messages(dataset=self.dataset)
+            last_message = self.message_set.last() 
+            return last_message
         if last_message.role == Message.Role.ASSISTANT:
             return last_message
         
@@ -108,7 +114,6 @@ class Agent(models.Model):
 
         function_call = check_function_args(response)
         if function_call:
-            import pdb; pdb.set_trace()
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
             if function_call.id:
                 function_message.function_id = function_call.id
@@ -127,13 +132,14 @@ class Agent(models.Model):
         return message
     
     def run_function(self, function_call):
-        function_model_class = getattr(agent_tools, function_call.name)
+        function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
         function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
         return function_model_obj.run()
 
 
 class Table(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
     df = PickledObjectField()
@@ -141,20 +147,14 @@ class Table(models.Model):
 
     @property
     def df_json(self):
-        return self.df.to_json(orient='records', date_format='iso')
-    
-    def _snapshot_df(self):
+        df = self.make_columns_unique(self.df)
+        return df.to_json(orient='records', date_format='iso')
+
+    def _snapshot_df(self, df_obj):
         max_rows, max_columns, max_str_len = 5, 5, 70
 
         # Truncate long strings in cells
-        df = self.df.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
-
-        # Truncate rows
-        if len(df) > max_rows:
-            top = df.head(max_rows // 2)
-            bottom = df.tail(max_rows // 2)
-            middle = pd.DataFrame({col: ['...'] for col in df.columns}, index=[0])  # Use a temporary numeric index for middle
-            df = pd.concat([top, middle, bottom], ignore_index=True)
+        df = df_obj.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
 
         # Truncate columns
         if len(df.columns) > max_columns:
@@ -163,14 +163,39 @@ class Table(models.Model):
             middle = pd.DataFrame({ '...': ['...']*len(df) }, index=df.index)
             df = pd.concat([left, middle, right], axis=1)
         
-        return df.fillna('')
+        df.fillna('', inplace=True)
 
+        # Truncate rows
+        if len(df) > max_rows:
+            top = df.head(max_rows // 2)
+            bottom = df.tail(max_rows // 2)
+            middle = pd.DataFrame({col: ['...'] for col in df.columns}, index=[0])  # Use a temporary numeric index for middle
+            df = pd.concat([top, middle, bottom], ignore_index=True)
+            # df = '\n'.join([top, middle, bottom])
+
+        return df
 
     @property
     def str_snapshot(self):
+        df = self.make_columns_unique(self.df)
         original_rows, original_cols = self.df.shape
-        return self._snapshot_df().to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
+        return self._snapshot_df(df).to_string() + f"\n\n[{original_rows} rows x {original_cols} columns]"
 
+    def make_columns_unique(self, df):
+        cols = pd.Series(df.columns)
+        nan_count = 0
+        for i, col in enumerate(cols):
+            if pd.isna(col):
+                nan_count += 1
+                cols[i] = f"NaN ({nan_count})"
+            elif (cols == col).sum() > 1:
+                dup_indices = cols[cols == col].index
+                for j, idx in enumerate(dup_indices, start=1):
+                    if j > 1:
+                        cols[idx] = f"{col} ({j})"
+        
+        df.columns = cols
+        return df
 
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
