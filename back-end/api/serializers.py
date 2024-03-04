@@ -6,7 +6,7 @@ import pandas as pd
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = ['id', 'name', 'per_table']
+        fields = ['id', 'name', 'per_table', 'attempt_autonomous']
 
 
 class TableSerializer(serializers.ModelSerializer):
@@ -61,7 +61,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             dfs = pd.read_excel(data['file'].file, header=None, dtype='str', sheet_name=None)
 
         dataset = Dataset.objects.create(**data)
-        task = Task.objects.get(name='extract_subtables')
+        task = Task.objects.get(pk=1)
         for sheet_name, df in dfs.items():
             if not df.empty:
                 table = Table.objects.create(dataset=dataset, title=sheet_name, df=df)

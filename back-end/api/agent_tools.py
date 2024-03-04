@@ -121,6 +121,26 @@ class Python(OpenAIBaseModel):
         return f'`{code}` executed, result: {str(result)[:2000]}'
 
 
+class SetBasicMetadata(OpenAIBaseModel):
+    """Sets the title and description (Metadata) for a Dataset via an Agent, returns True on success"""
+    agent_id: PositiveInt = Field(...)
+    # dataset_id: PositiveInt = Field(...)
+    title: str = Field(..., description="A short but descriptive title for the dataset as a whole")
+    description: str = Field(..., description="A longer description of what the dataset contains, including any important information about why the data was gathered (e.g. for a study) as well as how it was gathered.")
+
+    def run(self):
+        from api.models import  Agent
+        try:
+            agent = Agent.objects.get(id=self.agent_id)
+            dataset = agent.dataset
+            dataset.title = self.title
+            dataset.description = self.description
+            dataset.save()
+            return True
+        except Exception as e:
+            return repr(e)[:2000]
+
+
 class SetAgentTaskToComplete(OpenAIBaseModel):
     """Mark an Agent's task as complete"""
     agent_id: PositiveInt = Field(...)

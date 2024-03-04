@@ -1,10 +1,10 @@
 import ast
 from pydantic import BaseModel
-from pydantic.main import ModelMetaclass
 import json
 from openai import OpenAI
 from pprint import pprint
 from api import agent_tools
+from typing import Dict, Any
 
 
 def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4-turbo-preview'): # gpt-3.5-turbo
@@ -28,27 +28,28 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     return response
 
 
-class OpenAIBaseMeta(ModelMetaclass):
-    @property
-    def openai_schema(cls):
-        parameters = cls.schema()  # Note this is a class method inherited from BaseModel
-        parameters['properties'] = {
-            k: v
-            for k, v in parameters['properties'].items()
-            if k not in ('v__duplicate_kwargs', 'args', 'kwargs')
-        }
-        parameters['required'] = sorted(parameters['properties'])
-        _remove_a_key(parameters, 'title')
-        _remove_a_key(parameters, 'additionalProperties')
-        _remove_a_key(parameters, 'description')
-        return {
-            'name': cls.__name__,
-            'description': cls.__doc__,
-            'parameters': parameters,
-        }
 
-class OpenAIBaseModel(BaseModel, metaclass=OpenAIBaseMeta):
-    pass
+def custom_schema(cls: BaseModel) -> Dict[str, Any]:
+    parameters = cls.schema()
+    parameters['properties'] = {
+        k: v
+        for k, v in parameters['properties'].items()
+        if k not in ('v__duplicate_kwargs', 'args', 'kwargs')
+    }
+    parameters['required'] = sorted(parameters['properties'])
+    for key in ['title', 'additionalProperties', 'description']:
+         _remove_a_key(key, 'title')
+    return {
+        'name': cls.__name__,
+        'description': cls.__doc__,
+        'parameters': parameters,
+    }
+
+
+class OpenAIBaseModel(BaseModel):
+    @classmethod
+    def openai_schema(cls):
+        return custom_schema(cls)
 
 
 def load_openai_json_args(json_args, function_name):

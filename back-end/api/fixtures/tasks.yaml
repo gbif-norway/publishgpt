@@ -1,15 +1,26 @@
 - model: api.task
   fields:
+    name: set_basic_metadata
+    per_table: false
+    attempt_autonomous: false
+    text: >
+      Examine the data presented in these tables carefully and come up with a draft Title and Description for the dataset as a whole. Check these with the user, and finalise in consultation with them before saving them to the database using SetBasicMetadata.
+    additional_function: SetBasicMetadata
+
+- model: api.task
+  fields:
     name: extract_subtables
     per_table: true
+    attempt_autonomous: true
     text: >
       Separate out any sub tables in this dataframe into new, separate Tables. Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. A single table should be one block of related data with consistent columns and rows. IMPORTANT: Start by using the ExtractSubTables method.
     additional_function: ExtractSubTables
 
 - model: api.task
-  fields:
+  fields: 
     name: delete_unnecessary_tables
     per_table: false
+    attempt_autonomous: true
     text: >
       Delete any tables which are not primary data - i.e. which can be derived from other tables. If the data is cryptic or the column headers are not obvious check with the user before doing a deletion. 
 
@@ -17,6 +28,7 @@
   fields:
     name: flatten_headers
     per_table: true
+    attempt_autonomous: true
     text: >
       Flatten any of the top rows which you think might contain header information into a single row, and convert it to the dataframe header. If there are multiple candidate header rows, try to preserve as much information as possible when you merge them. 
     
@@ -24,6 +36,7 @@
   fields:
     name: drop_unnecessary_rows_and_columns
     per_table: true
+    attempt_autonomous: true
     text: >  
       Drop any unnecessary rows and columns. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too. This is just a first pass to weed out obvious problems - we will map columns to the Darwin Core standard in a later Task.
     
@@ -31,6 +44,7 @@
   fields:
     name: de_crosstab  # Convert crosstab/pivot to long.
     per_table: true
+    attempt_autonomous: true
     text: >  
       Is this table in crosstab or pivot format? Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format, label the new column accordingly and present it to the user for confirmation. Don't forget to save changes to the database before marking this Task as complete.
     
@@ -38,6 +52,7 @@
   fields:
     name: set_core_and_extensions
     per_table: false
+    attempt_autonomous: false
     text: >  
       Carefully examine the contents of each of these dataframes. Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
 
@@ -45,6 +60,7 @@
   fields:
     name: organize_tables
     per_table: false
+    attempt_autonomous: true
     text: >  
       Depending on the DwC core and DwC extensions this dataset has, organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required.
 
@@ -52,6 +68,7 @@
   fields:
     name: mapping
     per_table: false
+    attempt_autonomous: true
     text: >  
       Depending on the DwC core and DwC extensions this dataset has, map the columns to the correct darwin core terms. Present these to the user to make sure you have not misunderstood anything. If column names are too cryptic, ask the user about them. Drop any unnecessary columns, and generally get the data into shape. Validation and format checking is the next Task. 
 
@@ -59,6 +76,7 @@
   fields:
     name: unique_ids
     per_table: true
+    attempt_autonomous: true
     text: >  
       Ensure that every row for each Table has a unique identifier. If there isn't an obvious one present, generate uuids.
 
@@ -66,6 +84,7 @@
   fields:
     name: validation
     per_table: true
+    attempt_autonomous: true
     text: >  
       Check each of the newly mapped darwin core fields for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
 
@@ -73,5 +92,6 @@
   fields:
     name: adhoc
     per_table: false
+    attempt_autonomous: false
     text: >  
       Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. Are there any other outstanding issues you can see? Fix these and mark your Task as complete when you think there are no more issues and the dataframes are ready for publication.

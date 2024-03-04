@@ -13,6 +13,8 @@ class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
+    title = models.CharField(max_length=500, blank=True)
+    description = models.CharField(max_length=2000, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -39,6 +41,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     name = models.CharField(max_length=300, unique=True)
     text = models.CharField(max_length=5000)
     per_table = models.BooleanField()
+    attempt_autonomous = models.BooleanField()
     additional_function = models.CharField(max_length=300, null=True, blank=True)
 
     class Meta:
@@ -99,7 +102,7 @@ class Agent(models.Model):
     @classmethod
     def create_with_system_message(cls, tables, **kwargs):
         agent = cls.objects.create(**kwargs)
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
         return agent
@@ -226,9 +229,3 @@ class Message(models.Model):
         get_latest_by = 'created_at'
         ordering = ['created_at']
 
-
-class Metadata(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    title = models.CharField(max_length=500, blank=True)
-    description = models.CharField(max_length=2000, blank=True)
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
