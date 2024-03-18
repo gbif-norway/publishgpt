@@ -7,14 +7,16 @@ from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
 from os import path
+from datetime import datetime
 
 
 class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
-    title = models.CharField(max_length=500, blank=True)
-    description = models.CharField(max_length=2000, blank=True)
+    title = models.CharField(max_length=500, blank=True, default="Placeholder title")
+    description = models.CharField(max_length=2000, blank=True, default="Placeholder description")
+    published_at = models.DateTimeField(null=True, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -31,6 +33,28 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return path.basename(self.file.name)
+    
+    def update_agents(self):
+        next_agent = self.agent_set.filter(completed_at=None).first()
+        if not next_agent:
+            last_completed_agent = self.agent_set.exclude(completed_at=None).last() 
+            print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
+            if last_completed_agent:
+                next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
+                if next_task:
+                    next_task.create_agents_with_system_messages(dataset=self)
+                    return self.update_agents()  # Sometimes tasks are completed without human input
+                else:
+                    import pdb; pdb.set_trace()
+                    return None  # It's been published... self.published_at = datetime.now() # self.save()
+            else:
+                raise Exception('Agent set for this dataset appears to be empty')
+        
+        next_message = next_agent.get_next_assistant_message()
+        if next_message is None:  # This agent is complete
+            self.update_agents()
+
+        return next_agent
 
     class Meta:
         get_latest_by = 'created_at'
@@ -83,7 +107,7 @@ class Agent(models.Model):
         get_latest_by = 'created_at'
         ordering = ['created_at']
 
-    def get_next_assistant_message_for_user(self):
+    def get_next_assistant_message(self):
         if self.completed_at is not None:
             return None
         
@@ -105,7 +129,6 @@ class Agent(models.Model):
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
-        return agent
 
     def run(self, current_call=0, max_calls=10):
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
@@ -126,11 +149,11 @@ class Agent(models.Model):
             function_message.content = function_result
             function_message.save()
         
-            # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
-            if function_call.name != agent_tools.SetAgentTaskToComplete.__name__ and function_call.name != agent_tools.SetBasicMetadata.__name__:
-                return self.run(current_call=current_call+1, max_calls=max_calls)
-            else:
-                message = function_message
+            # If this was not a terminating function we need to feed it back to GPT4
+            terminating_functions = [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]
+            if function_call.name in terminating_functions:
+                return None
+            return self.run(current_call=current_call+1, max_calls=max_calls)
 
         return message
     

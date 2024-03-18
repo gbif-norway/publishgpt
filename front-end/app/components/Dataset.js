@@ -16,60 +16,43 @@ const fetchData = async (url, options = {}) => {
 const Dataset = ({ initialDatasetId }) => {
   const [error, setError] = useState(null);
   const [dataset, setDataset] = useState(null);
+  const [activeDatasetID, setActiveDatasetID] = useState(null);
   const [agents, setAgents] = useState([]);
   const [activeAgentKey, setActiveAgentKey] = useState(null);
-  const [tables, setTables] = useState({});
+  const [tables, setTables] = useState([]);
   const [activeTableId, setActiveTableId] = useState(null);
 
   const refreshTables = useCallback(async () => {
-    try { 
-      const data = await fetchData(`${config.baseApiUrl}/api/tables?dataset=${dataset.id}`);
-      const updatedData = data.map(item => {
-        const df = JSON.parse(item.df_json);
-        delete item.df_json;
-        return { ...item, df };
-      });
-      setTables(updatedData); 
-      const sortedTables = data.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-      setActiveTableId(sortedTables[0]?.id);
-    } catch (err) { console.log(err.message); }
-  }, [dataset]);
+    const tables = await fetchData(`${config.baseApiUrl}/tables?dataset=${activeDatasetID}`);
+    var updatedTables = tables.map(item => {
+      const df = JSON.parse(item.df_json);
+      delete item.df_json;
+      return { ...item, df };
+    });
+    setTables(updatedTables)
+    const sortedTables = tables.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+    setActiveTableId(sortedTables[0]?.id);
+  }, [activeDatasetID])
 
-  const refreshAgents = useCallback(async () => {
+  const refreshDataset = useCallback(async () => {
     try {
-      const agents = await fetchData(`${config.baseApiUrl}/api/agents?dataset=${dataset.id}`);
-      console.log('refresh agents called');
-      console.log(agents);
-      var last_non_complete_agent_index = agents.findIndex(agent => agent.completed_at === null);
-      if (last_non_complete_agent_index === -1) {
-        setAgents(agents);
-        const created = await fetchData(`${config.baseApiUrl}/api/datasets/${dataset.id}/create_next_agent`);
-        if (created != null) await refreshAgents();
-      } else {
-        var visible_agents = agents.slice(0, last_non_complete_agent_index + 1);
-        setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
-        setAgents(visible_agents);
-      }
-      await refreshTables(dataset.id);
+      const dataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}`);
+      var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
+      var visible_agents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
+      setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
+      setAgents(visible_agents);
+      refreshTables();
+      setDataset(dataset);
     } catch (err) { console.log(err.message); }
-  }, [dataset, refreshTables]);
-
-  // fetch dataset, first agent and tables if initialDatasetId is provided
-  useEffect(() => {
-    if (initialDatasetId) {
-      const initFetch = async () => {
-        try {
-          const data = await fetchData(`${config.baseApiUrl}/api/datasets/${initialDatasetId}`);
-          setDataset(data);
-        } catch (err) { console.log(err.message); }
-      };
-      initFetch();
-    }
-  }, [initialDatasetId]);
+  }, [activeDatasetID]);
 
   useEffect(() => {
-    if (dataset) { refreshAgents(); }
-  }, [dataset, refreshAgents]);
+    if (initialDatasetId) { setActiveDatasetID(initialDatasetId); }
+  }, [initialDatasetId, setActiveDatasetID]);
+
+  useEffect(() => {
+    if (activeDatasetID) { refreshDataset();  }
+  }, [activeDatasetID, refreshDataset]);
 
   return (
     <div className="container-fluid">
@@ -80,7 +63,7 @@ const Dataset = ({ initialDatasetId }) => {
             <div className="message assistant-message">
               I can help you publish your biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>. Let's start by taking a look at your data file.
               <FileDrop
-                onFileAccepted={(data) => { setDataset(data); }}
+                onFileAccepted={(data) => { setActiveDatasetID(data); }}
                 onError={(errorMessage) => setError(errorMessage)}
               />
             </div>
@@ -96,16 +79,16 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
         </div>
         <div className="row mx-auto p-4">
-          <div className="col-5">
+          <div className="col-6">
             {Array.isArray(agents) && agents.length > 0 &&
               <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
                 {agents.map(agent => (
-                  <Agent key={agent.id} agent={agent} refreshAgents={() => refreshAgents()} refreshTables={() => refreshTables()} />
+                  <Agent key={agent.id} agent={agent} refreshDataset={() => refreshDataset()} />
                 ))}
               </Accordion>
             }
           </div>
-          <div className="col-7">
+          <div className="col-6">
             <div className="sticky-top">
               {tables.length > 0 && (
                 <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
