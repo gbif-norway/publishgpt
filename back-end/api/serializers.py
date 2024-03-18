@@ -62,8 +62,9 @@ class DatasetSerializer(serializers.ModelSerializer):
 
         dataset = Dataset.objects.create(**data)
         task = Task.objects.get(pk=1)
+        tables = []
         for sheet_name, df in dfs.items():
             if not df.empty:
-                table = Table.objects.create(dataset=dataset, title=sheet_name, df=df)
-                Agent.create_with_system_message(dataset=dataset, task=task, tables=[table])
+                tables.append(Table.objects.create(dataset=dataset, title=sheet_name, df=df))
+        Agent.create_with_system_message(dataset=dataset, task=task, tables=tables)
         return dataset

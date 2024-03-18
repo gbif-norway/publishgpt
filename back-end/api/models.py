@@ -127,7 +127,7 @@ class Agent(models.Model):
             function_message.save()
         
             # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
-            if function_call.name != agent_tools.SetAgentTaskToComplete.__name__:
+            if function_call.name != agent_tools.SetAgentTaskToComplete.__name__ and function_call.name != agent_tools.SetBasicMetadata.__name__:
                 return self.run(current_call=current_call+1, max_calls=max_calls)
             else:
                 message = function_message

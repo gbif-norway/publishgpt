@@ -28,7 +28,7 @@ const Agent = ({ agent, refreshAgents, refreshTables }) => {
         .then(response => response.json())
         .then(data => {
           updateMessages().then(() => {
-            if (data.id && data.function_name == "SetAgentTaskToComplete") {
+            if (data.id === null) {
               console.log('Setting is complete and calling refreshAgents');
               setIsComplete(true);
               refreshAgents().then(resolve);

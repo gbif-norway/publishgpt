@@ -72,7 +72,7 @@ const Dataset = ({ initialDatasetId }) => {
   }, [dataset, refreshAgents]);
 
   return (
-    <div class="container-fluid">
+    <div className="container-fluid">
       {!dataset ? (
       <div className="col-lg-8 mx-auto p-4 py-md-5">
         <div className="agent-task initialise">

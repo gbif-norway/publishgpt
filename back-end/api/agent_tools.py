@@ -122,7 +122,7 @@ class Python(OpenAIBaseModel):
 
 
 class SetBasicMetadata(OpenAIBaseModel):
-    """Sets the title and description (Metadata) for a Dataset via an Agent, returns True on success"""
+    """Sets the title and description (Metadata) for a Dataset via an Agent, returns a success message or an error message"""
     agent_id: PositiveInt = Field(...)
     # dataset_id: PositiveInt = Field(...)
     title: str = Field(..., description="A short but descriptive title for the dataset as a whole")
@@ -136,7 +136,8 @@ class SetBasicMetadata(OpenAIBaseModel):
             dataset.title = self.title
             dataset.description = self.description
             dataset.save()
-            return True
+            SetAgentTaskToComplete(agent_id=self.agent_id).run()
+            return 'Basic Metadata has been successfully set and Agent Task has been set to complete'
         except Exception as e:
             return repr(e)[:2000]
 

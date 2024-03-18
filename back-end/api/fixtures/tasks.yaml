@@ -4,14 +4,14 @@
     per_table: false
     attempt_autonomous: false
     text: >
-      Examine the data presented in these tables carefully and come up with a draft Title and Description for the dataset as a whole. Check these with the user, and finalise in consultation with them before saving them to the database using SetBasicMetadata.
+      Examine the data presented in these tables carefully and come up with a very short but descriptive draft Title (max 30 words) and Description (max 3 sentences) for the dataset as a whole. Ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
     additional_function: SetBasicMetadata
 
 - model: api.task
   fields:
     name: extract_subtables
     per_table: true
-    attempt_autonomous: true
+    attempt_autonomous : true
     text: >
       Separate out any sub tables in this dataframe into new, separate Tables. Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. A single table should be one block of related data with consistent columns and rows. IMPORTANT: Start by using the ExtractSubTables method.
     additional_function: ExtractSubTables

@@ -15,10 +15,10 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
     args = {'model': model, 'temperature': temperature, 'messages': messages }
     if functions:
-        args['tools'] = [{'type': 'function', 'function': f.openai_schema} for f in functions]
-        pprint(args['tools'])
+        args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
+        # pprint(args['tools'])
         if call_first_function:
-            args['tool_choice'] = {'name': args['tools'][0]['name']}
+            args['tool_choice'] = {"type": "function", "function": {"name": args['tools'][0]['function']['name']}}
     print('---')
     with OpenAI() as client:
         response = client.chat.completions.create(**args)  
@@ -26,7 +26,6 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     pprint(response)
     print('---')
     return response
-
 
 
 def custom_schema(cls: BaseModel) -> Dict[str, Any]:
