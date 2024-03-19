@@ -54,6 +54,8 @@ const Dataset = ({ initialDatasetId }) => {
     if (activeDatasetID) { refreshDataset();  }
   }, [activeDatasetID, refreshDataset]);
 
+  const CustomTabTitle = ({ children }) => <span dangerouslySetInnerHTML={{ __html: children }} />;
+
   return (
     <div className="container-fluid">
       {!dataset ? (
@@ -75,7 +77,7 @@ const Dataset = ({ initialDatasetId }) => {
       <div>
         <div className="row mx-auto p-4">
           <div className="col-12">
-            <h1>Working to publish {dataset.file.split(/\//).pop()} - started on {new Date(dataset.created_at).toLocaleString()}</h1>
+            <h1>Publishing {dataset.file.split(/\//).pop()} <small>started {new Date(dataset.created_at).toLocaleString()}</small></h1>
           </div>
         </div>
         <div className="row mx-auto p-4">
@@ -93,7 +95,9 @@ const Dataset = ({ initialDatasetId }) => {
               {tables.length > 0 && (
                 <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
                   {tables.map((table) => (
-                    <Tab eventKey={table.id} title={table.title} key={table.id}>
+                    <Tab eventKey={table.id} 
+                    title={<CustomTabTitle>{`${table.title} <small>(ID ${table.id})</small>`}</CustomTabTitle>} 
+                    key={table.id}>
                       <DataTable 
                         columns={table.df[0] ? Object.keys(table.df[0]).map(column => ({
                           name: column,

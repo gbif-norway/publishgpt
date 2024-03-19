@@ -32,6 +32,7 @@ class MessageSerializer(serializers.ModelSerializer):
 class AgentSerializer(serializers.ModelSerializer):
     message_set = MessageSerializer(many=True, read_only=True)
     task = TaskSerializer(read_only=True)
+    table_set = TableShortSerializer(many=True, read_only=True)
 
     class Meta:
         model = Agent

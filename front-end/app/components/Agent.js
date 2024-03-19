@@ -9,6 +9,16 @@ const Agent = ({ agent, refreshDataset }) => {
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
+  console.log(agent.completed_at);
+
+  const formatTableIDs = (tableSet) => {
+    if (!tableSet || !tableSet.length) return "(No Table IDs)";
+  
+    const ids = tableSet.map(table => table.id);
+    const prefix = ids.length === 1 ? "(Table ID " : "(Table IDs ";
+    
+    return prefix + ids.join(", ") + ")";
+  };
 
   const handleUserInput = (event) => {
     if (event.key === 'Enter') {
@@ -39,7 +49,8 @@ const Agent = ({ agent, refreshDataset }) => {
     <>
       <Accordion.Item eventKey={agent.id}>
         <Accordion.Header>
-          Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())}
+          Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} 
+          &nbsp;-&nbsp;<small>{formatTableIDs(agent.table_set)}</small>
           {agent.completed_at != null && (
             <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
           )}
@@ -59,7 +70,7 @@ const Agent = ({ agent, refreshDataset }) => {
               </div>
             </div>
           )}
-          {!agent.completed_at != null && !isLoading && <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} />}
+          {!agent.completed_at && !isLoading && <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} />}
         </Accordion.Body>
       </Accordion.Item>
     </>
