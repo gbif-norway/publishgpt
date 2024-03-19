@@ -7,12 +7,16 @@ from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
 from os import path
+from datetime import datetime
 
 
 class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
+    title = models.CharField(max_length=500, blank=True, default="Placeholder title")
+    description = models.CharField(max_length=2000, blank=True, default="Placeholder description")
+    published_at = models.DateTimeField(null=True, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -29,6 +33,28 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return path.basename(self.file.name)
+    
+    def update_agents(self):
+        next_agent = self.agent_set.filter(completed_at=None).first()
+        if not next_agent:
+            last_completed_agent = self.agent_set.exclude(completed_at=None).last() 
+            print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
+            if last_completed_agent:
+                next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
+                if next_task:
+                    next_task.create_agents_with_system_messages(dataset=self)
+                    return self.update_agents()  # Sometimes tasks are completed without human input
+                else:
+                    import pdb; pdb.set_trace()
+                    return None  # It's been published... self.published_at = datetime.now() # self.save()
+            else:
+                raise Exception('Agent set for this dataset appears to be empty')
+        
+        next_message = next_agent.get_next_assistant_message()
+        if next_message is None:  # This agent is complete
+            self.update_agents()
+
+        return next_agent
 
     class Meta:
         get_latest_by = 'created_at'
@@ -39,6 +65,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     name = models.CharField(max_length=300, unique=True)
     text = models.CharField(max_length=5000)
     per_table = models.BooleanField()
+    attempt_autonomous = models.BooleanField()
     additional_function = models.CharField(max_length=300, null=True, blank=True)
 
     class Meta:
@@ -64,77 +91,6 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
             agents.append(agent)
 
         return agents
-
-
-class Agent(models.Model):  
-    created_at = models.DateTimeField(auto_now_add=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-    task = models.ForeignKey(Task, on_delete=models.CASCADE)
-
-    @property
-    def callable_functions(self):
-        return [getattr(agent_tools, f) for f in self.task.functions]
-
-    class Meta:
-        get_latest_by = 'created_at'
-        ordering = ['created_at']
-
-    def get_next_assistant_message_for_user(self):
-        if self.completed_at is not None:
-            return None
-        
-        last_message = self.message_set.last()
-        if not last_message:
-            print('-------No last message for this:-------')
-            print(self.task.name)
-            self.task.create_agents_with_system_messages(dataset=self.dataset)
-            last_message = self.message_set.last() 
-            return last_message
-        if last_message.role == Message.Role.ASSISTANT:
-            return last_message
-        
-        return self.run()
-
-    @classmethod
-    def create_with_system_message(cls, tables, **kwargs):
-        agent = cls.objects.create(**kwargs)
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count() })
-        print(system_message_text)
-        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
-        return agent
-
-    def run(self, current_call=0, max_calls=10):
-        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
-        
-        # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
-        message_content = response.choices[0].message.content
-        if message_content:
-            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
-
-        function_call = check_function_args(response)
-        if function_call:
-            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
-            if function_call.id:
-                function_message.function_id = function_call.id
-                function_message.save()
-            function_result = self.run_function(function_call)
-            print(f'Function result: {function_result}')
-            function_message.content = function_result
-            function_message.save()
-        
-            # If this was not the SetAgentTaskToComplete function we need to feed it back to GPT4
-            if function_call.name != agent_tools.SetAgentTaskToComplete.__name__:
-                return self.run(current_call=current_call+1, max_calls=max_calls)
-            else:
-                message = function_message
-
-        return message
-    
-    def run_function(self, function_call):
-        function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
-        function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
-        return function_model_obj.run()
 
 
 class Table(models.Model):
@@ -197,6 +153,77 @@ class Table(models.Model):
         df.columns = cols
         return df
 
+
+class Agent(models.Model):  
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    tables = models.ManyToManyField(Table, blank=True)
+
+    @property
+    def callable_functions(self):
+        return [getattr(agent_tools, f) for f in self.task.functions]
+
+    class Meta:
+        get_latest_by = 'created_at'
+        ordering = ['created_at']
+
+    def get_next_assistant_message(self):
+        if self.completed_at is not None:
+            return None
+        
+        last_message = self.message_set.last()
+        if not last_message:
+            print('-------No last message for this:-------')
+            print(self.task.name)
+            self.task.create_agents_with_system_messages(dataset=self.dataset)
+            last_message = self.message_set.last() 
+            return last_message
+        if last_message.role == Message.Role.ASSISTANT:
+            return last_message
+        
+        return self.run()
+
+    @classmethod
+    def create_with_system_message(cls, **kwargs):
+        agent = cls.objects.create(**kwargs)
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
+        print(system_message_text)
+        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+
+    def run(self, current_call=0, max_calls=10):
+        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
+        
+        # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
+        message_content = response.choices[0].message.content
+        if message_content:
+            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
+
+        function_call = check_function_args(response)
+        if function_call:
+            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
+            if function_call.id:
+                function_message.function_id = function_call.id
+                function_message.save()
+            function_result = self.run_function(function_call)
+            print(f'Function result: {function_result}')
+            function_message.content = function_result
+            function_message.save()
+        
+            # If this was not a terminating function we need to feed it back to GPT4
+            terminating_functions = [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]
+            if function_call.name in terminating_functions:
+                return None
+            return self.run(current_call=current_call+1, max_calls=max_calls)
+
+        return message
+    
+    def run_function(self, function_call):
+        function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
+        function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
+        return function_model_obj.run()
+
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -226,9 +253,3 @@ class Message(models.Model):
         get_latest_by = 'created_at'
         ordering = ['created_at']
 
-
-class Metadata(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    title = models.CharField(max_length=500, blank=True)
-    description = models.CharField(max_length=2000, blank=True)
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)

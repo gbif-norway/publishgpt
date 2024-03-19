@@ -6,7 +6,7 @@ import pandas as pd
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = ['id', 'name', 'per_table']
+        fields = ['id', 'name', 'per_table', 'attempt_autonomous']
 
 
 class TableSerializer(serializers.ModelSerializer):
@@ -32,6 +32,7 @@ class MessageSerializer(serializers.ModelSerializer):
 class AgentSerializer(serializers.ModelSerializer):
     message_set = MessageSerializer(many=True, read_only=True)
     task = TaskSerializer(read_only=True)
+    table_set = TableShortSerializer(many=True, read_only=True)
 
     class Meta:
         model = Agent
@@ -40,12 +41,6 @@ class AgentSerializer(serializers.ModelSerializer):
 
 class DatasetSerializer(serializers.ModelSerializer):
     agent_set = AgentSerializer(many=True, read_only=True)
-    table_set = serializers.SerializerMethodField()
-
-    def get_table_set(self, obj):
-        tables = Table.objects.filter(dataset=obj).order_by('id')
-        serializer = TableShortSerializer(tables, many=True, read_only=True)
-        return serializer.data
 
     class Meta:
         model = Dataset
@@ -61,9 +56,9 @@ class DatasetSerializer(serializers.ModelSerializer):
             dfs = pd.read_excel(data['file'].file, header=None, dtype='str', sheet_name=None)
 
         dataset = Dataset.objects.create(**data)
-        task = Task.objects.get(name='extract_subtables')
+        tables = []
         for sheet_name, df in dfs.items():
             if not df.empty:
-                table = Table.objects.create(dataset=dataset, title=sheet_name, df=df)
-                Agent.create_with_system_message(dataset=dataset, task=task, tables=[table])
+                tables.append(Table.objects.create(dataset=dataset, title=sheet_name, df=df))
+        Agent.create_with_system_message(dataset=dataset, task=Task.objects.get(pk=1), tables=tables)
         return dataset

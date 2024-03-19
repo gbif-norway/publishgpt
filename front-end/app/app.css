@@ -18,6 +18,8 @@
 .assistant-message {
     background-color: rgb(196 255 122 / 10%);
 }
+.function-message { padding: 0; }
+.function-message .show { margin-bottom: 10px; }
 .user-message { background-color: rgb(178 194 255 / 10%) }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
@@ -26,6 +28,6 @@
 
 .text-bg-success { background-color: #90d28b}
 .dataset-info-wrapper button { margin-right: 10px; margin-bottom: 10px; }
-.function-message .show { margin-bottom: 10px; }
 .rdt_Pagination svg { fill: #FFF !important; }
+button small { font-size: 0.6em; }
 h1 small { font-size: 0.5em; }
