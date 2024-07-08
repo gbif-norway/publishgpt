@@ -1,20 +1,162 @@
 - model: api.task
   fields:
+    name: extract_subtables
+    per_table: true
+    attempt_autonomous : true
+    text: |-
+      Separate out any sub tables in this dataframe into new, separate Tables. 
+      Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. 
+      A single table should be one block of related data with consistent columns and rows, any summary/total rows can be discarded. 
+      IMPORTANT: Start by using the ExtractSubTables method, which is a very simple function which splits up data based on empty rows and columns, but *DO NOT* rely on it. 
+      Double check the Table snapshots, and use your intelligence, look at the first few rows, the last few rows, search for pattern breaks, etc. Often users add arbitrary and unnecessary columns like numbering or horizontal dividers. 
+      NOTE: This is a challenging task, think it through clearly and carefully, step by step. 
+
+      Here is an example of a particularly bad user-uploaded spreadsheet: 
+      | WP2, 64 µm mesh (ind m-3)                       |                     |                     |            |            |       |         | Svartnes 2018 (ind m-3)        |            |
+      | ----------------------------------------------- | ------------------- | ------------------- | ---------- | ---------- | ----- | ------- | ------------------------------ | ---------- |
+      | Date                                            | 2017                | 2017                | 2018       | 2018       |       |         | WP2, 64 µm mesh                |            |
+      | Sample/Net number                               | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |       |         | Date                           | 12.06.2018 | 12.06.2018 |
+      | Layer [m]                                       | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |       |         | Sample/Net number              | WP2/64     | WP2/64 |
+      | Calanus spp.                                    | 128                 | 259                 | 194        | 562        |       |         | Layer [m]                      | 170-50 m   | 50-0 m |
+      | Microcalanus spp.                               | 471                 | 707                 | 16         | 125        |       |         | Calanus spp.                   | 562        | 194 |
+      | Cyclopoida nauplii                              | 8724                | 9                   | 8061       | 2          |       |         | Microsetella norvegica nauplii | 110        | 3199 |
+      | Fritillaria borealis                            | 5560                | 2                   | 0          | 0          |       |         | Cyclopoida nauplii             | 2          | 8061 |
+      | Rotatoria                                       | 607                 | 25                  | 0          | 0          |       |         | Fritillaria borealis           | 0          | 0 |
+      | SUM Others                                      | 16721               | 84                  | 223        | 32         |       |         | Rotatoria                      | 0          | 0 |
+      |                                                 |                     |                     |            |            |       |         | SUM Others                     | 32         | 223 |
+      | Total abundance                                 | 32211               | 1085                | 8495       | 721        |       |         |                                |            |  |
+      | Total abundance without nauplii                 | 23487               | 1076                | 433        | 719        |       |         |                                |            |  |
+      | Total copeods                                   | 599                 | 966                 | 210        | 687        |       |         |                                |            |  |
+      |                                                 |                     |                     |            |            |       |         |                                |            |  |
+      | % Microsetella of total zoopl (without nauplii) | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
+      | % Microsetella of total copepods                | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
+      |                                                 |                     |                     |            |            |       |         |                                |            |  |
+      | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
+      | 19/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
+      | 0                                               | 200                 | 4880                | 80         | 160        | 5320  | 3080    |                                |            |  |
+      | 10                                              | 622                 | 49518               | 498        | 1493       | 52131 | 33281   |                                |            |  |
+      | 20                                              | 1991                | 38818               | 373        | 498        | 41680 | 6096    |                                |            |  |
+      | 50                                              | 2280                | 3120                | 80         | 240        | 5720  | 200     |                                |            |  |
+      | 90                                              | 600                 | 1720                | 160        | 120        | 2600  | 200     |                                |            |  |
+      | 120                                             | 280                 | 1160                | 80         | 320        | 1840  | 1200    |                                |            |  |
+      | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
+      | 21/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
+      | 0                                               | 0                   | 1440                | 0          | 120        | 1560  | 7800    |                                |            |  |
+      | 10                                              | 2400                | 40320               | 480        | 1200       | 44400 | 19440   |                                |            |  |
+      | 20                                              | 3000                | 17280               | 0          | 360        | 20640 | 4680    |                                |            |  |
+      | 50                                              | 440                 | 1160                | 0          | 0          | 1600  | 80      |                                |            |  |
+      | 90                                              | 120                 | 1040                | 0          | 0          | 1160  | 120     |                                |            |  |
+      | 120                                             | 40                  | 240                 | 0          | 0          | 280   | 40      |                                |            |  |
+      |                                                 |                     |                     |            |            |       |         |                                |            |  |
+
+      This should be 4 tables, with the tables with Sum/Total rows discarded. 
+      Table 1:
+      | WP2, 64 µm mesh (ind m-3) |                     |                     |            |            |
+      | ------------------------- | ------------------- | ------------------- | ---------- | ---------- |
+      | Date                      | 2017                | 2017                | 2018       | 2018       |
+      | Sample/Net number         | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |
+      | Layer [m]                 | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |
+      | Calanus spp.              | 128                 | 259                 | 194        | 562        |
+      | Microcalanus spp.         | 471                 | 707                 | 16         | 125        |
+      | Cyclopoida nauplii        | 8724                | 9                   | 8061       | 2          |
+      | Fritillaria borealis      | 5560                | 2                   | 0          | 0          |
+      | Rotatoria                 | 607                 | 25                  | 0          | 0          |
+      | SUM Others                | 16721               | 84                  | 223        | 32         |
+
+      Table 2:
+      | Svartnes 2018 (ind m-3)        |            |
+      | ------------------------------ | ---------- |
+      | WP2, 64 µm mesh                |            |
+      | Date                           | 12.06.2018 | 12.06.2018 |
+      | Sample/Net number              | WP2/64     | WP2/64 |
+      | Layer [m]                      | 170-50 m   | 50-0 m |
+      | Calanus spp.                   | 562        | 194 |
+      | Microsetella norvegica nauplii | 110        | 3199 |
+      | Cyclopoida nauplii             | 2          | 8061 |
+      | Fritillaria borealis           | 0          | 0 |
+      | Rotatoria                      | 0          | 0 |
+      | SUM Others                     | 32         | 223 |
+
+      Table 3:
+      | ind/m3     |      |       |        |         |       |         |
+      | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
+      | 19/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
+      | 0          | 200  | 4880  | 80     | 160     | 5320  | 3080    |
+      | 10         | 622  | 49518 | 498    | 1493    | 52131 | 33281   |
+      | 20         | 1991 | 38818 | 373    | 498     | 41680 | 6096    |
+      | 50         | 2280 | 3120  | 80     | 240     | 5720  | 200     |
+      | 90         | 600  | 1720  | 160    | 120     | 2600  | 200     |
+      | 120        | 280  | 1160  | 80     | 320     | 1840  | 1200    |
+
+      Table 4:
+      | ind/m3     |      |       |        |         |       |         |
+      | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
+      | 21/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
+      | 0          | 0    | 1440  | 0      | 120     | 1560  | 7800    |
+      | 10         | 2400 | 40320 | 480    | 1200    | 44400 | 19440   |
+      | 20         | 3000 | 17280 | 0      | 360     | 20640 | 4680    |
+      | 50         | 440  | 1160  | 0      | 0       | 1600  | 80      |
+      | 90         | 120  | 1040  | 0      | 0       | 1160  | 120     |
+      | 120        | 40   | 240   | 0      | 0       | 280   | 40      |
+    additional_function: SimpleExtractSubTables
+
+- model: api.task
+  fields:
+    name: rename_columns
+    per_table: true
+    attempt_autonomous: false
+    text: |-
+      When users publish data, they often create spreadsheets with cryptic information as they tend to write things with only themselves in mind. This task is a first pass to clarify what actual data we have in the spreadsheet.
+      Take a deep breath, and think this through step-by-step.
+      -
+      Aim 1: examine the data presented in this table carefully: 
+      a) Are the column heading meanings clear and reflecting the data in each column? Note that users sometimes make multiple header rows - if you notice this you can go ahead and flatten them first.
+      b) If any of the first few columns are row headings (i.e. this is ia pivot table of some kind), do you understand what the values in there mean? 
+      Engage in conversation with the user to clarify anything that is ambiguous or that you don't understand. For anything you're not sure of, make a guess at meaning and present that to the user for confirmation.
+      -
+      Aim 2: once you have a good understanding of the column headings and data, rename columns (and/or data values) to make them immediately understandable. 
+      -
+      Aim 3: drop any unnecessary rows and columns containing data which has been derived from primary data. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too.
+      IMPORTANT: Be extremely careful when dropping rows or columns because of nan/None values, usually these contain important data even if the value is None. Look critically at the rows you plan to delete BEFORE you delete them, and check that they really are unnecessary. 
+      -
+      Aim 4: explain any confusing aspects of the data/structure by adding a short explanation to the dataset Description using the SetBasicMetadata function. 
+
+      To achieve these four aims, start by asking the user one question at a time, based on the data in the table. Wait for the user's response before asking the next question.
+      To achieve the desired conversational flow, here is an example of how the interaction should look:
+
+      Agent: Does the first column ('S') mean species?
+      User: Yes
+      Agent: [renames column]
+      Agent: I see. So does the next column contain the number of species you found?
+      User: No, that's the measurement of ocean salinity where we took samples
+      Agent: [renames column]
+      Agent: So the numbers in the next columns all look similar, are these counts of individual species found? Is each column a different location/sample spot?  
+      User: Yes, well sort of, it's actually %biomass of each species at different sites
+      Agent: [renames columns]
+      Agent: [Calls SetBasicMetadata and sets dataset Description to: "Table ID 82 is wide format/pivot table with %biomass of species for different sample sites."]
+  additional_function: SetBasicMetadata
+
+- model: api.task
+  fields:
     name: set_basic_metadata
     per_table: false
     attempt_autonomous: false
-    text: >
-      Examine the data presented in these tables carefully and come up with a very short but descriptive draft Title (max 30 words) and Description (max 3 sentences) for the dataset as a whole. Ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
+    text: |-
+      Examine the data presented in these tables carefully and the current dataset Description (a draft with some information about columns and data structure), and use it to derive a very short but descriptive draft Title (max 50 words) and Description (approx 3-5 sentences) for the dataset as a whole. Incorporate the current dataset Description and keep information about the columns and data structure at the end of the Description. But you can ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
     additional_function: SetBasicMetadata
 
 - model: api.task
   fields:
-    name: extract_subtables
-    per_table: true
-    attempt_autonomous : true
-    text: >
-      Separate out any sub tables in this dataframe into new, separate Tables. Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. A single table should be one block of related data with consistent columns and rows. IMPORTANT: Start by using the ExtractSubTables method.
-    additional_function: ExtractSubTables
+    name: check_data_suitability
+    per_table: false
+    attempt_autonomous: false
+    text: |-
+      GBIF.org is a global database for biodiversity data. Suitable data for publication includes:
+      - Species Occurrence Data and Sampling Event Data: Records of when and where species were observed - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
+      - Checklists: Lists of species found in a specific area or ecosystem.
+      Look at this data and the metadata description critically. 
+      Is this data suitable for publication on gbif.org? If it is, mark this Task as complete, otherwise let the user know and reject the the dataset using the RejectDataset function. 
+    additional_function: RejectDataset
 
 - model: api.task
   fields: 
@@ -34,14 +176,6 @@
     
 - model: api.task
   fields:
-    name: drop_unnecessary_rows_and_columns
-    per_table: true
-    attempt_autonomous: true
-    text: >  
-      Drop any unnecessary rows and columns. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too. This is just a first pass to weed out obvious problems - we will map columns to the Darwin Core standard in a later Task.
-    
-- model: api.task
-  fields:
     name: de_crosstab  # Convert crosstab/pivot to long.
     per_table: true
     attempt_autonomous: true
@@ -53,24 +187,47 @@
     name: set_core_and_extensions
     per_table: false
     attempt_autonomous: false
-    text: >  
-      Carefully examine the contents of each of these dataframes. Set the DwC core and DwC extension for this dataset. Take your best guess at what these should be, and then discuss it with the user.
+    text: |-
+      Carefully examine the contents of each of these dataframes. They need to be combined together into a single Darwin Core archive, with one core table (Event, Occurrence or Checklist), with optional extension Tables. Decide on 1) either an Occurrence, Event + Occurrence, or Checklist (taxonomy) DwC core, and 2) optionally any DwC extension for this dataset, the most commonly used one is MeasurementOrFact.
+      Common Event DwC fields (can also be included in an Occurrence core Table):
+       - eventDate (must be ISO format)
+       - locality
+       - minimumElevationInMeters
+       - maximumElevationInMeters
+       - country
+       - decimalLatitude
+       - decimalLongitude
+       - fieldNotes
+      Common Occurrence DwC fields: 
+       - recordedBy (collector/observer's name)
+       - recordedByID (often ORCID)
+       - scientificName
+       - kingdom
+       - individualCount or organismQuantity/organismQuantityType (IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact)
+       - occurrenceRemarks
+      Common Checklist DwC fields
+       - taxonID
+       - scientificName
+       - kingdom
+       - taxonRemarks
+      NOTE: If this is not a Taxonomy/Checklist, you must use the Occurrence core by default and only use a separate table as an Event core if the data contains multiple Occurrences that can be easily grouped (like a series of observations across different times and locations within the same project). If the data is simple, it's easier to combine Event and Occurrence fields into a single Table. In the majority of cases just using the single Occurrence core + some Event fields is easiest. 
+      NOTE 2: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. DO NOT use it for individual counts or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
 
-- model: api.task
-  fields:
-    name: organize_tables
-    per_table: false
-    attempt_autonomous: true
-    text: >  
-      Depending on the DwC core and DwC extensions this dataset has, organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required.
+      Your task is now to: 
+      1) Discuss your recommendations for DwC core and extensions with the user, note that extensions are optional
+      2) Rename the columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them
+      3) Organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required
+      3) Add a very short (max 3 sentences) summary to the dataset description, detailing why you and the user have chosen this DwC core + any extensions, use SetBasicMetadata to save it and be careful not to overwrite the description already saved.
+      4) Call the SetAgentTaskToComplete function and move on to the next task
+    additional_function: SetBasicMetadata
 
-- model: api.task
-  fields:
-    name: mapping
-    per_table: false
-    attempt_autonomous: true
-    text: >  
-      Depending on the DwC core and DwC extensions this dataset has, map the columns to the correct darwin core terms. Present these to the user to make sure you have not misunderstood anything. If column names are too cryptic, ask the user about them. Drop any unnecessary columns, and generally get the data into shape. Validation and format checking is the next Task. 
+# - model: api.task
+#   fields:
+#     name: organize_tables
+#     per_table: false
+#     attempt_autonomous: true
+#     text: >  
+#       Depending on the DwC core and DwC extensions this dataset has, organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required.
 
 - model: api.task
   fields:
@@ -78,7 +235,7 @@
     per_table: true
     attempt_autonomous: true
     text: >  
-      Ensure that every row for each Table has a unique identifier. If there isn't an obvious one present, generate uuids.
+      Ensure that every row for each Table has a unique identifier (e.g. occurrenceID, eventID, measurementID, etc). If there isn't an obvious one present, generate uuids.
 
 - model: api.task
   fields:
@@ -86,7 +243,15 @@
     per_table: true
     attempt_autonomous: true
     text: >  
-      Check each of the newly mapped darwin core fields for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
+      Check each of the columns (which should all be darwin core fields) for validation errors. Pay particular attention to dates, and get these in the right column. Additionally, check the required fields for each DwC core and DwC extension, and make sure they are present. 
+
+- model: api.task
+  fields:
+    name: image_urls
+    per_table: true
+    attempt_autonomous: false
+    text: >  
+      This is only really necessary for Occurrence or Event datasets (not Taxon). Determine if the user wishes to publish any images associated with the occurrences in their dataset, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after this process is complete. If the image URLs are present already, make sure the column is correctly named and in the right Table.
 
 - model: api.task
   fields:

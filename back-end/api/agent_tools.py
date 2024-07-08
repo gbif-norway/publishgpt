@@ -39,7 +39,7 @@ def extract_sub_tables(df, min_rows=2):
         tables.append(df.iloc[start:])
     return [trim_dataframe(t) for t in tables]
 
-class ExtractSubTables(OpenAIBaseModel):
+class SimpleExtractSubTables(OpenAIBaseModel):
     """
     A basic method to find and extract nested tables based on empty rows and columns. NB - Should only be used as a first pass, and further checks should be carried out. 
     If only one Table is found (i.e., there are no sub tables), it returns False. 
@@ -86,7 +86,7 @@ class ValidateDwCTerms(OpenAIBaseModel):
 
 class Python(OpenAIBaseModel):
     """
-    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and a Django database with models `Table` and `Dataset`
+    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np}, {})`, i.e. with access to pandas (pd), numpy (np), and a Django database with models `Table` and `Dataset`. No need to import these.
     E.g. `df_obj = Table.objects.get(id=df_id); print(df_obj.df.to_string());`
     Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `df_obj.save()`). 
     - Use print() if you want to see output - Output is a string of stdout, truncated to 2000 characters 
@@ -106,7 +106,7 @@ class Python(OpenAIBaseModel):
             from api.models import Dataset, Table
 
             locals = {}
-            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid }
+            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime }
             exec(code, globals, locals)
             stdout_value = new_stdout.getvalue()
             
@@ -154,6 +154,23 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent.save()
             print('Marking as complete...')
             return f'Task marked as complete for agent id {self.agent_id} .'
+        except Exception as e:
+            return repr(e)[:2000]
+
+
+class RejectDataset(OpenAIBaseModel):
+    """Have an agent reject a dataset"""
+    agent_id: PositiveInt = Field(...)
+
+    def run(self):
+        from api.models import Agent
+        try:
+            agent = Agent.objects.get(id=self.agent_id)
+            dataset = agent.dataset
+            dataset.rejected_at = datetime.now()
+            dataset.save()
+            print('Rejecting dataset as unsuitable')
+            return f'Dataset rejected for publication by agent id {self.agent_id} .'
         except Exception as e:
             return repr(e)[:2000]
 

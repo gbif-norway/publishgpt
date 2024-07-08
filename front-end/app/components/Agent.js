@@ -9,14 +9,10 @@ const Agent = ({ agent, refreshDataset }) => {
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
-  console.log(agent.completed_at);
 
-  const formatTableIDs = (tableSet) => {
-    if (!tableSet || !tableSet.length) return "(No Table IDs)";
-  
-    const ids = tableSet.map(table => table.id);
+  const formatTableIDs = (ids) => {
+    if (!ids || !ids.length) return "[Deleted table(s)]";
     const prefix = ids.length === 1 ? "(Table ID " : "(Table IDs ";
-    
     return prefix + ids.join(", ") + ")";
   };
 
@@ -25,7 +21,9 @@ const Agent = ({ agent, refreshDataset }) => {
       event.preventDefault();
       setIsLoading(true);
       setLoadingMessage("Working...");
-      const timeoutId = setTimeout(() => { setLoadingMessage("Still working..."); }, 10000);
+      const timeoutId = setTimeout(() => { setLoadingMessage("Still working..."); }, 10000);  
+      const refreshIntervalId = setInterval(() => { refreshDataset(); }, 1000);
+  
 
       fetch(`${config.baseApiUrl}/messages/`, {
         method: 'POST',
@@ -34,9 +32,10 @@ const Agent = ({ agent, refreshDataset }) => {
       })
         .then(response => response.json())
         .then(() => refreshDataset())
-        .then(() => { clearTimeout(timeoutId); setIsLoading(false); })
+        .then(() => { clearTimeout(timeoutId); setIsLoading(false); clearInterval(refreshIntervalId); })
         .catch((error) => {
           console.error("Error:", error);
+          clearInterval(refreshIntervalId); 
           clearTimeout(timeoutId);
           setIsLoading(false);
         });
@@ -50,7 +49,7 @@ const Agent = ({ agent, refreshDataset }) => {
       <Accordion.Item eventKey={agent.id}>
         <Accordion.Header>
           Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} 
-          &nbsp;-&nbsp;<small>{formatTableIDs(agent.table_set)}</small>
+          &nbsp;-&nbsp;<small>{formatTableIDs(agent.tables)}</small>
           {agent.completed_at != null && (
             <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
           )}

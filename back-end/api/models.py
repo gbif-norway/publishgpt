@@ -2,21 +2,23 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import check_function_args, create_chat_completion
+from api.helpers.openai_helpers import get_function, create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
 from os import path
-from datetime import datetime
+import json
+from pydantic_core._pydantic_core import ValidationError
 
 
 class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
-    title = models.CharField(max_length=500, blank=True, default="Placeholder title")
-    description = models.CharField(max_length=2000, blank=True, default="Placeholder description")
+    title = models.CharField(max_length=500, blank=True, default='')
+    description = models.CharField(max_length=2000, blank=True, default='')
     published_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -63,7 +65,7 @@ class Dataset(models.Model):
 
 class Task(models.Model):  # See tasks.yaml for the only objects this model is populated with
     name = models.CharField(max_length=300, unique=True)
-    text = models.CharField(max_length=5000)
+    text = models.TextField()
     per_table = models.BooleanField()
     attempt_autonomous = models.BooleanField()
     additional_function = models.CharField(max_length=300, null=True, blank=True)
@@ -107,7 +109,7 @@ class Table(models.Model):
         return df.to_json(orient='records', date_format='iso')
 
     def _snapshot_df(self, df_obj):
-        max_rows, max_columns, max_str_len = 5, 5, 70
+        max_rows, max_columns, max_str_len = 10, 10, 70
 
         # Truncate long strings in cells
         df = df_obj.apply(lambda col: col.astype(str).map(lambda x: (x[:max_str_len - 3] + '...') if len(x) > max_str_len else x))
@@ -186,8 +188,9 @@ class Agent(models.Model):
         return self.run()
 
     @classmethod
-    def create_with_system_message(cls, **kwargs):
-        agent = cls.objects.create(**kwargs)
+    def create_with_system_message(cls, dataset, task, tables):
+        agent = cls.objects.create(dataset=dataset, task=task)
+        agent.tables.set([t.id for t in tables])
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
@@ -196,17 +199,30 @@ class Agent(models.Model):
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
         
         # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
-        message_content = response.choices[0].message.content
-        if message_content:
-            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=message_content)
+        response_message = response.choices[0].message
+        if response_message.content:
+            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
 
-        function_call = check_function_args(response)
-        if function_call:
+        if response_message.tool_calls:
+            try:
+                function_call = get_function(response_message.tool_calls[0])
+            except json.decoder.JSONDecodeError:
+                function_message = Message.objects.create(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name)
+                if response_message.tool_calls[0].id:
+                    function_message.function_id = response_message.tool_calls[0].id
+                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided in API response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments.'
+                return self.run(current_call=current_call+1, max_calls=max_calls)
+            
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
             if function_call.id:
                 function_message.function_id = function_call.id
                 function_message.save()
-            function_result = self.run_function(function_call)
+            try:
+                function_result = self.run_function(function_call)
+            except ValidationError as e:
+                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided ({response_message.tool_calls[0].function.arguments}), please try again.'
+                function_message.save()
+                return self.run(current_call=current_call+1, max_calls=max_calls)
             print(f'Function result: {function_result}')
             function_message.content = function_result
             function_message.save()
@@ -221,13 +237,13 @@ class Agent(models.Model):
     
     def run_function(self, function_call):
         function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
-        function_model_obj = function_model_class(**function_call.arguments)  # I think pydantic validation is called here automatically when we instantiate, so we should probably have a try/catch here and feed the error back to GPT4 in case it got the args really wrong 
+        function_model_obj = function_model_class(**function_call.arguments)
         return function_model_obj.run()
 
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
-    content = models.CharField(max_length=10000, blank=True)
+    content = models.TextField(default='')
 
     class Role(models.TextChoices):
         USER = 'user'

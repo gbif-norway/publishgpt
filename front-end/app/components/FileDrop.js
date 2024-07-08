@@ -14,7 +14,7 @@ const FileDrop = ({ onFileAccepted, onError }) => {
       });
       if (!response.ok) throw new Error('Upload failed');
       const data = await response.json();
-      onFileAccepted(data);
+      onFileAccepted(data.id);
     } catch (err) {
       onError(err.message);
     }

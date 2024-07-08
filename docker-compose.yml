@@ -1,11 +1,10 @@
-version: '3'
-
 services:
   db:
     image: postgres:latest # To clear database: docker rm -v publishgpt-db-1 
     shm_size: 5g
     environment:
         - POSTGRES_HOST_AUTH_METHOD=trust
+    platform: linux/amd64
   back-end:
     build: ./back-end
     entrypoint: "tail -f /dev/null"

@@ -7,7 +7,7 @@ from api import agent_tools
 from typing import Dict, Any
 
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4-turbo-preview'): # gpt-3.5-turbo
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4o'): # gpt-3.5-turbo
     # model = 'gpt-3.5-turbo'
     # model = 'gpt-4'
     messages = [m.openai_schema for m in messages]
@@ -52,29 +52,28 @@ class OpenAIBaseModel(BaseModel):
 
 
 def load_openai_json_args(json_args, function_name):
-    try:
-        return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
-    except json.decoder.JSONDecodeError:
-        required = getattr(agent_tools, function_name[0].upper() + function_name[1:]).openai_schema['parameters']['required']
-        if len(required) == 1:
-            return {required[0]: json_args}
-        else:
-            import pdb; pdb.set_trace()
+    # try:
+    return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
+    # except json.decoder.JSONDecodeError:
+    #     required = getattr(agent_tools, function_name[0].upper() + function_name[1:]).openai_schema['parameters']['required']
+    #     if len(required) == 1:
+    #         return {required[0]: json_args}
+    #     else:
+    #         import pdb; pdb.set_trace()
 
 
-def check_function_args(response, choice=0):
-    message = response.choices[choice].message
-    if message.function_call:
-        message.function_call.arguments = load_openai_json_args(message.function_call.arguments, message.function_call.name)
-        return message.function_call
-    if message.tool_calls:
-        tool = message.tool_calls[0]
-        fn = tool.function
-        fn.arguments = load_openai_json_args(fn.arguments,fn.name)
-        if tool.id:
-            fn.id = tool.id
-        return fn
-    return None
+def get_function(tool):
+    # if message.function_call: # Note that function_call is deprecated, see https://platform.openai.com/docs/api-reference/chat/create#chat-create-functions
+    #     message.function_call.arguments = load_openai_json_args(message.function_call.arguments, message.function_call.name)
+    #     return message.function_call
+    # if message.tool_calls:
+    # tool = message.tool_calls[0]
+    fn = tool.function
+    fn.arguments = json.loads(fn.arguments, strict=False) # load_openai_json_args(fn.arguments,fn.name)
+    if tool.id:
+        fn.id = tool.id
+    return fn
+    # return None
 
 
 def openai_message_content(response, choice=0):
