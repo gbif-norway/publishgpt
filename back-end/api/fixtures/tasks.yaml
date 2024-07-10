@@ -4,6 +4,8 @@
     per_table: true
     attempt_autonomous : true
     text: |-
+      Step 1: 
+      ~
       Separate out any sub tables in this dataframe into new, separate Tables. 
       Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. 
       A single table should be one block of related data with consistent columns and rows, any summary/total rows can be discarded. 
@@ -50,7 +52,8 @@
       |                                                 |                     |                     |            |            |       |         |                                |            |  |
 
       This should be 4 tables, with the tables with Sum/Total rows discarded. 
-      Table 1:
+      
+      Table A:
       | WP2, 64 µm mesh (ind m-3) |                     |                     |            |            |
       | ------------------------- | ------------------- | ------------------- | ---------- | ---------- |
       | Date                      | 2017                | 2017                | 2018       | 2018       |
@@ -63,7 +66,7 @@
       | Rotatoria                 | 607                 | 25                  | 0          | 0          |
       | SUM Others                | 16721               | 84                  | 223        | 32         |
 
-      Table 2:
+      Table B:
       | Svartnes 2018 (ind m-3)        |            |
       | ------------------------------ | ---------- |
       | WP2, 64 µm mesh                |            |
@@ -77,7 +80,7 @@
       | Rotatoria                      | 0          | 0 |
       | SUM Others                     | 32         | 223 |
 
-      Table 3:
+      Table C:
       | ind/m3     |      |       |        |         |       |         |
       | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
       | 19/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
@@ -88,7 +91,7 @@
       | 90         | 600  | 1720  | 160    | 120     | 2600  | 200     |
       | 120        | 280  | 1160  | 80     | 320     | 1840  | 1200    |
 
-      Table 4:
+      Table D:
       | ind/m3     |      |       |        |         |       |         |
       | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
       | 21/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
@@ -98,6 +101,32 @@
       | 50         | 440  | 1160  | 0      | 0       | 1600  | 80      |
       | 90         | 120  | 1040  | 0      | 0       | 1160  | 120     |
       | 120        | 40   | 240   | 0      | 0       | 280   | 40      |
+
+      ~ 
+      Step 2: 
+      ~
+
+      Carefully look at each of the Tables you've created. Do any of them contain the same data and belong together? Should any rows be restructured as columns? In the previous example, Tables A & B belong together, as do Tables C and D, like this: 
+
+      Table AB:
+
+      | Sample/Net number              | 2017 Average (50-0 m) | 2017 Average (170-50 m) | 2018 (50-0 m) | 2018 (170-50 m) | Svartnes 2018 (50-0 m) | Svartnes 2018 (170-50 m) |
+      | ------------------------------ | --------------------- | ----------------------- | ------------- | --------------- | ---------------------- | ------------------------ |
+      | Calanus spp.                   | 128                   | 259                     | 194           | 562             | 194                    | 562                      |
+      | Microcalanus spp.              | 471                   | 707                     | 16            | 125             | 16                     | 125                      |
+      | Pseudocalanus spp.             | 730                   | 35                      | 31            | 20              | 31                     | 20                       |
+      | Metridia longa                 | 31                    | 209                     | 6             | 38              | 6                      | 38                       |
+      | Acartia longiremis             | 768                   | 1                       | 273           | 0               | 273                    | 0                        |
+      | Microsetella norvegica         | 9889                  | 620                     | 8118          | 263             | 8118                   | 263                      |
+      | Oithona similis                | 3510                  | 13                      | 1430          | 3               | 1430                   | 3                        |
+      | Other copepods                 | 108                   | 12                      | 3             | 3               | 3                      | 3                        |
+      | Calanoida nauplii              | 3525                  | 19                      | 204           | 59              | 204                    | 59                       |
+      | Microsetella norvegica nauplii | 7181                  | 78                      | 3199          | 110             | 3199                   | 110                      |
+      | Cyclopoida nauplii             | 8724                  | 9                       | 8061          | 2               | 8061                   | 2                        |
+      | Fritillaria borealis           | 5560                  | 2                       | 0             | 0               | 0                      | 0                        |
+      | Rotatoria                      | 607                   | 25                      | 0             | 0               | 0                      | 0                        |
+
+    
     additional_function: SimpleExtractSubTables
 
 - model: api.task

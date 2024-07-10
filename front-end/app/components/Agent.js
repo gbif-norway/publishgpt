@@ -22,7 +22,7 @@ const Agent = ({ agent, refreshDataset }) => {
       setIsLoading(true);
       setLoadingMessage("Working...");
       const timeoutId = setTimeout(() => { setLoadingMessage("Still working..."); }, 10000);  
-      const refreshIntervalId = setInterval(() => { refreshDataset(); }, 1000);
+      // const refreshIntervalId = setInterval(() => { refreshDataset(); }, 1000);
   
 
       fetch(`${config.baseApiUrl}/messages/`, {
@@ -32,10 +32,10 @@ const Agent = ({ agent, refreshDataset }) => {
       })
         .then(response => response.json())
         .then(() => refreshDataset())
-        .then(() => { clearTimeout(timeoutId); setIsLoading(false); clearInterval(refreshIntervalId); })
+        .then(() => { clearTimeout(timeoutId); setIsLoading(false); /*clearInterval(refreshIntervalId);*/ })
         .catch((error) => {
           console.error("Error:", error);
-          clearInterval(refreshIntervalId); 
+          // clearInterval(refreshIntervalId); 
           clearTimeout(timeoutId);
           setIsLoading(false);
         });
