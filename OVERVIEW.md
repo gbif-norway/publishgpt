@@ -16,7 +16,7 @@ It should convert messy spreadsheets made by non technical users into darwin cor
       Separate out any sub tables in this dataframe into new, separate Tables. 
       Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. 
       A single table should be one block of related data with consistent columns and rows, any summary/total rows can be discarded. 
-      IMPORTANT: Start by using the ExtractSubTables method, which is a very simple function which splits up data based on empty rows and columns, but *DO NOT* rely on it. 
+      IMPORTANT: Start by using the BasicExtractEmptyBoundaryTables method, which is a very simple function which splits up data based on empty rows and columns, but *DO NOT* rely on it. 
       Double check the Table snapshots, use your intelligence, ask the user if you cannot confidently make a guess at something, look at the first few rows, the last few rows, search for pattern breaks, etc. Often users add arbitrary and unnecessary columns like numbering or horizontal dividers. 
       NOTE: This is a challenging task, think it through clearly and carefully, step by step. 
 
@@ -139,7 +139,7 @@ It should convert messy spreadsheets made by non technical users into darwin cor
       - The headers, which spanned over multiple rows, have been flattened, combined and standardised
       - Superfluous information which can be derived elsewhere, such as the year which can be derived from the collection dates, have been discarded. 
 
-    additional_function: SimpleExtractSubTables
+    additional_function: BasicExtractEmptyBoundaryTables
 
 - model: api.task
   fields:

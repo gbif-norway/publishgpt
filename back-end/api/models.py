@@ -16,6 +16,7 @@ class Dataset(models.Model):
     orcid =  models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
     title = models.CharField(max_length=500, blank=True, default='')
+    structure_notes = models.CharField(max_length=2000, blank=True, default='')
     description = models.CharField(max_length=2000, blank=True, default='')
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
@@ -40,6 +41,8 @@ class Dataset(models.Model):
         next_agent = self.agent_set.filter(completed_at=None).first()
         if not next_agent:
             last_completed_agent = self.agent_set.exclude(completed_at=None).last() 
+            if self.rejected_at:
+                return None
             print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
@@ -219,7 +222,7 @@ class Agent(models.Model):
                 function_message.save()
             try:
                 function_result = self.run_function(function_call)
-            except ValidationError as e:
+            except Exception as e:
                 function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided ({response_message.tool_calls[0].function.arguments}), please try again.'
                 function_message.save()
                 return self.run(current_call=current_call+1, max_calls=max_calls)
@@ -227,6 +230,7 @@ class Agent(models.Model):
             function_message.content = function_result
             function_message.save()
         
+
             # If this was not a terminating function we need to feed it back to GPT4
             terminating_functions = [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]
             if function_call.name in terminating_functions:

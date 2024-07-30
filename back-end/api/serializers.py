@@ -48,17 +48,17 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def create(self, data):
         try:
-            df = pd.read_csv(data['file'].file, header=None, dtype='str')
+            df = pd.read_csv(data['file'].file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape')
             if len(df) < 4:
                 raise serializers.ValidationError(f"Your dataset has only {len(df)} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
             dfs = {data['file'].name: df}
         except:
-            dfs = pd.read_excel(data['file'].file, header=None, dtype='str', sheet_name=None)
+            dfs = pd.read_excel(data['file'].file, dtype='str', sheet_name=None)
 
         dataset = Dataset.objects.create(**data)
         tables = []
         for sheet_name, df in dfs.items():
             if not df.empty:
                 tables.append(Table.objects.create(dataset=dataset, title=sheet_name, df=df))
-        agent = Agent.create_with_system_message(dataset=dataset, task=Task.objects.get(pk=1), tables=tables)
+        agent = Agent.create_with_system_message(dataset=dataset, task=Task.objects.first(), tables=tables)
         return dataset
