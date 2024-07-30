@@ -37,8 +37,12 @@ const Dataset = ({ initialDatasetId }) => {
   const refreshDataset = useCallback(async () => {
     try {
       const dataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}`);
-      var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
-      var visible_agents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
+      if(dataset.rejected_at != null || dataset.published_at  != null) {
+        var visible_agents = dataset.agent_set;
+      } else {
+        var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
+        var visible_agents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
+      }
       setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
       setAgents(visible_agents);
       refreshTables();
@@ -78,6 +82,11 @@ const Dataset = ({ initialDatasetId }) => {
         <div className="row mx-auto p-4">
           <div className="col-12">
             <h1>Publishing {dataset.file.split(/\//).pop()} <small>started {new Date(dataset.created_at).toLocaleString()}</small></h1>
+            {dataset.rejected_at && (
+              <div className="alert alert-warning" role="alert">
+                This dataset cannot be published on GBIF as it is unsuitable. Please try uploading a new dataset.
+              </div>
+            )}
           </div>
         </div>
         <div className="row mx-auto p-4">

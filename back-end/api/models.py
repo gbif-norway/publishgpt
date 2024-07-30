@@ -38,11 +38,13 @@ class Dataset(models.Model):
         return path.basename(self.file.name)
     
     def update_agents(self):
+        self.refresh_from_db()
+        if self.rejected_at:
+            print('rejected')
+            return None
         next_agent = self.agent_set.filter(completed_at=None).first()
         if not next_agent:
             last_completed_agent = self.agent_set.exclude(completed_at=None).last() 
-            if self.rejected_at:
-                return None
             print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
             if last_completed_agent:
                 next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()

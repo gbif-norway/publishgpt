@@ -7,9 +7,7 @@ from api import agent_tools
 from typing import Dict, Any
 
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4o'): # gpt-3.5-turbo
-    # model = 'gpt-3.5-turbo'
-    # model = 'gpt-4'
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4o-mini'): # gpt-3.5-turbo gpt-4o-mini	
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')

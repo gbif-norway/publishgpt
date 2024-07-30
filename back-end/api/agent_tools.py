@@ -140,6 +140,7 @@ class SetBasicMetadata(OpenAIBaseModel):
             dataset.description = self.description
             dataset.structure_notes = self.structure_notes
             if not self.suitable_for_publication_on_gbif:
+                print('rejecting dataset')
                 dataset.rejected_at = datetime.now()
             dataset.save()
             SetAgentTaskToComplete(agent_id=self.agent_id).run()
