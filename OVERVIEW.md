@@ -361,11 +361,47 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
 
 ```
 
-So the sequence of events is as follows: 
+## Sequence of events
 
-1. GPT-4 API is sent a System Message with a prompt for each Task
+1. GPT-4o API is sent a System Message with a prompt for each Task
 2. It replies with Assistant Messages for the user (typically asking for more information if required) or with Function Messages - calling functions it has access to.
     1. Assistant Messages are stored in a Message Set for that Task and sent to the user, the user’s reply is stored as a User Message in the Message Set and sent back to GPT-4, this repeats until GPT-4 replies with a Function Message 
     2. Function Message replies from GPT-4 are actually run as functions in the codebase (either Python or SetAgentTaskToComplete) and not stored in the Message Set. GPT-4 returns a function name, and I use getattr to get the actual corresponding function in the code. Function arguments are also returned as JSON arguments which can get passed into the function as it is run. 
-    
-    The RESULTS of the function that is called is added to a new Function Message, which is stored in the Message Set. If a Function Message calls the “SetAgentTaskToComplete” function the system marks that Task as complete in the UI and moves on to the next Task. If a Function Message calls the “Python” function, GPT-4 generated python code from the arguments is passed to a function which runs the code in a sandbox, and returns the output of what was executed. This repeats until SetAgentTaskToComplete is called.
+    3. The RESULTS of the function that is called is added to a new Function Message, which is stored in the Message Set. If a Function Message calls the “SetAgentTaskToComplete” function the system marks that Task as complete in the UI and moves on to the next Task. If a Function Message calls the “Python” function, GPT-4 generated python code from the arguments is passed to a function which runs the code in a sandbox, and returns the output of what was executed. This repeats until SetAgentTaskToComplete is called.
+
+## The problem
+
+I have several real world examples of messy spreadsheets, and GPT-4o is failing to correctly format any of them. For example: 
+
+|                       |                 |                            | Jetties      | Vertical walls |
+| --------------------- | --------------- | -------------------------- | ------------ | -------------- |
+| Developmental stage   | Family          | Taxon                      | Total number | Jetty B        | Jetty D | Total % | Total number | Spithead | Francis Drake | Total % |
+| Invertebrates (Traps) |
+| Zoea                  | Pinnotheridae   | Pinnotheres sp.            | 2561697      | 9.6152         | 84.3818 | 93.9971 | 792 | 10.05 | 17.58 | 27.62 |
+|                       | Pinnotheridae   | Pinnixa sp.                | 1284         | 0.0096         | 0.0375 | 0.0471 | 3 | 0.03 | 0.07 | 0.10 |
+|                       | Leucosiidae     |                            | 171          | 0.0026         | 0.0037 | 0.0063 | 23 | 0.66 | 0.14 | 0.80 |
+| Megalopa              | Pinnotheridae   | Pinnotheres sp.            | 1692         | 0.0348         | 0.0273 | 0.0621 | 742 | 21.90 | 3.98 | 25.88 |
+|                       | Hymenosomatidae | Hymenosoma orbiculare      | 862          | 0.0137         | 0.0179 | 0.0316 | 186 | 3.84 | 2.65 | 6.49 |
+|                       |                 | Unidentified megalopa sp.5 | 0            | 0              | 0 | 0 | 1 | 0.03 | 0.00 | 0.03 |
+| Cyprid                |                 | Cirripedia                 | 12580        | 0.2116         | 0.2500 | 0.4616 | 686 | 15.38 | 8.55 | 23.93 |
+| Fish (Traps)          |
+| Postflexion           | Sparidae        | Diplodus capensis          | 6            | 1.5            | 1.5 | 3 | 7 | 1.0 | 0.4 | 1.4 |
+|                       | Sparidae        | Rhabdosargus holubi        | 10           | 1.5            | 3.5 | 5 | 0 | 0 | 0 | 0 |
+|                       | Dussumieriidae  | Etrumeus whiteheadi        | 55           | 22             | 5.5 | 27.5 | 290 | 53.7 | 2.9 | 56.6 |
+|                       | Engraulidae     | Engraulis encrasicolus     | 1            | 0.5            | 0 | 0.5 | 177 | 34.4 | 0.2 | 34.6 |
+
+This spreadsheet has merged cells, multiple rows as headers, and midway through it's got a new subheader "Fish (Traps)" where the student has separated out the fish species they recorded. The end result should look something like: 
+
+| lifeStage | Family          | scientificName        | Class     | verbatimLocality | organismQuantity | organismQuantityType |
+| --------- | --------------- | --------------------- | --------- | ---------------- | ---------------- | -------------------- |
+| Zoea      | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty B          | 9.61521597       | % biomass            |
+| Zoea      | Pinnotheridae   | Pinnixa sp.           | Crustacea | Jetty B          | 0.00961364       | % biomass            |
+| Zoea      | Leucosiidae     |                       | Crustacea | Jetty B          | 0.00260522       | % biomass            |
+| Megalopa  | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty B          | 0.03478523       | % biomass            |
+| Megalopa  | Hymenosomatidae | Hymenosoma orbiculare | Crustacea | Jetty B          | 0.01368659       | % biomass            |
+| Zoea      | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty D          | 84.3818376       | % biomass            |
+| Zoea      | Pinnotheridae   | Pinnixa sp.           | Crustacea | Jetty D          | 0.03750053       | % biomass            |
+| …         |                 |                       |           |                  |                  |                      |
+
+So far GPT4o has not been able to achieve anything like this - it loses columns, hallucinates, mixes up and loses columns and rows. 
+
