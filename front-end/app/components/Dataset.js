@@ -79,12 +79,13 @@ const Dataset = ({ initialDatasetId }) => {
       </div>
       ) : (
       <div>
-        <div className="row mx-auto p-4">
+        <div className="row mx-auto p-4 no-bottom-margin no-bottom-padding">
           <div className="col-12">
             <h1>Publishing {dataset.file.split(/\//).pop()} <small>started {new Date(dataset.created_at).toLocaleString()}</small></h1>
+            {dataset.title && (<div className="alert alert-info no-bottom-margin" role="alert">Title: {dataset.title}</div>)}
             {dataset.rejected_at && (
               <div className="alert alert-warning" role="alert">
-                This dataset cannot be published on GBIF as it is unsuitable. Please try uploading a new dataset.
+                This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.
               </div>
             )}
           </div>
@@ -101,6 +102,7 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
           <div className="col-6">
             <div className="sticky-top">
+              {dataset.description && (<div className="alert alert-info" role="alert">Description: {dataset.description}</div>)}
               {tables.length > 0 && (
                 <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
                   {tables.map((table) => (

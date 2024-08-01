@@ -20,7 +20,7 @@
 
       Finally, use SetBasicMetadata to: 
       - save the Title and Description
-      - if you note anything unusual about the dataset structure while chatting to the user (e.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), use structure_notes to save it. 
+      - use structure_notes to save anything unusual you discover about the dataset structure or cryptic column names. E.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), if a column called 'R' actually contains a calculated measurement of species richness, etc. 
       - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
     additional_function: SetBasicMetadata

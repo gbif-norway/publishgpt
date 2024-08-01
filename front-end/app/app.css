@@ -31,3 +31,19 @@
 .rdt_Pagination svg { fill: #FFF !important; }
 button small { font-size: 0.6em; }
 h1 small { font-size: 0.5em; }
+.no-bottom-margin { margin-bottom: 0; }
+.no-bottom-padding { padding-bottom: 0 !important; }
+
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left-color: #4caf50;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
