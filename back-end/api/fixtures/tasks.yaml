@@ -48,9 +48,9 @@
        - look at .value_counts(dropna=False)) records for each column - if anything doesn't seem to fit in with the other values take a look at the whole row and 3 rows above and below it to see if you can figure out what is going on
        - ask the user if the data layout is too cryptic to make a guess at
 
-      BE CAREFUL! It's very easy to separate out tables and lose information from columnns or rows. Before doing any table extraction, compare the old table with the new tables, and check to see if you are missing anything. 
+      BE CAREFUL! It's very easy to separate out tables and lose information from columnns or rows. Before doing any table extraction, compare the old table with the new tables, and check to see if you are missing anything. You may have to copy column headers from one table to another, for example.
 
-      Here is an example of a particularly bad user-uploaded spreadsheet: 
+      Here is an example of a particularly bad user-uploaded spreadsheet (converted simply to a dataframe): 
       | WP2, 64 µm mesh (ind m-3)                       |                     |                     |            |            |       |         | Svartnes 2018 (ind m-3)        |            |
       | ----------------------------------------------- | ------------------- | ------------------- | ---------- | ---------- | ----- | ------- | ------------------------------ | ---------- |
       | Date                                            | 2017                | 2017                | 2018       | 2018       |       |         | WP2, 64 µm mesh                |            |
@@ -173,86 +173,96 @@
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully look at all of the Tables and decide if any contain the same data and belong together. Quite often users split up data by location or taxonomic group, for example. What we're aiming for is single Tables for all of the same sort of data - for example all species observations or species names should go into a single Table, all measurements/facts should go into another Table. Look for patterns in the different Tables, look at the data content of each Table, think about this critically and analytically. Users are human, illogical and unreliable - they may name and order column headings differently from one Table to the next, so you need to be on your toes with this one.
+      Carefully look at all of the Tables and decide if any contain the same data and belong together. Quite often users split up data by location or taxonomic group, for example. What we're aiming for is single Tables for all of the same sort of data - all species observations or species names should go into a single Table, all measurements/facts should go into another Table. Look for patterns in the different Tables, look at the data content of each Table, think about this critically and analytically. Users are human, illogical and unreliable - they may name and order column headings differently from one Table to the next, so you need to be on your toes with this one.
 
 - model: api.task
   fields:
-    name: rename_columns
+    name: clarify_columns
     per_table: true
     attempt_autonomous: false
     text: |-
-      When users publish data, they often create spreadsheets with cryptic information as they tend to write things with only themselves in mind. This task is a first pass to clarify what actual data we have in the spreadsheet.
+      When users publish data, they often create spreadsheets with cryptic information as they tend to write things with only themselves in mind. This task is to simply clarify what actual data we have in the spreadsheet, beyond species observation data columns (WHAT was observed, WHERE it was observed, WHEN it was observed and optionally WHO observed it) which should already be defined.
       Take a deep breath, and think this through step-by-step.
       -
       Aim 1: examine the data presented in this table carefully: 
-      a) Are the column heading meanings clear and reflecting the data in each column? Note that users sometimes make multiple header rows - if you notice this you can go ahead and flatten them first.
-      b) If any of the first few columns are row headings (i.e. this is ia pivot table of some kind), do you understand what the values in there mean? Should they be renamed?
-      Engage in conversation with the user to clarify anything that is ambiguous or that you don't understand. Make some intelligent guesses and fix things up as best you can, but ask the user if there's anything you're not reasonably confident of. 
+      a) Are the column heading meanings clear and reflecting the data in each column? 
+      b) If any of the first few columns are row headings (i.e. this is a pivot table of some kind), do you understand what the values in there mean? Should they be renamed? 
+      
+      Note that users sometimes make multiple header columns for pivot tables - if you notice this you can go ahead and flatten them first. Make some intelligent guesses and fix things up as best you can, but ask the user if there's anything you're baffled by. 
       -
-      Aim 2: once you have a good understanding of the column headings and data, rename columns (and/or data values) to make them immediately understandable. 
+      Aim 2: once you have a good understanding of the column headings and data, rename cryptic columns (and/or data values) to make them immediately understandable. 
       -
-      Aim 3: drop any unnecessary rows and columns containing data which has been derived from primary data. Particularly, look out for SUM/TOTAL rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too.
-      IMPORTANT: Be extremely careful when dropping rows or columns because of nan/None values, usually these contain important data even if the value is None. Look critically at the rows you plan to delete BEFORE you delete them, and check that they really are unnecessary. 
-      -
-      Aim 4: explain any confusing aspects of the data/structure by adding a short explanation using the SetBasicMetadata function. 
+      Aim 3: explain any more confusing aspects of the data/structure by adding a short explanation using the SetBasicMetadata function. 
 
-      To achieve these four aims, start by asking the user one question at a time, based on the data in the table. Wait for the user's response before asking the next question.
+      To achieve these 3 aims, start by asking the user one question at a time, based on the data in the table. Wait for the user's response before asking the next question.
       To achieve the desired conversational flow, here is an example of how the interaction should look:
 
-      Agent: I think the first column ('S') means species, right? But is the next column the number of species you found?
-      User: Yes, that's right
-      Agent: [runs Python function to rename column]
-      Agent: So the numbers in the next columns all look similar, are these also counts of individual species found? Is each column a different location/sample spot?  
-      User: Yes, well sort of, it's actually %biomass of each species at different sites, except the last one is ocean salinity
-      Agent: [runs Python function to rename all other columns and last column to ocean salinity]
-      Agent: [Calls SetBasicMetadata and adds additional information to dataset Description: "Table ID 82 is wide format/pivot table with %biomass of species for different sample sites. NB the last column contains ocean salinity. "]
+      Table example:
+        xA1	xA2	xB1
+      Acartia_longiremis	13.2	0	0
+      Aetideopsis_rostrata	0	20.1	0
+      Calanus_finmarchicus	12.1	12	0
+      Calanus_glacialis	4	3.2	3.2
+      Calanus_hyperboreus	2.9	0	2.8
+      S	35	35.67	36
+
+      Agent: I can see the first column obviously contains scientific names, so I think the next columns are the number of species you found in different sites, and the column headings identify the sample sites, right?
+      User: Yes, well sort of, it's actually %biomass of each species at different sites, except the last row (S) is ocean salinity
+      Agent: [runs Python function to rename all other columns and last row to ocean salinity]
+      Agent: [Calls SetBasicMetadata and adds additional information to dataset Description: "Table ID 82 is wide format/pivot table with the first column being %biomass of species for different sample sites. NB the last row contains different data and should be treated separately."]
   additional_function: SetBasicMetadata
-
-# - model: api.task
-#   fields:
-#     name: set_basic_metadata
-#     per_table: false
-#     attempt_autonomous: false
-#     text: |-
-#       Examine the data presented in these tables carefully and the current dataset Description (a draft with some information about columns and data structure), and use it to derive a very short but descriptive draft Title (max 50 words) and Description (approx 3-5 sentences) for the dataset as a whole. Incorporate the current dataset Description and keep information about the columns and data structure at the end of the Description. But you can ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
-#     additional_function: SetBasicMetadata
-
-# - model: api.task
-#   fields:
-#     name: check_data_suitability
-#     per_table: false
-#     attempt_autonomous: false
-#     text: |-
-#       GBIF.org is a global database for biodiversity data. Suitable data for publication includes:
-#       - Species Occurrence Data and Sampling Event Data: Records of WHEN (columns for year/month/day, date, etc) and WHERE (columns for locality, latitude/longitude, footprintwkt, etc) a species/WHAT (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc) was observed or collected. Often also includes WHO made the observation (collector, citizen scientist, researcher, etc) - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
-#       - Checklists: Lists of species found in a specific area or ecosystem.
-#       Look at this data, especially the column headings, and the metadata description critically. 
-#       Is this data suitable for publication on gbif.org? If it is, mark this Task as complete, otherwise let the user know and reject the the dataset using the RejectDataset function. 
-#     additional_function: RejectDataset
-
-- model: api.task
-  fields: 
-    name: delete_unnecessary_tables
-    per_table: false
-    attempt_autonomous: true
-    text: >
-      Delete any tables which are not primary data - i.e. which can be derived from other tables. If the data is cryptic or the column headers are not obvious check with the user before doing a deletion. 
 
 - model: api.task
   fields:
-    name: flatten_headers
+    name: drop_unnecessary_columns
     per_table: true
-    attempt_autonomous: true
-    text: >
-      Flatten any of the top rows which you think might contain header information into a single row, and convert it to the dataframe header. If there are multiple candidate header rows, try to preserve as much information as possible when you merge them. 
-    
+    attempt_autonomous: false
+    text: |-
+      Drop any unnecessary rows and columns containing data which has been derived from primary data. Particularly, look out for SUM/TOTAL and formula rows at the bottom of the dataframe, and SUM/TOTAL columns at the end of it. If there are any other rows or columns which are not necessary or seem meaningless, remove those too.
+      IMPORTANT NOTE 1: Be extremely careful when dropping rows or columns because of nan/None values, usually these contain important data even if the value is None. Look critically at the rows you plan to delete BEFORE you delete them, and check that they really are unnecessary. 
+      IMPORTANT NOTE 2: Be sure not to drop a row when you should be dropping a column, or a selection of cells. I.e. don't just check cell A2, notice it contains a formula, and decide to drop the entire column based on that. Check that A3, A4, ... A100, etc also contain formulas, and if they don't check across and see if B2, C2 ... J2 perhaps contain formulas (meaning you should instead drop the row). 
+
 - model: api.task
   fields:
     name: de_crosstab  # Convert crosstab/pivot to long.
     per_table: true
     attempt_autonomous: true
     text: >  
-      Is this table in crosstab or pivot format? Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format, label the new column accordingly and present it to the user for confirmation. Don't forget to save changes to the database before marking this Task as complete.
+      Is this table in crosstab, wide or pivot format? Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format, label the new column to whatever you think is correct, but if you are not sure check in with the user. Don't forget to save changes to the database before marking this Task as complete. 
+      
+      One possible complication is that often users have multiple headers, which will need to be dealt with separately. Here is an example: 
+
+      Original table:
+      Net	 64 µm mesh (ind m-3)			
+      Year	2017	2017	2018	2018
+      Sampled	 20-21.02.17	20-21.02.17	12.06.2018	12.06.2018
+      Layer [m]	50-0 m	170-50 m	50-0 m	170-50 m
+      Calanus spp.	128	259	194	562
+      Microcalanus spp.	471	707	16	125
+      Cyclopoida nauplii	8724	9	8061	2
+      Fritillaria borealis	5560	2	0	0
+      ...
+
+      The first 4 rows contain variables about the location/date sampled and are essentially header rows, the following rows contain species + counts for each location. Each of the header rows needs to become a column, like this:
+
+      scientificName	individualCount	Layer [m]	organismQuantityType	eventDate	samplingProtocol
+      Calanus spp.	128	50-0 m	AVERAGE	 20-21.02.17	 64 µm mesh net (ind m-3)
+      Microcalanus spp.	471	50-0 m	AVERAGE	 20-21.02.17	 64 µm mesh net (ind m-3)
+      Cyclopoida nauplii	8724	50-0 m	AVERAGE	 20-21.02.17	 64 µm mesh net (ind m-3)
+      Fritillaria borealis	5560	50-0 m	AVERAGE	 20-21.02.17	 64 µm mesh net (ind m-3)
+      Calanus spp.	259	170-50 m	AVERAGE	20-21.02.17	 64 µm mesh net (ind m-3)
+      Microcalanus spp.	707	170-50 m	AVERAGE	20-21.02.17	 64 µm mesh net (ind m-3)
+      Cyclopoida nauplii	9	170-50 m	AVERAGE	20-21.02.17	 64 µm mesh net (ind m-3)
+      Fritillaria borealis	2	170-50 m	AVERAGE	20-21.02.17	 64 µm mesh net (ind m-3)
+      Calanus spp.	194	50-0 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Microcalanus spp.	16	50-0 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Cyclopoida nauplii	8061	50-0 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Fritillaria borealis	0	50-0 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Calanus spp.	562	170-50 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Microcalanus spp.	125	170-50 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Cyclopoida nauplii	2	170-50 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      Fritillaria borealis	0	170-50 m	AVERAGE	12.06.2018	 64 µm mesh net (ind m-3)
+      ...
     
 - model: api.task
   fields:
@@ -260,10 +270,10 @@
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully examine the contents of each of these dataframes. They need to be combined together into a single Darwin Core archive, with one core table, with optional extension Tables. Decide on 1) either an Occurrence or Checklist (taxonomy) DwC core, and 2) optionally any DwC extension for this dataset, the most commonly used one is MeasurementOrFact.
+      Carefully examine the contents of each of these dataframes. They need to be combined together into a Darwin Core archive, with one core table and an optional MeasurementOrFact extension Table. Decide on 1) either an Occurrence or Checklist (taxonomy) DwC core, and 2) whether adding a MeasurementOrFact Table to store extra data is necessary.
       Pick and choose from these common Occurrence DwC fields: 
-       - basisOfRecord (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation)
-       - eventDate (must be ISO format) OR 3 columns: ayear, month & day
+       - basisOfRecord REQUIRED (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation), [NOTE: you will almost always have to create and fill in this column for the user]
+       - eventDate REQUIRED (must be ISO format) OR 3 columns: a year, month & day
        - locality
        - locationRemarks
        - waterBody (if a marine or aquatic occurrence, e.g. Baltic Sea, Hudson River)
@@ -283,8 +293,8 @@
        - fieldNotes
        - recordedBy (collector/observer's name)
        - recordedByID (often ORCID)
-       - scientificName
-       - kingdom
+       - scientificName REQUIRED
+       - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
        - individualCount or organismQuantity/organismQuantityType (IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact)
        - occurrenceRemarks (can hold any miscellaneous information)
        - sex
@@ -305,12 +315,13 @@
        - scientificName
        - kingdom
        - taxonRemarks
+
       NOTE 1: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. DO NOT use it for individual counts or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
       NOTE 2: In almost all cases, if you are publishing Occurrence data, you should discard any Tables containing summary taxonomy information that a user may have gathered - that should not get published. 
 
       Your task is now to: 
-      1) Discuss your recommendations for DwC core and extensions with the user, note that extensions are optional
-      2) Rename the columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them
+      1) Discuss your recommendations for DwC core and extension with the user, note that extensions are optional
+      2) Rename the core columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them
       3) Organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required
       3) Add a very short (max 3 sentences) summary to the dataset description, detailing why you and the user have chosen this DwC core + any extensions, use SetBasicMetadata to save it and be careful not to overwrite the description already saved.
       4) Call the SetAgentTaskToComplete function and move on to the next task
@@ -355,3 +366,64 @@
     attempt_autonomous: false
     text: >  
       Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. Are there any other outstanding issues you can see? Fix these and mark your Task as complete when you think there are no more issues and the dataframes are ready for publication.
+
+
+# - model: api.task
+#   fields:
+#     name: set_basic_metadata
+#     per_table: false
+#     attempt_autonomous: false
+#     text: |-
+#       Examine the data presented in these tables carefully and the current dataset Description (a draft with some information about columns and data structure), and use it to derive a very short but descriptive draft Title (max 50 words) and Description (approx 3-5 sentences) for the dataset as a whole. Incorporate the current dataset Description and keep information about the columns and data structure at the end of the Description. But you can ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
+#     additional_function: SetBasicMetadata
+
+# - model: api.task
+#   fields:
+#     name: check_data_suitability
+#     per_table: false
+#     attempt_autonomous: false
+#     text: |-
+#       GBIF.org is a global database for biodiversity data. Suitable data for publication includes:
+#       - Species Occurrence Data and Sampling Event Data: Records of WHEN (columns for year/month/day, date, etc) and WHERE (columns for locality, latitude/longitude, footprintwkt, etc) a species/WHAT (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc) was observed or collected. Often also includes WHO made the observation (collector, citizen scientist, researcher, etc) - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
+#       - Checklists: Lists of species found in a specific area or ecosystem.
+#       Look at this data, especially the column headings, and the metadata description critically. 
+#       Is this data suitable for publication on gbif.org? If it is, mark this Task as complete, otherwise let the user know and reject the the dataset using the RejectDataset function. 
+#     additional_function: RejectDataset
+
+# - model: api.task
+#   fields: 
+#     name: delete_unnecessary_tables
+#     per_table: false
+#     attempt_autonomous: true
+#     text: >
+#       Delete any tables which are not primary data - i.e. which can be derived from other tables. If the data is cryptic or the column headers are not obvious check with the user before doing a deletion. 
+
+
+# - model: api.task
+#   fields:
+#     name: flatten_headers
+#     per_table: true
+#     attempt_autonomous: true
+#     text: >
+#       Flatten any of the top rows which you think might contain header information into a single row (try to preserve as much information as possible), and convert it to the dataframe header. If there is more than two candidate header rows, rearrange the data , for example: 
+
+#       Original table: 
+
+#       WP2	 64 µm mesh (ind m-3)			
+#       Date	2017	2017	2018	2018
+#       Sample/Net number	AVERAGE 20-21.02.17	AVERAGE 20-21.02.17	12.06.2018	12.06.2018
+#       Layer [m]	50-0 m	170-50 m	50-0 m	170-50 m
+#       Calanus spp.	128	259	194	562
+#       Microcalanus spp.	471	707	16	125
+#       Cyclopoida nauplii	8724	9	8061	2
+#       Fritillaria borealis	5560	2	0	0
+#       Rotatoria	607	25	0	0
+#       SUM Others	16721	84	223	32
+
+#       Resulting table:
+#       Date	Sample/Net number	Layer [m]	Calanus spp.	Microcalanus spp.	Cyclopoida nauplii	Fritillaria borealis	Rotatoria	SUM Others
+#       2017	AVERAGE 20-21.02.17	50-0 m	128	471	8724	5560	607	16721
+#       2017	AVERAGE 20-21.02.17	170-50 m	259	707	9	2	25	84
+#       2018	12.06.2018	50-0 m	194	16	8061	0	0	223
+#       2018	12.06.2018	170-50 m	562	125	2	0	0	32
+

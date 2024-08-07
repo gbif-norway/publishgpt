@@ -7,16 +7,13 @@ from api import agent_tools
 from typing import Dict, Any
 
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=1, model='gpt-4o'): # gpt-3.5-turbo gpt-4o-mini	
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0.8, model='gpt-4o-2024-08-06'): # gpt-3.5-turbo gpt-4o-mini	
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
     args = {'model': model, 'temperature': temperature, 'messages': messages }
     if functions:
         args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
-        # pprint(args['tools'])
-        if call_first_function:
-            args['tool_choice'] = {"type": "function", "function": {"name": args['tools'][0]['function']['name']}}
     print('---')
     with OpenAI() as client:
         response = client.chat.completions.create(**args)  
@@ -25,6 +22,8 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     print('---')
     return response
 
+def create_supervisor_chat_completion(messages, functions=None, temperature=1, model='gpt-4o'): # gpt-3.5-turbo gpt-4o-mini	
+    messages = [m.openai_schema for m in messages]
 
 def custom_schema(cls: BaseModel) -> Dict[str, Any]:
     parameters = cls.schema()

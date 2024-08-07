@@ -67,7 +67,7 @@ const Dataset = ({ initialDatasetId }) => {
         <div className="agent-task initialise">
           <div className="messages">
             <div className="message assistant-message">
-              I can help you publish your biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>. Let's start by taking a look at your data file.
+              So, you want to publish some biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>? I can help you with that! Let's start by taking a look at your data file.
               <FileDrop
                 onFileAccepted={(data) => { setActiveDatasetID(data); }}
                 onError={(errorMessage) => setError(errorMessage)}
@@ -83,7 +83,8 @@ const Dataset = ({ initialDatasetId }) => {
           <div className="col-12">
             <h1>Publishing {dataset.file.split(/\//).pop()} <small>started {new Date(dataset.created_at).toLocaleString()}</small></h1>
             {dataset.title && (<div className="alert alert-info no-bottom-margin" role="alert">Title: {dataset.title}</div>)}
-            {dataset.rejected_at && (
+            {dataset.description && (<div className="alert alert-info no-bottom-margin" role="alert">Description: {dataset.description}</div>)}
+            {dataset.structure_notes && (<div className="alert alert-info no-bottom-margin" role="alert">Notes about the structure: {dataset.structure_notes}</div>)}            {dataset.rejected_at && (
               <div className="alert alert-warning" role="alert">
                 This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.
               </div>
@@ -102,7 +103,6 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
           <div className="col-6">
             <div className="sticky-top">
-              {dataset.description && (<div className="alert alert-info" role="alert">Description: {dataset.description}</div>)}
               {tables.length > 0 && (
                 <Tabs activeKey={activeTableId} onSelect={(k) => setActiveTableId(k)} className="mb-3">
                   {tables.map((table) => (

@@ -201,7 +201,7 @@ class Agent(models.Model):
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
 
     def run(self, current_call=0, max_calls=10):
-        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=(current_call == max_calls))
+        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
         
         # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
         response_message = response.choices[0].message
@@ -238,6 +238,7 @@ class Agent(models.Model):
             if function_call.name in terminating_functions:
                 return None
             return self.run(current_call=current_call+1, max_calls=max_calls)
+        # elif current_call > 3:
 
         return message
     

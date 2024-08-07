@@ -10,17 +10,19 @@
     cursor: pointer;
 }
 .messages { margin: 0 }
-.message {
+.inner-message {
     padding: 15px;
     border-radius: 10px;
     margin: 10px 0;
+    white-space: pre-wrap;
 }
-.assistant-message {
-    background-color: rgb(196 255 122 / 10%);
-}
+.assistant-message > .inner-message { background-color: rgb(196 255 122 / 10%);}
+.user-message { width: 100%; display: flex; justify-content: flex-end; }
+.user-message > .inner-message { background-color: rgba(252, 255, 178, 0.2) }
+
+.initialise { font-size: 2em; }
 .function-message { padding: 0; }
 .function-message .show { margin-bottom: 10px; }
-.user-message { background-color: rgb(178 194 255 / 10%) }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
 .complete h2 { color: #c0d6c5 } 

@@ -5,7 +5,7 @@ import re
 import pandas as pd
 import numpy as np
 from api.helpers.openai_helpers import OpenAIBaseModel
-from datetime import datetime
+import datetime
 import uuid
 
 
@@ -141,13 +141,15 @@ class SetBasicMetadata(OpenAIBaseModel):
             dataset.structure_notes = self.structure_notes
             if not self.suitable_for_publication_on_gbif:
                 print('rejecting dataset')
-                dataset.rejected_at = datetime.now()
+                dataset.rejected_at = datetime.datetime.now()
             dataset.save()
             SetAgentTaskToComplete(agent_id=self.agent_id).run()
             return 'Basic Metadata has been successfully set and Agent Task has been set to complete'
         except Exception as e:
             return repr(e)[:2000]
 
+class RenameColumnsWithUserInput(OpenAIBaseModel):
+    pass
 
 class SetAgentTaskToComplete(OpenAIBaseModel):
     """Mark an Agent's task as complete"""
@@ -157,7 +159,7 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
         from api.models import Agent
         try:
             agent = Agent.objects.get(id=self.agent_id)
-            agent.completed_at = datetime.now()
+            agent.completed_at = datetime.datetime.now()
             agent.save()
             print('Marking as complete...')
             return f'Task marked as complete for agent id {self.agent_id} .'
@@ -174,7 +176,7 @@ class RejectDataset(OpenAIBaseModel):
         try:
             agent = Agent.objects.get(id=self.agent_id)
             dataset = agent.dataset
-            dataset.rejected_at = datetime.now()
+            dataset.rejected_at = datetime.datetime.now()
             dataset.save()
             print('Rejecting dataset as unsuitable')
             return f'Dataset rejected for publication by agent id {self.agent_id} .'

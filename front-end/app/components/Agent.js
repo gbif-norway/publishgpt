@@ -23,7 +23,6 @@ const Agent = ({ agent, refreshDataset }) => {
       setLoadingMessage("Working...");
       const timeoutId = setTimeout(() => { setLoadingMessage("Still working..."); }, 10000);  
       // const refreshIntervalId = setInterval(() => { refreshDataset(); }, 1000);
-  
 
       fetch(`${config.baseApiUrl}/messages/`, {
         method: 'POST',

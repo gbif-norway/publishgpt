@@ -7,7 +7,7 @@ const Message = ({ message }) => {
                 <FunctionMessage key={message.id} message={message} />
             ) : (
             <div className={`message ${message.role}-message`}>
-                <div style={{ whiteSpace: 'pre-wrap' }}>
+                <div className="inner-message">
                     {message.content}
                 </div>
             </div>
