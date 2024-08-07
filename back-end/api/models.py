@@ -210,7 +210,7 @@ class Agent(models.Model):
 
         if response_message.tool_calls:
             try:
-                function_call = get_function(response_message.tool_calls[0])
+                function_call = get_function(response_message.tool_calls[0]) # completion.choices[0].message.tool_calls[0].function
             except json.decoder.JSONDecodeError:
                 function_message = Message.objects.create(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name)
                 if response_message.tool_calls[0].id:
@@ -231,7 +231,6 @@ class Agent(models.Model):
             print(f'Function result: {function_result}')
             function_message.content = function_result
             function_message.save()
-        
 
             # If this was not a terminating function we need to feed it back to GPT4
             terminating_functions = [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]
@@ -239,7 +238,6 @@ class Agent(models.Model):
                 return None
             return self.run(current_call=current_call+1, max_calls=max_calls)
         # elif current_call > 3:
-
         return message
     
     def run_function(self, function_call):
