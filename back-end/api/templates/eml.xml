@@ -9,16 +9,6 @@
          </individualName>
          <organizationName />
          <positionName />
-         <address>
-            <deliveryPoint />
-            <city />
-            <administrativeArea />
-            <postalCode />
-            <country />
-         </address>
-         <phone />
-         <electronicMailAddress />
-         <onlineUrl />
          <userId directory="http://orcid.org/" />
       </creator>
       <metadataProvider>
@@ -28,50 +18,15 @@
          </individualName>
          <organizationName />
          <positionName />
-         <address>
-            <deliveryPoint />
-            <city />
-            <administrativeArea />
-            <postalCode />
-            <country />
-         </address>
-         <phone />
-         <electronicMailAddress />
-         <onlineUrl />
          <userId directory="http://orcid.org/" />
       </metadataProvider>
-      <associatedParty>
-         <individualName>
-            <givenName />
-            <surName />
-         </individualName>
-         <organizationName />
-         <positionName />
-         <address>
-            <deliveryPoint />
-            <city />
-            <administrativeArea />
-            <postalCode />
-            <country />
-         </address>
-         <phone />
-         <electronicMailAddress />
-         <onlineUrl />
-         <userId directory="http://orcid.org/" />
-         <role />
-      </associatedParty>
-      <pubDate />
       <language />
       <abstract>
          <para />
       </abstract>
       <keywordSet>
          <keyword />
-         <keywordThesaurus />
       </keywordSet>
-      <additionalInfo>
-         <para />
-      </additionalInfo>
       <intellectualRights>
          <para>
             This work is licensed under a
@@ -122,31 +77,6 @@
       <purpose>
          <para />
       </purpose>
-      <maintenance>
-         <description>
-            <para />
-         </description>
-         <maintenanceUpdateFrequency />
-      </maintenance>
-      <contact>
-         <individualName>
-            <givenName />
-            <surName />
-         </individualName>
-         <organizationName />
-         <positionName />
-         <address>
-            <deliveryPoint />
-            <city />
-            <administrativeArea />
-            <postalCode />
-            <country />
-         </address>
-         <phone />
-         <electronicMailAddress />
-         <onlineUrl />
-         <userId directory="http://orcid.org/" />
-      </contact>
       <methods>
          <methodStep>
             <description>
@@ -197,48 +127,4 @@
          </designDescription>
       </project>
    </dataset>
-   <additionalMetadata>
-      <metadata>
-         <gbif>
-            <dateStamp />
-            <hierarchyLevel>dataset</hierarchyLevel>
-            <citation identifier="" />
-            <bibliography>
-              <citation identifier="" />
-            </bibliography>
-            <physical>
-               <objectName />
-               <characterEncoding />
-               <dataFormat>
-                  <externallyDefinedFormat>
-                     <formatName />
-                     <formatVersion />
-                  </externallyDefinedFormat>
-               </dataFormat>
-               <distribution>
-                  <online>
-                     <url function="download" />
-                  </online>
-               </distribution>
-            </physical>
-            <resourceLogoUrl />
-            <collection>
-               <parentCollectionIdentifier />
-               <collectionIdentifier />
-               <collectionName />
-            </collection>
-            <formationPeriod />
-            <specimenPreservationMethod />
-            <livingTimePeriod />
-            <jgtiCuratorialUnit>
-               <jgtiUnitType>countrange</jgtiUnitType>
-               <jgtiUnitRange>
-                  <beginRange />
-                  <endRange />
-               </jgtiUnitRange>
-            </jgtiCuratorialUnit>
-            <dc:replaces />
-         </gbif>
-      </metadata>
-   </additionalMetadata>
 </eml>

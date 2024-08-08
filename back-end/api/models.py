@@ -13,13 +13,14 @@ from pydantic_core._pydantic_core import ValidationError
 
 class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
-    orcid =  models.CharField(max_length=50, blank=True)
+    orcid = models.CharField(max_length=50, blank=True)
     file = models.FileField(upload_to='user_files')
     title = models.CharField(max_length=500, blank=True, default='')
     structure_notes = models.CharField(max_length=2000, blank=True, default='')
     description = models.CharField(max_length=2000, blank=True, default='')
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
+    dwca_url = models.CharField(max_length=50, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -52,6 +53,7 @@ class Dataset(models.Model):
                     next_task.create_agents_with_system_messages(dataset=self)
                     return self.update_agents()  # Sometimes tasks are completed without human input
                 else:
+                    print(self.published_at)
                     import pdb; pdb.set_trace()
                     return None  # It's been published... self.published_at = datetime.now() # self.save()
             else:

@@ -10,7 +10,11 @@
 
       Carefully look at this data, especially the column headings: is it suitable for publication on gbif.org? The data structure is completely unformatted and may be extremely cryptic and messy, so be cautious. Ask about the relationship between different sheets if it's not clear. Keep in mind that it's highly likely at least some of this data is redundant (derived from primary data elsewhere in other sheets). Try to figure out if there is a list of species occurrences (WHAT, WHERE and WHEN), or perhaps a list of names as the main focus, or if it is something else entirely that does not belong on GBIF. 
       
-      Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. Explain that occurrence data needs locations, observation dates and scientific names to be published to GBIF. If the spreadsheet seems to be missing this information but they say they have additional data in another file, tell them they need to upload everything in one spreadsheet and set suitable_for_publication_on_gbif to False using SetBasicMetadata.
+      Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. 
+      
+      Explain that occurrence data needs locations, observation dates and scientific names to be published to GBIF. If the spreadsheet seems to be missing this information but they say they have additional data in another file, tell them they need to upload everything in one spreadsheet and set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
+      
+      Additionally, if the user seems to have occurrence data, ask them if they have an images they wish to upload, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after this process is complete. If the image URLs are present already, make sure the column is correctly named and in the right Table. Then set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
       
       Use short sentences and informal language that cut straight to the point. Here is an example of bad dialogue:
       "[Description and Title] 
@@ -173,7 +177,11 @@
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully look at all of the Tables and decide if any contain the same data and belong together. Quite often users split up data by location or taxonomic group, for example. What we're aiming for is single Tables for all of the same sort of data - all species observations or species names should go into a single Table, all measurements/facts should go into another Table. Look for patterns in the different Tables, look at the data content of each Table, think about this critically and analytically. Users are human, illogical and unreliable - they may name and order column headings differently from one Table to the next, so you need to be on your toes with this one.
+      Carefully look at all of the Tables and decide if any contain the same data and belong together. Quite often users split up data by location (all observations at site 1 in one sheet, all observations at site 2 in another sheet) or taxonomic group (all raptors in one sheet, all other birds in another), for example. What we're aiming for is single Tables for all of the same sort of data - all species observations or species names should go into a single Table, all measurements/facts should go into another Table. Look for patterns in the different Tables, look at the data content of each Table, think about this critically and analytically. Users are human, illogical and unreliable - they may name and order column headings differently from one Table to the next, so you need to be on your toes with this one.
+
+      If Tables make sense as they are, keep them separate. For example, if all species observations are in one Table, and additional variables are in another Table, leave them as is. 
+
+      You can also split Tables and extract the additional MeasurementOrFact data into a different Table, if you think that makes sense.
 
 - model: api.task
   fields:
@@ -320,20 +328,11 @@
       NOTE 2: In almost all cases, if you are publishing Occurrence data, you should discard any Tables containing summary taxonomy information that a user may have gathered - that should not get published. 
 
       Your task is now to: 
-      1) Discuss your recommendations for DwC core and extension with the user, note that extensions are optional
-      2) Rename the core columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them
-      3) Organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required
-      3) Add a very short (max 3 sentences) summary to the dataset description, detailing why you and the user have chosen this DwC core + any extensions, use SetBasicMetadata to save it and be careful not to overwrite the description already saved.
-      4) Call the SetAgentTaskToComplete function and move on to the next task
+      1) Discuss your recommendations for DwC core and extension with the user, note that extensions are optional. 
+      2) Rename the core columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them. If you think it's necessary, use SetBasicMetadata to update the dataset Title and Description to better reflect the dataset.
+      3) Organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required (see final examples). 
+      4) Call the SetAgentTaskToComplete function
     additional_function: SetBasicMetadata
-
-# - model: api.task
-#   fields:
-#     name: organize_tables
-#     per_table: false
-#     attempt_autonomous: true
-#     text: >  
-#       Depending on the DwC core and DwC extensions this dataset has, organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required.
 
 - model: api.task
   fields:
@@ -353,20 +352,18 @@
 
 - model: api.task
   fields:
-    name: image_urls
-    per_table: true
-    attempt_autonomous: false
-    text: >  
-      This is only really necessary for Occurrence or Event datasets (not Taxon). Determine if the user wishes to publish any images associated with the occurrences in their dataset, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after this process is complete. If the image URLs are present already, make sure the column is correctly named and in the right Table.
-
-- model: api.task
-  fields:
-    name: adhoc
+    name: adhoc_processing
     per_table: false
     attempt_autonomous: false
-    text: >  
-      Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. Are there any other outstanding issues you can see? Fix these and mark your Task as complete when you think there are no more issues and the dataframes are ready for publication.
-
+    text: |-
+      Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. 
+      Are there any other outstanding issues you can see? Fix these and up, and then when you and the user are satisfied with the data tables publish the dataset using PublishDwC. Be sure to warn the user that this process may take some time. 
+      When the dataset is published, generate a congratulatory message with: 
+      1. A small piece of celebratory ascii art
+      3. The DOI/URL to the dataset (returned from PublishDwC)
+      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication
+      4. Another message asking if they would like to make any edits, or upload a new dataset, and then call SetAgentTaskToComplete
+    additional_function: PublishDwC
 
 # - model: api.task
 #   fields:

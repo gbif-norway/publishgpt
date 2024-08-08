@@ -5,6 +5,8 @@ import re
 import pandas as pd
 import numpy as np
 from api.helpers.openai_helpers import OpenAIBaseModel
+from typing import Optional
+from api.helpers.publish import upload_dwca
 import datetime
 import uuid
 
@@ -125,11 +127,10 @@ class Python(OpenAIBaseModel):
 class SetBasicMetadata(OpenAIBaseModel):
     """Sets the title and description (Metadata) for a Dataset via an Agent, returns a success message or an error message"""
     agent_id: PositiveInt = Field(...)
-    # dataset_id: PositiveInt = Field(...)
     title: str = Field(..., description="A short but descriptive title for the dataset as a whole")
     description: str = Field(..., description="A longer description of what the dataset contains, including any important information about why the data was gathered (e.g. for a study) as well as how it was gathered.")
-    structure_notes: str = Field(..., description="Optional - Use to note any significant data structural problems or oddities.") 
-    suitable_for_publication_on_gbif: bool = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
+    structure_notes: Optional[str] = Field(None, description="Optional - Use to note any significant data structural problems or oddities.") 
+    suitable_for_publication_on_gbif: Optional[bool] = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
 
     def run(self):
         from api.models import Agent
@@ -148,8 +149,10 @@ class SetBasicMetadata(OpenAIBaseModel):
         except Exception as e:
             return repr(e)[:2000]
 
+
 class RenameColumnsWithUserInput(OpenAIBaseModel):
     pass
+
 
 class SetAgentTaskToComplete(OpenAIBaseModel):
     """Mark an Agent's task as complete"""
@@ -185,9 +188,30 @@ class RejectDataset(OpenAIBaseModel):
 
 
 class PublishDwC(OpenAIBaseModel):
-    """To be used as the final step for publishing a dataset which is standardised to Darwin Core"""
-    dataset_id: PositiveInt = Field(...)
+    """
+    The final step required to publish the user's data to GBIF. 
+    Generates a darwin core archive and uploads it to a server, then registers it with the GBIF API. 
+    At the moment publishes the test GBIF platform, not production.
+    Returns the GBIF URL to the
+    """
+    agent_id: PositiveInt = Field(...)
 
     def run(self):
-        pass
+        from api.models import Agent
+        try:
+            agent = Agent.objects.get(id=self.agent_id)
+            dataset = agent.dataset
+            tables = dataset.table_set
+            core_table = next((table for table in tables if 'occurrenceID' in table.df.columns), tables[0])
+            extension_tables = [table for table in tables if table != core_table]
+            mof_table =  extension_tables[0] if extension_tables else None
+            url = upload_dwca(core_table.df, dataset.title, dataset.description, mof_table.df)
+            dataset.dwca_url = url
+            dataset.published_at = datetime.datetime.now()
+            dataset.save()
+            print(f'Uploaded to minio and published: {url}')
+            return url
+        except Exception as e:
+            return repr(e)[:2000]
+
 

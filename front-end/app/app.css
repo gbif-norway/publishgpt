@@ -8,6 +8,10 @@
     padding-top: 40px;
     padding-bottom: 30px;
     cursor: pointer;
+    font-size: 0.7em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 .messages { margin: 0 }
 .inner-message {
@@ -16,11 +20,12 @@
     margin: 10px 0;
     white-space: pre-wrap;
 }
-.assistant-message > .inner-message { background-color: rgb(196 255 122 / 10%);}
+.assistant-message > .inner-message { background-color: rgb(196 255 122 / 0%);}
 .user-message { width: 100%; display: flex; justify-content: flex-end; }
-.user-message > .inner-message { background-color: rgba(252, 255, 178, 0.2) }
+.user-message > .inner-message { background-color: rgba(102, 102, 102, 0.2) }
 
-.initialise { font-size: 2em; }
+.initialise { font-size: 1.8em; }
+.initialise img { height: 50px; }
 .function-message { padding: 0; }
 .function-message .show { margin-bottom: 10px; }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
@@ -33,6 +38,7 @@
 .rdt_Pagination svg { fill: #FFF !important; }
 button small { font-size: 0.6em; }
 h1 small { font-size: 0.5em; }
+h1.title { text-align: center; margin-top: 15px; color: #c5ffc0; margin-bottom: 0px; }
 .no-bottom-margin { margin-bottom: 0; }
 .no-bottom-padding { padding-bottom: 0 !important; }
 
@@ -49,3 +55,11 @@ h1 small { font-size: 0.5em; }
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+svg .s0 { fill: rgba(255, 255, 255, 0.1) } 
+svg .s1 { fill: rgb(127, 198, 136) } 
+svg { margin-right: 10px; }
+
+.assistant-message { display: flex; align-items: center;}
+.assistant-message [svg] {margin-right: 10px; }
+.inner-message { flex: 1; }

@@ -9,18 +9,26 @@ It should convert messy spreadsheets made by non technical users into darwin cor
   fields:
     name: extract_subtables
     per_table: true
-    attempt_autonomous: true
+    attempt_autonomous: false
     text: |-
       Step 1: 
       ~
-      Separate out any sub tables in this dataframe into new, separate Tables. 
-      Non-technical users squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. 
-      A single table should be one block of related data with consistent columns and rows, any summary/total rows can be discarded. 
-      IMPORTANT: Start by using the BasicExtractEmptyBoundaryTables method, which is a very simple function which splits up data based on empty rows and columns, but *DO NOT* rely on it. 
-      Double check the Table snapshots, use your intelligence, ask the user if you cannot confidently make a guess at something, look at the first few rows, the last few rows, search for pattern breaks, etc. Often users add arbitrary and unnecessary columns like numbering or horizontal dividers. 
-      NOTE: This is a challenging task, think it through clearly and carefully, step by step. 
+      NOTE: This is a challenging task, think it through clearly and carefully, step by step, and ask the user about anything confusing. 
 
-      Finally: BE CAREFUL! It's very easy to separate out tables and lose information from columnns or rows. Before doing any table extraction, compare the old table with the new tables, and check to see if you are missing anything. 
+      Separate out any sub tables in this dataframe into new, separate Tables. 
+      Non-technical users sometimes squeeze two or more tables into one spreadsheet, which then gets loaded as a single table into the system. New tables may occur horizontally, or vertically, or both!
+      A single table should be one block of related data with consistent columns and rows, any headers, metadata lines or summary/total rows can be discarded.  
+
+      Look at the Table snapshots: 
+       - use your intelligence
+       - look at the first few rows, the last few rows
+       - search for pattern breaks, particularly ones across columns or rows
+       - often users add arbitrary and unnecessary columns like numbering or blank rows as horizontal dividers which should be removed
+       - the initial Table headings (which were the sheet names in Excel) may provide clues
+       - look at .value_counts(dropna=False)) records for each column - if anything doesn't seem to fit in with the other values take a look at the whole row and 3 rows above and below it to see if you can figure out what is going on
+       - ask the user if the data layout is too cryptic to make a guess at
+
+      BE CAREFUL! It's very easy to separate out tables and lose information from columnns or rows. Before doing any table extraction, compare the old table with the new tables, and check to see if you are missing anything. 
 
       Here is an example of a particularly bad user-uploaded spreadsheet: 
       | WP2, 64 µm mesh (ind m-3)                       |                     |                     |            |            |       |         | Svartnes 2018 (ind m-3)        |            |
@@ -139,8 +147,6 @@ It should convert messy spreadsheets made by non technical users into darwin cor
       - The headers, which spanned over multiple rows, have been flattened, combined and standardised
       - Superfluous information which can be derived elsewhere, such as the year which can be derived from the collection dates, have been discarded. 
 
-    additional_function: BasicExtractEmptyBoundaryTables
-
 - model: api.task
   fields:
     name: join_tables
@@ -201,9 +207,9 @@ It should convert messy spreadsheets made by non technical users into darwin cor
     attempt_autonomous: false
     text: |-
       GBIF.org is a global database for biodiversity data. Suitable data for publication includes:
-      - Species Occurrence Data and Sampling Event Data: Records of WHEN and WHERE a species (WHAT) was observed, and often by WHO (collector, citizen scientist, researcher, etc) - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
+      - Species Occurrence Data and Sampling Event Data: Records of WHEN (columns for year/month/day, date, etc) and WHERE (columns for locality, latitude/longitude, footprintwkt, etc) a species/WHAT (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc) was observed or collected. Often also includes WHO made the observation (collector, citizen scientist, researcher, etc) - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
       - Checklists: Lists of species found in a specific area or ecosystem.
-      Look at this data and the metadata description critically. 
+      Look at this data, especially the column headings, and the metadata description critically. 
       Is this data suitable for publication on gbif.org? If it is, mark this Task as complete, otherwise let the user know and reject the the dataset using the RejectDataset function. 
     additional_function: RejectDataset
 
@@ -237,31 +243,53 @@ It should convert messy spreadsheets made by non technical users into darwin cor
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully examine the contents of each of these dataframes. They need to be combined together into a single Darwin Core archive, with one core table (Event, Occurrence or Checklist), with optional extension Tables. Decide on 1) either an Occurrence, Event + Occurrence, or Checklist (taxonomy) DwC core, and 2) optionally any DwC extension for this dataset, the most commonly used one is MeasurementOrFact.
-      Common Event DwC fields (can also be included in an Occurrence core Table):
-       - eventDate (must be ISO format)
+      Carefully examine the contents of each of these dataframes. They need to be combined together into a single Darwin Core archive, with one core table, with optional extension Tables. Decide on 1) either an Occurrence or Checklist (taxonomy) DwC core, and 2) optionally any DwC extension for this dataset, the most commonly used one is MeasurementOrFact.
+      Pick and choose from these common Occurrence DwC fields: 
+       - basisOfRecord (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation)
+       - eventDate (must be ISO format) OR 3 columns: year, month & day
        - locality
+       - locationRemarks
+       - waterBody (if a marine or aquatic occurrence, e.g. Baltic Sea, Hudson River)
+       - islandGroup
+       - island
        - minimumElevationInMeters
        - maximumElevationInMeters
+       - minimumDepthInMeters
+       - maximumDepthInMeters
+       - minimumDistanceAboveSurfaceInMeters
+       - maximumDistanceAboveSurfaceInMeters
        - country
        - decimalLatitude
        - decimalLongitude
+       - geodeticDatum (SRS or geodeticDatum pertaining to decimalLatitude and decimalLongitude)
+       - coordinateUncertaintyInMeters
        - fieldNotes
-      Common Occurrence DwC fields: 
        - recordedBy (collector/observer's name)
        - recordedByID (often ORCID)
        - scientificName
        - kingdom
        - individualCount or organismQuantity/organismQuantityType (IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact)
-       - occurrenceRemarks
+       - occurrenceRemarks (can hold any miscellaneous information)
+       - sex
+       - lifeStage
+       - behavior (e.g. roosting, foraging, running)
+       - vitality (valid values: alive, dead, mixedLot, uncertain, notAssessed)
+       - establishmentMeans (valid values: native, nativeReintroduced, introduced, introducedAssistedColonisation, vagrant, uncertain)
+       - degreeOfEstablishment (valid values: native, captive, cultivated, released, failing, casual, reproducing, established, colonising, invasive, widespreadInvasive)
+       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
+       - preparations (preparation/preservation methods, e.g. fossil, cast, photograph, DNA extract)
+       - associatedSequences (list of associated genetic sequence information, e.g. http://www.ncbi.nlm.nih.gov/nuccore/U34853.1)
+       - habitat
+       - samplingProtocol (e.g. UV light trap, mist net, bottom trawl)
+       - samplingEffort (e.g. 40 trap-nights, 10 observer-hours, 10 km by foot)
+
       Common Checklist DwC fields
        - taxonID
        - scientificName
        - kingdom
        - taxonRemarks
-      NOTE 1: If this is not a Taxonomy/Checklist, you must use the Occurrence core by default and only use a separate table as an Event core if the data contains multiple Occurrences that can be easily grouped (like a series of observations across different times and locations within the same project). If the data is simple, it's easier to combine Event and Occurrence fields into a single Table. In the majority of cases just using the single Occurrence core + some Event fields is easiest. 
-      NOTE 2: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. DO NOT use it for individual counts or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
-      NOTE 3: In almost all cases, if you are publishing Event/Occurrence data, you should discard any Tables containing taxonomy information only that a user may have gathered - that should not get published. 
+      NOTE 1: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. DO NOT use it for individual counts or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
+      NOTE 2: In almost all cases, if you are publishing Occurrence data, you should discard any Tables containing summary taxonomy information that a user may have gathered - that should not get published. 
 
       Your task is now to: 
       1) Discuss your recommendations for DwC core and extensions with the user, note that extensions are optional
@@ -270,6 +298,14 @@ It should convert messy spreadsheets made by non technical users into darwin cor
       3) Add a very short (max 3 sentences) summary to the dataset description, detailing why you and the user have chosen this DwC core + any extensions, use SetBasicMetadata to save it and be careful not to overwrite the description already saved.
       4) Call the SetAgentTaskToComplete function and move on to the next task
     additional_function: SetBasicMetadata
+
+# - model: api.task
+#   fields:
+#     name: organize_tables
+#     per_table: false
+#     attempt_autonomous: true
+#     text: >  
+#       Depending on the DwC core and DwC extensions this dataset has, organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required.
 
 - model: api.task
   fields:
@@ -361,47 +397,13 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
 
 ```
 
-## Sequence of events
+So the sequence of events is as follows: 
 
-1. GPT-4o API is sent a System Message with a prompt for each Task
+1. GPT-4 API is sent a System Message with a prompt for each Task
 2. It replies with Assistant Messages for the user (typically asking for more information if required) or with Function Messages - calling functions it has access to.
     1. Assistant Messages are stored in a Message Set for that Task and sent to the user, the user’s reply is stored as a User Message in the Message Set and sent back to GPT-4, this repeats until GPT-4 replies with a Function Message 
     2. Function Message replies from GPT-4 are actually run as functions in the codebase (either Python or SetAgentTaskToComplete) and not stored in the Message Set. GPT-4 returns a function name, and I use getattr to get the actual corresponding function in the code. Function arguments are also returned as JSON arguments which can get passed into the function as it is run. 
-    3. The RESULTS of the function that is called is added to a new Function Message, which is stored in the Message Set. If a Function Message calls the “SetAgentTaskToComplete” function the system marks that Task as complete in the UI and moves on to the next Task. If a Function Message calls the “Python” function, GPT-4 generated python code from the arguments is passed to a function which runs the code in a sandbox, and returns the output of what was executed. This repeats until SetAgentTaskToComplete is called.
+    
+    The RESULTS of the function that is called is added to a new Function Message, which is stored in the Message Set. If a Function Message calls the “SetAgentTaskToComplete” function the system marks that Task as complete in the UI and moves on to the next Task. If a Function Message calls the “Python” function, GPT-4 generated python code from the arguments is passed to a function which runs the code in a sandbox, and returns the output of what was executed. This repeats until SetAgentTaskToComplete is called.
 
-## The problem
-
-I have several real world examples of messy spreadsheets, and GPT-4o is failing to correctly format any of them. For example: 
-
-|                       |                 |                            | Jetties      | Vertical walls |
-| --------------------- | --------------- | -------------------------- | ------------ | -------------- |
-| Developmental stage   | Family          | Taxon                      | Total number | Jetty B        | Jetty D | Total % | Total number | Spithead | Francis Drake | Total % |
-| Invertebrates (Traps) |
-| Zoea                  | Pinnotheridae   | Pinnotheres sp.            | 2561697      | 9.6152         | 84.3818 | 93.9971 | 792 | 10.05 | 17.58 | 27.62 |
-|                       | Pinnotheridae   | Pinnixa sp.                | 1284         | 0.0096         | 0.0375 | 0.0471 | 3 | 0.03 | 0.07 | 0.10 |
-|                       | Leucosiidae     |                            | 171          | 0.0026         | 0.0037 | 0.0063 | 23 | 0.66 | 0.14 | 0.80 |
-| Megalopa              | Pinnotheridae   | Pinnotheres sp.            | 1692         | 0.0348         | 0.0273 | 0.0621 | 742 | 21.90 | 3.98 | 25.88 |
-|                       | Hymenosomatidae | Hymenosoma orbiculare      | 862          | 0.0137         | 0.0179 | 0.0316 | 186 | 3.84 | 2.65 | 6.49 |
-|                       |                 | Unidentified megalopa sp.5 | 0            | 0              | 0 | 0 | 1 | 0.03 | 0.00 | 0.03 |
-| Cyprid                |                 | Cirripedia                 | 12580        | 0.2116         | 0.2500 | 0.4616 | 686 | 15.38 | 8.55 | 23.93 |
-| Fish (Traps)          |
-| Postflexion           | Sparidae        | Diplodus capensis          | 6            | 1.5            | 1.5 | 3 | 7 | 1.0 | 0.4 | 1.4 |
-|                       | Sparidae        | Rhabdosargus holubi        | 10           | 1.5            | 3.5 | 5 | 0 | 0 | 0 | 0 |
-|                       | Dussumieriidae  | Etrumeus whiteheadi        | 55           | 22             | 5.5 | 27.5 | 290 | 53.7 | 2.9 | 56.6 |
-|                       | Engraulidae     | Engraulis encrasicolus     | 1            | 0.5            | 0 | 0.5 | 177 | 34.4 | 0.2 | 34.6 |
-
-This spreadsheet has merged cells, multiple rows as headers, and midway through it's got a new subheader "Fish (Traps)" where the student has separated out the fish species they recorded. The end result should look something like: 
-
-| lifeStage | Family          | scientificName        | Class     | verbatimLocality | organismQuantity | organismQuantityType |
-| --------- | --------------- | --------------------- | --------- | ---------------- | ---------------- | -------------------- |
-| Zoea      | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty B          | 9.61521597       | % biomass            |
-| Zoea      | Pinnotheridae   | Pinnixa sp.           | Crustacea | Jetty B          | 0.00961364       | % biomass            |
-| Zoea      | Leucosiidae     |                       | Crustacea | Jetty B          | 0.00260522       | % biomass            |
-| Megalopa  | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty B          | 0.03478523       | % biomass            |
-| Megalopa  | Hymenosomatidae | Hymenosoma orbiculare | Crustacea | Jetty B          | 0.01368659       | % biomass            |
-| Zoea      | Pinnotheridae   | Pinnotheres sp.       | Crustacea | Jetty D          | 84.3818376       | % biomass            |
-| Zoea      | Pinnotheridae   | Pinnixa sp.           | Crustacea | Jetty D          | 0.03750053       | % biomass            |
-| …         |                 |                       |           |                  |                  |                      |
-
-So far GPT4o has not been able to achieve anything like this - it loses columns, hallucinates, mixes up and loses columns and rows. 
-
+The problem is that it will sometimes reply with an assistant message when it should be using a function message. An exchange might go like this: 
