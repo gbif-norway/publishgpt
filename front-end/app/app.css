@@ -31,7 +31,7 @@
 .user-message > .inner-message { background-color: rgba(190, 255, 206, 0.2); max-width: 70% }
 
 body { overflow: auto !important }
-.initialise { font-size: 1.8em; }
+.initialise { font-size: 1.5em; }
 .initialise img { height: 50px; }
 .function-message { padding: 0; }
 .function-message .show { margin-bottom: 10px; }
@@ -47,7 +47,7 @@ body { overflow: auto !important }
 .rdt_Pagination svg { fill: #FFF !important; }
 button small { font-size: 0.6em; }
 h1 small { font-size: 0.5em; }
-h1.title { text-align: center; margin-top: 15px; color: #c5ffc0; margin-bottom: 0px; }
+h1.title { text-align: center; margin-top: 20px; color: #c5ffc0; margin-bottom: 20px; }
 .no-bottom-margin { margin-bottom: 0; }
 .no-bottom-padding { padding-bottom: 0 !important; }
 

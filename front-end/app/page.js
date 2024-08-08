@@ -35,7 +35,7 @@ const Home = () => {
               <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div className="modal-body">
-              <div class="alert alert-warning" role="alert">
+              <div className="alert alert-warning" role="alert">
               <p>ChatIPT is a data publication chatbot for students and researchers who are new to data publication.</p>
               <p>It guides users through data preparation, from cleaning and formatting to generating metadata, and finally publishes the data on gbif.org.</p>
               </div>

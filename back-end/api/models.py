@@ -217,7 +217,8 @@ class Agent(models.Model):
                 function_message = Message.objects.create(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name)
                 if response_message.tool_calls[0].id:
                     function_message.function_id = response_message.tool_calls[0].id
-                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided in API response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments.'
+                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided in API response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments. For running Python, remember to specify the "code" argument, like {{"code": "species_table = Table.objects.get(id=210);}}'
+                function_message.save()
                 return self.run(current_call=current_call+1, max_calls=max_calls)
             
             function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
