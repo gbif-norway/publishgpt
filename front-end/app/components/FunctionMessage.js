@@ -15,12 +15,14 @@ function FunctionMessage({ message }) {
     <div className={`message function-message`}>
         {message.content && (
           <>
-            <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message.id}`} aria-expanded={open}>Show work</Button>
-            <Collapse in={open}>
-              <div id={`collapseFor${message.id}`}>
-                <CodeBlock text={content} language="python" theme={dracula} />
+            <div className="inner-message">
+              <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message.id}`} aria-expanded={open}>Show work</Button>
+              <Collapse in={open}>
+                <div id={`collapseFor${message.id}`}>
+                  <CodeBlock text={content} language="python" theme={dracula} />
+                </div>
+              </Collapse>
               </div>
-            </Collapse>
           </>
         )}
     </div>

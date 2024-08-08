@@ -61,14 +61,19 @@ const Agent = ({ agent, refreshDataset }) => {
           ))}
 
           {isLoading && (
-            <div className="message assistant-message">
+            <div className="message user-input-loading">
               <div className="d-flex align-items-center">
                 <strong>{loadingMessage}</strong>
                 <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
               </div>
             </div>
           )}
-          {!agent.completed_at && !isLoading && <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} />}
+          {!agent.completed_at && !isLoading && 
+            <div className="input-group">
+              <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} placeholder="Message ChatIPT" />
+              <div className="input-group-append"><span className="input-group-text"><i className="bi bi-arrow-up-circle"></i></span></div>
+            </div>
+          }
         </Accordion.Body>
       </Accordion.Item>
     </>
