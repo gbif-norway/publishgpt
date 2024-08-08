@@ -110,7 +110,9 @@ class Python(OpenAIBaseModel):
 
             locals = {}
             globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re }
-            exec(code, globals, locals)
+            combined_context = globals.copy()
+            combined_context.update(locals)
+            exec(code, combined_context, combined_context)  # See https://github.com/python/cpython/issues/86084
             stdout_value = new_stdout.getvalue()
             
             if stdout_value:
