@@ -83,20 +83,11 @@ const Dataset = ({ initialDatasetId }) => {
       ) : (
       <div>
         <div className="row mx-auto p-4 no-bottom-margin no-bottom-padding no-top-padding">
-          <div className="col-12">
-            <h2 className="dataset-title">Publishing:&nbsp;
-              {!dataset.title ? dataset.file.split(/\//).pop() : (
-                <>{dataset.title} <small>Original file name: {dataset.file.split(/\//).pop()},</small></>
-              )}
-              &nbsp;<small>started {new Date(dataset.created_at).toLocaleString()}</small>
-            </h2>
-            {dataset.title && (<div className="alert alert-info no-bottom-margin" role="alert">Title: {dataset.title}</div>)}
-            {dataset.description && (<div className="alert alert-info no-bottom-margin" role="alert">Description: {dataset.description}</div>)}
-            {dataset.structure_notes && (<div className="alert alert-info no-bottom-margin" role="alert">Notes about the structure: {dataset.structure_notes}</div>)}            {dataset.rejected_at && (
-              <div className="alert alert-warning" role="alert">
-                This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.
-              </div>
-            )}
+          <div className="col-12 alerts-div">
+            <div class="publishing-heading">Publishing {dataset.file.split(/\//).pop()} (original file name) <span class="badge text-bg-secondary">Started {new Date(dataset.created_at).toLocaleString()}</span></div>
+            {dataset.title && (<div className="alert alert-info" role="alert"><strong>Title</strong>: {dataset.title}<br /><strong>Description</strong>: {dataset.description}</div>)}
+            {dataset.structure_notes && (<div className="alert alert-dark" role="alert">Notes about the structure: {dataset.structure_notes}</div>)}            
+            {dataset.rejected_at && (<div className="alert alert-warning" role="alert"> This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.</div>)}
           </div>
         </div>
         <div className="row mx-auto p-4">

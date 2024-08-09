@@ -65,7 +65,7 @@ const Home = () => {
                   <li>Use the details from the user's ORCID login to give chatbot context so it can provide more tailored help. For example, it could read biographies to discover user's area of expertise and make inferences about the data from that, automatically get current institution name + address for metadata, work out likely level of experience with data publication and tailor language accordingly, and more. The chatbot could also be more personalised and human-like, addressing the user by name, commenting on the new dataset compared to the old work done previously, etc.</li>
                   <li>Currently using OpenAI's gpt4o model - experiment with open source models to reduce costs, depending on uptake</li>
                 </ol>
-                <p>Note: Not suitable for publishing data from a database, or for large data sources, and there are no plans to support this. A chatbot is not the right format and as there are far fewer databases than ad-hoc spreadsheets, so it is (in many ways) a different problem.</p>
+                <p>Note: Not suitable for publishing data from a database, or for large data sources, and there are no plans to support this. A chatbot is not the right format as it needs to be done by a technician who understands the database, and as there are far fewer databases than ad-hoc spreadsheets it is (in many ways) a different problem, which we already have a great tool for: the IPT. The IPT is less good for those new to data publication who only need to publish a small, single datase once or twice every few years.</p>
               </div>
             </div>
             <div className="modal-footer">

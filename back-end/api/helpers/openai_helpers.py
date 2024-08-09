@@ -50,7 +50,13 @@ class OpenAIBaseModel(BaseModel):
 
 def get_function(tool):
     fn = tool.function
-    fn.arguments = json.loads(fn.arguments, strict=False) 
+    
+    import pdb; pdb.set_trace()
+    if fn.name.lower() == 'python' and fn.arguments[:8] != '{"code":"':
+        print('Python args not wrapped in code')
+        fn.arguments = {'code': fn.arguments}
+    else:
+        fn.arguments = json.loads(fn.arguments, strict=False) 
     if tool.id:
         fn.id = tool.id
     return fn

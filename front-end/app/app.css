@@ -46,7 +46,12 @@ body { overflow: auto !important }
 .dataset-info-wrapper button { margin-right: 10px; margin-bottom: 10px; }
 .rdt_Pagination svg { fill: #FFF !important; }
 button small { font-size: 0.6em; }
-h2 small { font-size: 0.5em; }
+.publishing-heading { 
+    text-align: center;
+    margin-top: -5px;
+    margin-bottom: 20px; 
+}
+.alerts-div .alert { margin-bottom: 5px; }
 h1.title { text-align: center; margin-top: 20px; color: #c5ffc0; margin-bottom: 20px; }
 .no-bottom-margin { margin-bottom: 0; }
 .no-bottom-padding { padding-bottom: 0 !important; }
