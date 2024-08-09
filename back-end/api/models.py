@@ -211,7 +211,7 @@ class Agent(models.Model):
 
         fn = response_message.tool_calls[0].function
         try:
-            function_call = get_function(fn) # completion.choices[0].message.tool_calls[0].function
+            function_call = get_function(fn)
             function_result = self.run_function(function_call)
         except (json.decoder.JSONDecodeError, Exception) as e:
             error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments. For running Python, remember to specify the "code" argument, like {{"code": "species_table = Table.objects.get(id=210);}}\nError: {e}'

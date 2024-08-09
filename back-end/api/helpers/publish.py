@@ -7,7 +7,7 @@ from minio import Minio
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 def make_eml(title, description):
-    tree = ET.parse('templates/eml.xml')
+    tree = ET.parse('api/templates/eml.xml')
     root = tree.getroot()
     placeholder_user = {'givenName': 'Test', 'surName': 'User', 'userId': '0000-0002-1825-0097'}
     values = {
@@ -37,7 +37,7 @@ def upload_dwca(df_core, title, description, df_extension=None):
     archive.eml_text = make_eml(title, description)
     core_table = Table(spec="https://rs.gbif.org/core/dwc_occurrence_2022-02-02.xml", data=df_core, id_index=0, only_mapped_columns=True)
     archive.core = core_table
-    if df_extension:
+    if df_extension is not None:
         extension_table = Table(spec="https://rs.gbif.org/extension/dwc/measurements_or_facts_2022-02-02.xml", data=df_extension, id_index=0)
         archive.extensions.append(extension_table)
 
@@ -45,7 +45,7 @@ def upload_dwca(df_core, title, description, df_extension=None):
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = os.path.join(temp_dir, file_name)
         archive.export(local_path)
-
+        import pdb; pdb.set_trace()
         client = Minio(os.getenv('MINIO_URI'), access_key=os.getenv('MINIO_ACCESS_KEY'), secret_key=os.getenv('MINIO_SECRET_KEY'))
         upload_file(client, os.getenv('MINIO_BUCKET'), f"{os.getenv('MINIO_BUCKET_FOLDER')}/{file_name}", local_path)
         return f"https://{os.getenv('MINIO_URI')}/{os.getenv('MINIO_BUCKET')}/{os.getenv('MINIO_BUCKET_FOLDER')}/{file_name}"

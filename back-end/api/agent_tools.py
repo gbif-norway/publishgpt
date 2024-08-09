@@ -203,7 +203,7 @@ class PublishDwC(OpenAIBaseModel):
         try:
             agent = Agent.objects.get(id=self.agent_id)
             dataset = agent.dataset
-            tables = dataset.table_set
+            tables = dataset.table_set.all()
             core_table = next((table for table in tables if 'occurrenceID' in table.df.columns), tables[0])
             extension_tables = [table for table in tables if table != core_table]
             mof_table =  extension_tables[0] if extension_tables else None
