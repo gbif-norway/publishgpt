@@ -204,49 +204,41 @@ class Agent(models.Model):
 
     def run(self, current_call=0, max_calls=10):
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
-        
-        # Note - Assistant messages which have function calls usually do not have content, but if they do it's fine to show it to the user
         response_message = response.choices[0].message
-        if response_message.content:
-            message = Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
+        
+        if not response_message.tool_calls:  # It's a simple assistant message
+            return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
 
-        if response_message.tool_calls:
-            try:
-                function_call = get_function(response_message.tool_calls[0]) # completion.choices[0].message.tool_calls[0].function
-            except json.decoder.JSONDecodeError:
-                function_message = Message.objects.create(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name)
-                if response_message.tool_calls[0].id:
-                    function_message.function_id = response_message.tool_calls[0].id
-                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided in API response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments. For running Python, remember to specify the "code" argument, like {{"code": "species_table = Table.objects.get(id=210);}}'
-                function_message.save()
-                return self.run(current_call=current_call+1, max_calls=max_calls)
-            
-            function_message = Message.objects.create(agent=self, role=Message.Role.FUNCTION, function_name=function_call.name)
-            if function_call.id:
-                function_message.function_id = function_call.id
-                function_message.save()
-            try:
-                function_result = self.run_function(function_call)
-            except Exception as e:
-                function_message.content = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON provided ({response_message.tool_calls[0].function.arguments}), please try again.'
-                function_message.save()
-                return self.run(current_call=current_call+1, max_calls=max_calls)
-            print(f'Function result: {function_result}')
-            function_message.content = function_result
-            function_message.save()
-
-            # If this was not a terminating function we need to feed it back to GPT4
-            terminating_functions = [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]
-            if function_call.name in terminating_functions:
-                return None
+        fn = response_message.tool_calls[0].function
+        try:
+            function_call = get_function(fn) # completion.choices[0].message.tool_calls[0].function
+            function_result = self.run_function(function_call)
+        except (json.decoder.JSONDecodeError, Exception) as e:
+            error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments. For running Python, remember to specify the "code" argument, like {{"code": "species_table = Table.objects.get(id=210);}}\nError: {e}'
+            self.create_function_message(response_message, error)
             return self.run(current_call=current_call+1, max_calls=max_calls)
-        # elif current_call > 3:
-        return message
+            
+        self.create_function_message(response_message, function_result)
+        if function_call.name in [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]:
+            return None
+        
+        # If this was not a terminating function we need to feed it back to GPT4
+        return self.run(current_call=current_call+1, max_calls=max_calls)
     
     def run_function(self, function_call):
         function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
         function_model_obj = function_model_class(**function_call.arguments)
         return function_model_obj.run()
+
+    def create_function_message(self, response_message, function_message_content):
+        print(f'Function message result: {function_message_content}')
+        function_message = Message(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name, content=function_message_content)
+        if response_message.tool_calls[0].id:
+            function_message.function_id = response_message.tool_calls[0].id
+        if response_message.content:  # There's an additional assistant message as well as a function call, we should show it to the user
+            Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
+        function_message.save()
+        
 
 class Message(models.Model):
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE)

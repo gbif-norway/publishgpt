@@ -48,17 +48,13 @@ class OpenAIBaseModel(BaseModel):
     def openai_schema(cls):
         return custom_schema(cls)
 
-def get_function(tool):
-    fn = tool.function
-    
-    import pdb; pdb.set_trace()
+def get_function(fn):
     if fn.name.lower() == 'python' and fn.arguments[:8] != '{"code":"':
         print('Python args not wrapped in code')
         fn.arguments = {'code': fn.arguments}
     else:
         fn.arguments = json.loads(fn.arguments, strict=False) 
-    if tool.id:
-        fn.id = tool.id
+
     return fn
 
 def openai_message_content(response, choice=0):
