@@ -1,16 +1,12 @@
-
-import React, { useState } from 'react';
+import React from 'react';
 import { useDropzone } from 'react-dropzone';
 import config from '../config.js';
 
-const FileDrop = ({ onFileAccepted, onError }) => {
-  const [loading, setLoading] = useState(false);
+const FileDrop = ({ onFileAccepted, onError, loading }) => {
 
   const onDrop = async (acceptedFiles) => {
     const formData = new FormData();
     formData.append('file', acceptedFiles[0]);
-
-    setLoading(true);
 
     try {
       const response = await fetch(`${config.baseApiUrl}/datasets/`, {
@@ -22,8 +18,6 @@ const FileDrop = ({ onFileAccepted, onError }) => {
       onFileAccepted(data.id);
     } catch (err) {
       onError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
