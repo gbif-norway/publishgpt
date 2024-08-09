@@ -82,9 +82,14 @@ const Dataset = ({ initialDatasetId }) => {
       </div>
       ) : (
       <div>
-        <div className="row mx-auto p-4 no-bottom-margin no-bottom-padding">
+        <div className="row mx-auto p-4 no-bottom-margin no-bottom-padding no-top-padding">
           <div className="col-12">
-            <h1>Publishing {dataset.file.split(/\//).pop()} <small>started {new Date(dataset.created_at).toLocaleString()}</small></h1>
+            <h2 className="dataset-title">Publishing:&nbsp;
+              {!dataset.title ? dataset.file.split(/\//).pop() : (
+                <>{dataset.title} <small>Original file name: {dataset.file.split(/\//).pop()},</small></>
+              )}
+              &nbsp;<small>started {new Date(dataset.created_at).toLocaleString()}</small>
+            </h2>
             {dataset.title && (<div className="alert alert-info no-bottom-margin" role="alert">Title: {dataset.title}</div>)}
             {dataset.description && (<div className="alert alert-info no-bottom-margin" role="alert">Description: {dataset.description}</div>)}
             {dataset.structure_notes && (<div className="alert alert-info no-bottom-margin" role="alert">Notes about the structure: {dataset.structure_notes}</div>)}            {dataset.rejected_at && (
