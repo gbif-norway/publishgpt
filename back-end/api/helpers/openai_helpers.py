@@ -49,7 +49,7 @@ class OpenAIBaseModel(BaseModel):
         return custom_schema(cls)
 
 def get_function(fn):
-    if fn.name.lower() == 'python' and fn.arguments[:8] != '{"code":"':
+    if fn.name.lower() == 'python' and fn.arguments.replace(' ', '')[:8] != '{"code":':
         print('Python args not wrapped in code')
         fn.arguments = {'code': fn.arguments}
     else:

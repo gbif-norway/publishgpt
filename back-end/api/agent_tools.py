@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from api.helpers.openai_helpers import OpenAIBaseModel
 from typing import Optional
-from api.helpers.publish import upload_dwca
+from api.helpers.publish import upload_dwca, register_dataset_and_endpoint
 import datetime
 import uuid
 
@@ -209,10 +209,11 @@ class PublishDwC(OpenAIBaseModel):
             mof_table =  extension_tables[0] if extension_tables else None
             url = upload_dwca(core_table.df, dataset.title, dataset.description, mof_table.df)
             dataset.dwca_url = url
+            gbif_url = register_dataset_and_endpoint(dataset.title, dataset.description, dataset.dwca_url)
             dataset.published_at = datetime.datetime.now()
+            import pdb; pdb.set_trace()
             dataset.save()
-            print(f'Uploaded to minio and published: {url}')
-            return url
+            return(f'GBIF URL: {gbif_url}, Darwin core archive upload: {url}')
         except Exception as e:
             return repr(e)[:2000]
 
