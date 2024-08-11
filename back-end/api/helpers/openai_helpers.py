@@ -3,7 +3,6 @@ from pydantic import BaseModel
 import json
 from openai import OpenAI
 from pprint import pprint
-from api import agent_tools
 from typing import Dict, Any
 
 
@@ -22,9 +21,6 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     pprint(response)
     print('---')
     return response
-
-def create_supervisor_chat_completion(messages, functions=None, temperature=1, model='gpt-4o'): # gpt-3.5-turbo gpt-4o-mini	
-    messages = [m.openai_schema for m in messages]
 
 def custom_schema(cls: BaseModel) -> Dict[str, Any]:
     parameters = cls.schema()
@@ -57,10 +53,6 @@ def get_function(fn):
 
     return fn
 
-def openai_message_content(response, choice=0):
-    return response['choices'][choice]['message'].get('content')
-
-
 def _remove_a_key(d, remove_key) -> None:
     """Remove a key from a dictionary recursively"""
     if isinstance(d, dict):
@@ -69,11 +61,3 @@ def _remove_a_key(d, remove_key) -> None:
                 del d[key]
             else:
                 _remove_a_key(d[key], remove_key)
-
-
-def function_name_in_text(function_names, text):
-    for string in function_names:
-        if string in text:
-            return True
-    return False
-
