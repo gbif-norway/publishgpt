@@ -1,10 +1,15 @@
 import ast
 from pydantic import BaseModel
 import json
-from openai import OpenAI
+from openai import OpenAI, InternalServerError
 from pprint import pprint
 from typing import Dict, Any
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
+@retry(retry=retry_if_exception_type(InternalServerError), stop=stop_after_attempt(10), wait=wait_fixed(2))
+def query_api(args):
+    with OpenAI() as client:
+        return client.chat.completions.create(**args)  
 
 def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0.8, model='gpt-4o-2024-05-13'): # gpt-4o-2024-08-06
     messages = [m.openai_schema for m in messages]
@@ -14,9 +19,7 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     if functions:
         args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
     print('---')
-    with OpenAI() as client:
-        # response = client.chat.completions.parse(**args)  
-        response = client.chat.completions.create(**args)  
+    response = query_api(args)
     print('---Response---')
     pprint(response)
     print('---')

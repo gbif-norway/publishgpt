@@ -38,12 +38,21 @@ const Dataset = ({ initialDatasetId }) => {
   const refreshDataset = useCallback(async () => {
     try {
       const dataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}`);
+      console.log(dataset.agent_set)
       var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
-      if(last_non_complete_agent_index) { 
+      if(last_non_complete_agent_index !== -1) { 
         var visibleAgents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
       } else {
-        var visibleAgents = dataset.agent_set
+        console.log('display all agents otherwise');
+        var visibleAgents = dataset.agent_set; 
+        if (dataset.published_at === null) { 
+          console.log('fetching next agent');
+          const next_agent = await fetch(`${config.baseApiUrl}/datasets/${activeDatasetID}/next_agent`);
+          console.log(next_agent);
+          setAgents(prevAgents => [...prevAgents, next_agent]);
+        }
       }
+      console.log(visibleAgents);
       setAgents(visibleAgents);
       setActiveAgentKey(visibleAgents[visibleAgents.length - 1].id);
       await refreshTables();

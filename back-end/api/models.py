@@ -184,13 +184,18 @@ class Agent(models.Model):
 
     def next_message(self):
         last_message = self.message_set.last()
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if last_message.role == Message.Role.ASSISTANT or self.completed_at:
             return None
         
         # Otherwise last message was from the user, was the return from a function, or was the starting system message
         # So we need to send it to GPT
-        response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
+        try:
+            response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
+        except Exception as e:
+            error_message = f'Unfortunately the OpenAI API seems to be down. Try again later, and please report this error to the developers. Full error: {e}'
+            return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=error_message)
+        
         response_message = response.choices[0].message
     
         if not response_message.tool_calls:  # It's a simple assistant message
@@ -213,6 +218,8 @@ class Agent(models.Model):
 
     def create_function_message(self, response_message, function_message_content):
         print(f'Function message result: {function_message_content}')
+        if response_message.content:
+            function_message_content = f"'''\nThoughts: {response_message.content}\n'''\n" + function_message_content
         function_message = Message(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name, content=function_message_content)
         if response_message.tool_calls[0].id:
             function_message.function_id = response_message.tool_calls[0].id

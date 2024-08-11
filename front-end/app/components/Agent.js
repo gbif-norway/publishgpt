@@ -7,13 +7,28 @@ import config from '../config.js';
 const Agent = ({ agent, refreshDataset }) => {
   const [messages, setMessages] = useState(agent.message_set);
   const [userInput, setUserInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
 
   useEffect(() => {
+    setIsLoading(true);
+    console.log('triggered useffect');
+    console.log(agent.id);
     console.log(agent.completed_at);
+    if (agent.completed_at) { 
+      setIsLoading(false);
+    } 
     setMessages(agent.message_set); // Update messages if the agent prop changes
   }, [agent]);
+
+  useEffect(() => {
+    if (agent.completed_at === null) { 
+      setIsLoading(true);
+      console.log('running this only once when component is loaded if completed_at is null');
+      console.log(agent.completed_at);
+      fetchNextMessage();
+    }
+  }, []);
 
   const formatTableIDs = (ids) => {
     if (!ids || !ids.length) return "[Deleted table(s)]";
@@ -23,6 +38,7 @@ const Agent = ({ agent, refreshDataset }) => {
 
   const fetchNextMessage = async () => {
     try {
+      setIsLoading(true);
       const response = await fetch(`${config.baseApiUrl}/agents/${agent.id}/next_message`);
       const data = await response.json();
       console.log(agent);
@@ -30,12 +46,8 @@ const Agent = ({ agent, refreshDataset }) => {
       console.log(data);
       console.log(agent);
 
-      if (data.agent === null) {
-        console.log(agent);
-        if (agent.completed_at === null) {
-          console.log('no next message and agent not completed - user input required')
-          setIsLoading(false); // Ready for user input
-        }
+      if (data.agent === null) { // Either the agent is completed, or there is no next message because we require user input
+        setIsLoading(false);
       } else {
         console.log('there is a next message, add it to the others then call next message again')
         setMessages(prevMessages => [...prevMessages, data]);
@@ -67,13 +79,6 @@ const Agent = ({ agent, refreshDataset }) => {
       }
     }
   };
-/*
-  useEffect(() => {
-    // Start fetching messages when the component mounts
-    if (!agent.completed_at) {
-      fetchNextMessage();
-    }
-  }, [agent]);*/
 
   return (
     <>
