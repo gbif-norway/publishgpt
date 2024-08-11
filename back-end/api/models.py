@@ -38,32 +38,28 @@ class Dataset(models.Model):
     def filename(self):
         return path.basename(self.file.name)
     
-    def update_agents(self):
+    def next_agent(self):
         self.refresh_from_db()
         if self.rejected_at:
             print('rejected')
             return None
-        next_agent = self.agent_set.filter(completed_at=None).first()
-        if not next_agent:
-            last_completed_agent = self.agent_set.exclude(completed_at=None).last() 
-            print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
-            if last_completed_agent:
-                next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
-                if next_task:
-                    next_task.create_agents_with_system_messages(dataset=self)
-                    return self.update_agents()  # Sometimes tasks are completed without human input
-                else:
-                    print(self.published_at)
-                    import pdb; pdb.set_trace()
-                    return None  # It's been published... self.published_at = datetime.now() # self.save()
-            else:
-                raise Exception('Agent set for this dataset appears to be empty')
         
-        next_message = next_agent.get_next_assistant_message()
-        if next_message is None:  # This agent is complete
-            self.update_agents()
-
-        return next_agent
+        next_agent = self.agent_set.filter(completed_at=None).first()
+        if next_agent:
+            return next_agent
+    
+        last_completed_agent = self.agent_set.last()  # self.agent_set.exclude(completed_at=None).last() 
+        print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
+        if last_completed_agent:
+            next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
+            if next_task:
+                next_task.create_agents_with_system_messages(dataset=self)
+                return self.next_agent()
+            else:
+                print(f'PUBLISHED {self.published_at}')
+                return None  # It's been published... self.published_at = datetime.now() # self.save()
+        else:
+            raise Exception('Agent set for this dataset appears to be empty')
 
     class Meta:
         get_latest_by = 'created_at'
@@ -178,22 +174,6 @@ class Agent(models.Model):
         get_latest_by = 'created_at'
         ordering = ['created_at']
 
-    def get_next_assistant_message(self):
-        if self.completed_at is not None:
-            return None
-        
-        last_message = self.message_set.last()
-        if not last_message:
-            print('-------No last message for this:-------')
-            print(self.task.name)
-            self.task.create_agents_with_system_messages(dataset=self.dataset)
-            last_message = self.message_set.last() 
-            return last_message
-        if last_message.role == Message.Role.ASSISTANT:
-            return last_message
-        
-        return self.run()
-
     @classmethod
     def create_with_system_message(cls, dataset, task, tables):
         agent = cls.objects.create(dataset=dataset, task=task)
@@ -202,10 +182,17 @@ class Agent(models.Model):
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
 
-    def run(self, current_call=0, max_calls=10):
+    def next_message(self):
+        last_message = self.message_set.last()
+        import pdb; pdb.set_trace()
+        if last_message.role == Message.Role.ASSISTANT or self.completed_at:
+            return None
+        
+        # Otherwise last message was from the user, was the return from a function, or was the starting system message
+        # So we need to send it to GPT
         response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
         response_message = response.choices[0].message
-        
+    
         if not response_message.tool_calls:  # It's a simple assistant message
             return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
 
@@ -214,16 +201,10 @@ class Agent(models.Model):
             function_call = get_function(fn)
             function_result = self.run_function(function_call)
         except (json.decoder.JSONDecodeError, Exception) as e:
-            error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. It is important you return ONLY valid JSON, especially for function arguments. For running Python, remember to specify the "code" argument, like {{"code": "species_table = Table.objects.get(id=210);}}\nError: {e}'
-            self.create_function_message(response_message, error)
-            return self.run(current_call=current_call+1, max_calls=max_calls)
+            error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. \nError: {e}'
+            return self.create_function_message(response_message, error)
             
-        self.create_function_message(response_message, function_result)
-        if function_call.name in [agent_tools.SetAgentTaskToComplete.__name__, agent_tools.SetBasicMetadata.__name__]:
-            return None
-        
-        # If this was not a terminating function we need to feed it back to GPT4
-        return self.run(current_call=current_call+1, max_calls=max_calls)
+        return self.create_function_message(response_message, function_result)
     
     def run_function(self, function_call):
         function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
@@ -235,9 +216,8 @@ class Agent(models.Model):
         function_message = Message(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name, content=function_message_content)
         if response_message.tool_calls[0].id:
             function_message.function_id = response_message.tool_calls[0].id
-        if response_message.content:  # There's an additional assistant message as well as a function call, we should show it to the user
-            Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
         function_message.save()
+        return function_message
         
 
 class Message(models.Model):
