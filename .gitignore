@@ -368,3 +368,4 @@ gapi-secret.json
 user_files/
 .vscode/
 .next/
+.htpasswd
