@@ -9,6 +9,7 @@ from typing import Optional
 from api.helpers.publish import upload_dwca, register_dataset_and_endpoint
 import datetime
 import uuid
+import utm
 
 
 def trim_dataframe(df):
@@ -86,11 +87,14 @@ class ValidateDwCTerms(OpenAIBaseModel):
         pass
 
 
+##class ViewCodeHistory
+
+
 class Python(OpenAIBaseModel):
     """
-    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re}, {})`. 
-    I.e., you have access to an environment with pandas (pd), numpy (np), uuid, datetime, re and a Django database with models `Table` and `Dataset`. DO NOT import other modules.
-    E.g. `table = Table.objects.get(id=df_id); print(table.df.to_string()); dataset = Dataset.objects.get(id=1);` etc
+    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm}, {})`. 
+    I.e., you have access to an environment with those libraries and a Django database with models `Table` and `Dataset`. You cannot import anything else.
+    E.g. code: `table = Table.objects.get(id=df_id); print(table.df.to_string()); dataset = Dataset.objects.get(id=1);` etc
     Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `table.save()`). 
     - Use print() if you want to see output - a string of stdout, truncated to 2000 chars 
     - IMPORTANT NOTE #1: State does not persist - Every time this function is called, the slate is wiped clean and you will not have access to objects created previously.
@@ -109,7 +113,7 @@ class Python(OpenAIBaseModel):
             from api.models import Dataset, Table
 
             locals = {}
-            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re }
+            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm }
             combined_context = globals.copy()
             combined_context.update(locals)
             exec(code, combined_context, combined_context)  # See https://github.com/python/cpython/issues/86084

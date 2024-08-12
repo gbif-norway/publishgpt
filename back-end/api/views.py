@@ -11,13 +11,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
     serializer_class = DatasetSerializer
     filterset_fields = ['created_at', 'orcid']
 
-    def retrieve(self, request, pk=None):
-        queryset = Dataset.objects.all()
-        dataset = get_object_or_404(queryset, pk=pk)
-        dataset.update_agents()
-        dataset.refresh_from_db()
-        serializer = DatasetSerializer(dataset)
-        return Response(serializer.data)
+    @action(detail=True)
+    def next_agent(self, request, *args, **kwargs):
+        dataset = self.get_object()
+        serializer = AgentSerializer(dataset.next_agent())
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class TableViewSet(viewsets.ModelViewSet):
@@ -43,3 +41,9 @@ class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
     filterset_fields = ['created_at', 'completed_at', 'dataset', 'task']
+
+    @action(detail=True)
+    def next_message(self, request, *args, **kwargs):
+        agent = self.get_object()
+        serializer = MessageSerializer(agent.next_message())
+        return Response(serializer.data, status=status.HTTP_200_OK)

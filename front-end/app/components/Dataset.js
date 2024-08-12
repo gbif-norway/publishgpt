@@ -21,11 +21,11 @@ const Dataset = ({ initialDatasetId }) => {
   const [activeAgentKey, setActiveAgentKey] = useState(null);
   const [tables, setTables] = useState([]);
   const [activeTableId, setActiveTableId] = useState(null);
-  const [loading, setLoading] = useState(false); // New loading state
+  const [loading, setLoading] = useState(false);
 
   const refreshTables = useCallback(async () => {
     const tables = await fetchData(`${config.baseApiUrl}/tables?dataset=${activeDatasetID}`);
-    var updatedTables = tables.map(item => {
+    const updatedTables = tables.map(item => {
       const df = JSON.parse(item.df_json);
       delete item.df_json;
       return { ...item, df };
@@ -38,14 +38,23 @@ const Dataset = ({ initialDatasetId }) => {
   const refreshDataset = useCallback(async () => {
     try {
       const dataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}`);
-      if (dataset.rejected_at != null || dataset.published_at != null) {
-        var visible_agents = dataset.agent_set;
+      console.log(dataset.agent_set)
+      var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
+      if(last_non_complete_agent_index !== -1) { 
+        var visibleAgents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
       } else {
-        var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
-        var visible_agents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
+        console.log('display all agents otherwise');
+        var visibleAgents = dataset.agent_set; 
+        if (dataset.published_at === null) { 
+          console.log('fetching next agent');
+          const next_agent = await fetch(`${config.baseApiUrl}/datasets/${activeDatasetID}/next_agent`);
+          console.log(next_agent);
+          setAgents(prevAgents => [...prevAgents, next_agent]);
+        }
       }
-      setActiveAgentKey(visible_agents[visible_agents.length - 1].id);
-      setAgents(visible_agents);
+      console.log(visibleAgents);
+      setAgents(visibleAgents);
+      setActiveAgentKey(visibleAgents[visibleAgents.length - 1].id);
       await refreshTables();
       setDataset(dataset);
     } catch (err) {
@@ -108,10 +117,11 @@ const Dataset = ({ initialDatasetId }) => {
               {Array.isArray(agents) && agents.length > 0 &&
                 <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
                   {agents.map(agent => (
-                    <Agent key={agent.id} agent={agent} refreshDataset={() => refreshDataset()} />
+                    <Agent key={agent.id} agent={agent} refreshDataset={refreshDataset} />
                   ))}
                 </Accordion>
               }
+              {dataset.rejected_at && (<div className="alert alert-warning" role="alert"> This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.</div>)}
             </div>
             <div className="col-6">
               <div className="sticky-top">

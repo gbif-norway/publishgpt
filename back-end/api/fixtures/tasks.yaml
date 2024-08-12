@@ -5,22 +5,20 @@
     attempt_autonomous: false
     text: |-
       GBIF.org is a global database for biodiversity data. Suitable data for publication:
-      1. Species Occurrence Data: Records of WHEN (columns for year/month/day, date, etc) and WHERE (columns for locality, latitude/longitude, footprintwkt, etc) a species/WHAT (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc) was observed or collected. Often (but optionally) also includes WHO made the observation (collector, citizen scientist, researcher, etc). This data may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
+      1. Species Occurrence Data: Records of when (columns for year/month/day, date, etc, or at least general info about when records were gathered) and where (columns describing locality and/or latitude/longitude and/or footprintwkt, etc) a species/what (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc is fine) was observed or collected. Often (but optionally) also includes WHO made the observation (collector, citizen scientist, researcher, etc). This data may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level. We don't need specific observation dates or locations, something general is fine. 
       2. Checklists: Lists of species thematically linked - usually geographically, but could also be by status, trait or other common factor.
 
       Carefully look at this data, especially the column headings: is it suitable for publication on gbif.org? The data structure is completely unformatted and may be extremely cryptic and messy, so be cautious. Ask about the relationship between different sheets if it's not clear. Keep in mind that it's highly likely at least some of this data is redundant (derived from primary data elsewhere in other sheets). Try to figure out if there is a list of species occurrences (WHAT, WHERE and WHEN), or perhaps a list of names as the main focus, or if it is something else entirely that does not belong on GBIF. 
       
       Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. 
       
-      Explain that occurrence data needs locations, observation dates and scientific names to be published to GBIF. If the spreadsheet seems to be missing this information, tell the user and ask them if the data is  elsewhere. If they say they have additional data in another file, tell them they need to upload everything in one spreadsheet and set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
+      If anything's missing, explain that occurrence data needs locations, observation dates and scientific names to be published to GBIF, ask the user for this extra information. If they say they have additional data in another file, tell them they need to upload everything in one spreadsheet and set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
       
-      Additionally, if the user has occurrence data, check for image URLs. If there are none, ask the user if they have an images they wish to upload, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after image upload, then set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
-      
-      Use short sentences and informal language that cut straight to the point. Here is an example of bad dialogue:
+      Use short sentences and informal language that cut straight to the point. **Try to only ask the user one question at a time.** Here is an example of bad dialogue:
       "[Description and Title] 
       Could you confirm if this accurately describes your dataset? Additionally, is there any other specific information you would like to add regarding the purpose or methodology of data collection? I'll wait for your input and make any necessary changes to the title and description before finalizing and checking the suitability for GBIF publication."
-      Instead, say:
-      "Does this sound good? Is there any other info we should add, like collection methodology/routines?"
+      Instead, just say:
+      "Is there any info we should change or add, like collection methodology/routines?"
 
       Finally, use SetBasicMetadata to: 
       - save the Title and Description
@@ -28,6 +26,15 @@
       - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
     additional_function: SetBasicMetadata
+
+- model: api.task
+  fields:
+    name: check_for_images
+    per_table: false
+    attempt_autonomous: false
+    text: |-
+      If the user has occurrence data, check for image URLs. If there are none, ask the user if they have an images of the observations they've made which they wish to upload, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after image upload. Then tell them to start this process again.
+      If the user wishes to get help with uploading images, tell them that you (this system) are currently in beta and are not able to handle image publication for them yet, but that this will come in the future. 
 
 - model: api.task
   fields:
@@ -45,6 +52,7 @@
 
       Look at the Table snapshots: 
        - use your intelligence
+       - **users often merge cells for headings, and when the spreadsheets are loaded the system has UNMERGED those cells, so look out for [UNMERGED CELL] text as indicators that this group of cells was merged as a heading**
        - look at the first few rows, the last few rows
        - search for pattern breaks, particularly ones across columns or rows
        - often users add arbitrary and unnecessary columns like numbering or blank rows as horizontal dividers which should be removed
@@ -54,122 +62,118 @@
 
       BE CAREFUL! It's very easy to separate out tables and lose information from columnns or rows. Before doing any table extraction, compare the old table with the new tables, and check to see if you are missing anything. You may have to copy column headers from one table to another, for example.
 
-      Here is an example of a particularly bad user-uploaded spreadsheet (converted simply to a dataframe): 
-      | WP2, 64 µm mesh (ind m-3)                       |                     |                     |            |            |       |         | Svartnes 2018 (ind m-3)        |            |
-      | ----------------------------------------------- | ------------------- | ------------------- | ---------- | ---------- | ----- | ------- | ------------------------------ | ---------- |
-      | Date                                            | 2017                | 2017                | 2018       | 2018       |       |         | WP2, 64 µm mesh                |            |
-      | Sample/Net number                               | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |       |         | Date                           | 12.06.2018 | 12.06.2018 |
-      | Layer [m]                                       | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |       |         | Sample/Net number              | WP2/64     | WP2/64 |
-      | Calanus spp.                                    | 128                 | 259                 | 194        | 562        |       |         | Layer [m]                      | 170-50 m   | 50-0 m |
-      | Microcalanus spp.                               | 471                 | 707                 | 16         | 125        |       |         | Calanus spp.                   | 562        | 194 |
-      | Cyclopoida nauplii                              | 8724                | 9                   | 8061       | 2          |       |         | Microsetella norvegica nauplii | 110        | 3199 |
-      | Fritillaria borealis                            | 5560                | 2                   | 0          | 0          |       |         | Cyclopoida nauplii             | 2          | 8061 |
-      | Rotatoria                                       | 607                 | 25                  | 0          | 0          |       |         | Fritillaria borealis           | 0          | 0 |
-      | SUM Others                                      | 16721               | 84                  | 223        | 32         |       |         | Rotatoria                      | 0          | 0 |
-      |                                                 |                     |                     |            |            |       |         | SUM Others                     | 32         | 223 |
-      | Total abundance                                 | 32211               | 1085                | 8495       | 721        |       |         |                                |            |  |
-      | Total abundance without nauplii                 | 23487               | 1076                | 433        | 719        |       |         |                                |            |  |
-      | Total copeods                                   | 599                 | 966                 | 210        | 687        |       |         |                                |            |  |
-      |                                                 |                     |                     |            |            |       |         |                                |            |  |
-      | % Microsetella of total zoopl (without nauplii) | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
-      | % Microsetella of total copepods                | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
-      |                                                 |                     |                     |            |            |       |         |                                |            |  |
-      | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
-      | 19/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
-      | 0                                               | 200                 | 4880                | 80         | 160        | 5320  | 3080    |                                |            |  |
-      | 10                                              | 622                 | 49518               | 498        | 1493       | 52131 | 33281   |                                |            |  |
-      | 20                                              | 1991                | 38818               | 373        | 498        | 41680 | 6096    |                                |            |  |
-      | 50                                              | 2280                | 3120                | 80         | 240        | 5720  | 200     |                                |            |  |
-      | 90                                              | 600                 | 1720                | 160        | 120        | 2600  | 200     |                                |            |  |
-      | 120                                             | 280                 | 1160                | 80         | 320        | 1840  | 1200    |                                |            |  |
-      | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
-      | 21/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
-      | 0                                               | 0                   | 1440                | 0          | 120        | 1560  | 7800    |                                |            |  |
-      | 10                                              | 2400                | 40320               | 480        | 1200       | 44400 | 19440   |                                |            |  |
-      | 20                                              | 3000                | 17280               | 0          | 360        | 20640 | 4680    |                                |            |  |
-      | 50                                              | 440                 | 1160                | 0          | 0          | 1600  | 80      |                                |            |  |
-      | 90                                              | 120                 | 1040                | 0          | 0          | 1160  | 120     |                                |            |  |
-      | 120                                             | 40                  | 240                 | 0          | 0          | 280   | 40      |                                |            |  |
-      |                                                 |                     |                     |            |            |       |         |                                |            |  |
+# Here is an example of a particularly bad user-uploaded spreadsheet (converted simply to a dataframe): 
+# | WP2, 64 µm mesh (ind m-3)                       |                     |                     |            |            |       |         | Svartnes 2018 (ind m-3)        |            |
+# | ----------------------------------------------- | ------------------- | ------------------- | ---------- | ---------- | ----- | ------- | ------------------------------ | ---------- |
+# | Date                                            | 2017                | 2017                | 2018       | 2018       |       |         | WP2, 64 µm mesh                |            |
+# | Sample/Net number                               | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |       |         | Date                           | 12.06.2018 | 12.06.2018 |
+# | Layer [m]                                       | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |       |         | Sample/Net number              | WP2/64     | WP2/64 |
+# | Calanus spp.                                    | 128                 | 259                 | 194        | 562        |       |         | Layer [m]                      | 170-50 m   | 50-0 m |
+# | Microcalanus spp.                               | 471                 | 707                 | 16         | 125        |       |         | Calanus spp.                   | 562        | 194 |
+# | Cyclopoida nauplii                              | 8724                | 9                   | 8061       | 2          |       |         | Microsetella norvegica nauplii | 110        | 3199 |
+# | Fritillaria borealis                            | 5560                | 2                   | 0          | 0          |       |         | Cyclopoida nauplii             | 2          | 8061 |
+# | Rotatoria                                       | 607                 | 25                  | 0          | 0          |       |         | Fritillaria borealis           | 0          | 0 |
+# | SUM Others                                      | 16721               | 84                  | 223        | 32         |       |         | Rotatoria                      | 0          | 0 |
+# |                                                 |                     |                     |            |            |       |         | SUM Others                     | 32         | 223 |
+# | Total abundance                                 | 32211               | 1085                | 8495       | 721        |       |         |                                |            |  |
+# | Total abundance without nauplii                 | 23487               | 1076                | 433        | 719        |       |         |                                |            |  |
+# | Total copeods                                   | 599                 | 966                 | 210        | 687        |       |         |                                |            |  |
+# |                                                 |                     |                     |            |            |       |         |                                |            |  |
+# | % Microsetella of total zoopl (without nauplii) | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
+# | % Microsetella of total copepods                | #REF!               | #REF!               | #REF!      | #REF!      |       |         |                                |            |  |
+# |                                                 |                     |                     |            |            |       |         |                                |            |  |
+# | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
+# | 19/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
+# | 0                                               | 200                 | 4880                | 80         | 160        | 5320  | 3080    |                                |            |  |
+# | 10                                              | 622                 | 49518               | 498        | 1493       | 52131 | 33281   |                                |            |  |
+# | 20                                              | 1991                | 38818               | 373        | 498        | 41680 | 6096    |                                |            |  |
+# | 50                                              | 2280                | 3120                | 80         | 240        | 5720  | 200     |                                |            |  |
+# | 90                                              | 600                 | 1720                | 160        | 120        | 2600  | 200     |                                |            |  |
+# | 120                                             | 280                 | 1160                | 80         | 320        | 1840  | 1200    |                                |            |  |
+# | ind/m3                                          |                     |                     |            |            |       |         |                                |            |  |
+# | 21/06/2017                                      | M                   | F                   | CIV-CV     | CI-CIII    | SUM   | Nauplii |                                |            |  |
+# | 0                                               | 0                   | 1440                | 0          | 120        | 1560  | 7800    |                                |            |  |
+# | 10                                              | 2400                | 40320               | 480        | 1200       | 44400 | 19440   |                                |            |  |
+# | 20                                              | 3000                | 17280               | 0          | 360        | 20640 | 4680    |                                |            |  |
+# | 50                                              | 440                 | 1160                | 0          | 0          | 1600  | 80      |                                |            |  |
+# | 90                                              | 120                 | 1040                | 0          | 0          | 1160  | 120     |                                |            |  |
+# | 120                                             | 40                  | 240                 | 0          | 0          | 280   | 40      |                                |            |  |
+# |                                                 |                     |                     |            |            |       |         |                                |            |  |
 
-      This should be 4 tables, with the tables with Sum/Total rows discarded. 
-      
-      Table A:
-      | WP2, 64 µm mesh (ind m-3) |                     |                     |            |            |
-      | ------------------------- | ------------------- | ------------------- | ---------- | ---------- |
-      | Date                      | 2017                | 2017                | 2018       | 2018       |
-      | Sample/Net number         | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |
-      | Layer [m]                 | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |
-      | Calanus spp.              | 128                 | 259                 | 194        | 562        |
-      | Microcalanus spp.         | 471                 | 707                 | 16         | 125        |
-      | Cyclopoida nauplii        | 8724                | 9                   | 8061       | 2          |
-      | Fritillaria borealis      | 5560                | 2                   | 0          | 0          |
-      | Rotatoria                 | 607                 | 25                  | 0          | 0          |
-      | SUM Others                | 16721               | 84                  | 223        | 32         |
+# This should be 4 tables, with the tables with Sum/Total rows discarded. 
 
-      Table B:
-      | Svartnes 2018 (ind m-3)        |            |
-      | ------------------------------ | ---------- |
-      | WP2, 64 µm mesh                |            |
-      | Date                           | 12.06.2018 | 12.06.2018 |
-      | Sample/Net number              | WP2/64     | WP2/64 |
-      | Layer [m]                      | 170-50 m   | 50-0 m |
-      | Calanus spp.                   | 562        | 194 |
-      | Microsetella norvegica nauplii | 110        | 3199 |
-      | Cyclopoida nauplii             | 2          | 8061 |
-      | Fritillaria borealis           | 0          | 0 |
-      | Rotatoria                      | 0          | 0 |
-      | SUM Others                     | 32         | 223 |
+# Table A:
+# | WP2, 64 µm mesh (ind m-3) |                     |                     |            |            |
+# | ------------------------- | ------------------- | ------------------- | ---------- | ---------- |
+# | Date                      | 2017                | 2017                | 2018       | 2018       |
+# | Sample/Net number         | AVERAGE 20-21.02.17 | AVERAGE 20-21.02.17 | 12.06.2018 | 12.06.2018 |
+# | Layer [m]                 | 50-0 m              | 170-50 m            | 50-0 m     | 170-50 m   |
+# | Calanus spp.              | 128                 | 259                 | 194        | 562        |
+# | Microcalanus spp.         | 471                 | 707                 | 16         | 125        |
+# | Cyclopoida nauplii        | 8724                | 9                   | 8061       | 2          |
+# | Fritillaria borealis      | 5560                | 2                   | 0          | 0          |
+# | Rotatoria                 | 607                 | 25                  | 0          | 0          |
+# | SUM Others                | 16721               | 84                  | 223        | 32         |
 
-      Table C:
-      | ind/m3     |      |       |        |         |       |         |
-      | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
-      | 19/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
-      | 0          | 200  | 4880  | 80     | 160     | 5320  | 3080    |
-      | 10         | 622  | 49518 | 498    | 1493    | 52131 | 33281   |
-      | 20         | 1991 | 38818 | 373    | 498     | 41680 | 6096    |
-      | 50         | 2280 | 3120  | 80     | 240     | 5720  | 200     |
-      | 90         | 600  | 1720  | 160    | 120     | 2600  | 200     |
-      | 120        | 280  | 1160  | 80     | 320     | 1840  | 1200    |
+# Table B:
+# | Svartnes 2018 (ind m-3)        |            |
+# | ------------------------------ | ---------- |
+# | WP2, 64 µm mesh                |            |
+# | Date                           | 12.06.2018 | 12.06.2018 |
+# | Sample/Net number              | WP2/64     | WP2/64 |
+# | Layer [m]                      | 170-50 m   | 50-0 m |
+# | Calanus spp.                   | 562        | 194 |
+# | Microsetella norvegica nauplii | 110        | 3199 |
+# | Cyclopoida nauplii             | 2          | 8061 |
+# | Fritillaria borealis           | 0          | 0 |
+# | Rotatoria                      | 0          | 0 |
+# | SUM Others                     | 32         | 223 |
 
-      Table D:
-      | ind/m3     |      |       |        |         |       |         |
-      | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
-      | 21/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
-      | 0          | 0    | 1440  | 0      | 120     | 1560  | 7800    |
-      | 10         | 2400 | 40320 | 480    | 1200    | 44400 | 19440   |
-      | 20         | 3000 | 17280 | 0      | 360     | 20640 | 4680    |
-      | 50         | 440  | 1160  | 0      | 0       | 1600  | 80      |
-      | 90         | 120  | 1040  | 0      | 0       | 1160  | 120     |
-      | 120        | 40   | 240   | 0      | 0       | 280   | 40      |
+# Table C:
+# | ind/m3     |      |       |        |         |       |         |
+# | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
+# | 19/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
+# | 0          | 200  | 4880  | 80     | 160     | 5320  | 3080    |
+# | 10         | 622  | 49518 | 498    | 1493    | 52131 | 33281   |
+# | 20         | 1991 | 38818 | 373    | 498     | 41680 | 6096    |
+# | 50         | 2280 | 3120  | 80     | 240     | 5720  | 200     |
+# | 90         | 600  | 1720  | 160    | 120     | 2600  | 200     |
+# | 120        | 280  | 1160  | 80     | 320     | 1840  | 1200    |
 
-      ~ 
-      Step 2: 
-      ~
+# Table D:
+# | ind/m3     |      |       |        |         |       |         |
+# | ---------- | ---- | ----- | ------ | ------- | ----- | ------- |
+# | 21/06/2017 | M    | F     | CIV-CV | CI-CIII | SUM   | Nauplii |
+# | 0          | 0    | 1440  | 0      | 120     | 1560  | 7800    |
+# | 10         | 2400 | 40320 | 480    | 1200    | 44400 | 19440   |
+# | 20         | 3000 | 17280 | 0      | 360     | 20640 | 4680    |
+# | 50         | 440  | 1160  | 0      | 0       | 1600  | 80      |
+# | 90         | 120  | 1040  | 0      | 0       | 1160  | 120     |
+# | 120        | 40   | 240   | 0      | 0       | 280   | 40      |
 
-      Carefully look at each of the Tables you've created. Do any of them contain the same data and belong together? Should any rows be restructured as columns? In the previous example, Tables A & B belong together, as do Tables C and D. Table AB should look like this: 
+# ~ 
+# Step 2: 
+# ~
 
-      Table AB:
+# Carefully look at each of the Tables you've created. Do any of them contain the same data and belong together? Should any rows be restructured as columns? In the previous example, Tables A & B belong together, as do Tables C and D. Table AB should look like this: 
 
-      | Sample details                 | 20-21.02.2017 (50-0 m) | 20-21.02.2017 (170-50 m) | 12.06.2018 (50-0 m) | 12.06.2018 (170-50 m) | Svartnes 12.06.2018 (50-0 m) | Svartnes 12.06.2018 (170-50 m) |
-      | ------------------------------ | ---------------------- | ------------------------ | ------------------- | --------------------- | ---------------------------- | ------------------------------ |
-      | Calanus spp.                   | 128                    | 259                      | 194                 | 562                   | 194                          | 562                            |
-      | Microcalanus spp.              | 471                    | 707                      | 16                  | 125                   | 16                           | 125                            |
-      | Pseudocalanus spp.             | 730                    | 35                       | 31                  | 20                    | 31                           | 20                             |
-      | Metridia longa                 | 31                     | 209                      | 6                   | 38                    | 6                            | 38                             |
-      | Acartia longiremis             | 768                    | 1                        | 273                 | 0                     | 273                          | 0                              |
-      | Microsetella norvegica         | 9889                   | 620                      | 8118                | 263                   | 8118                         | 263                            |
-      | Oithona similis                | 3510                   | 13                       | 1430                | 3                     | 1430                         | 3                              |
-      | Other copepods                 | 108                    | 12                       | 3                   | 3                     | 3                            | 3                              |
-      | Calanoida nauplii              | 3525                   | 19                       | 204                 | 59                    | 204                          | 59                             |
-      | Microsetella norvegica nauplii | 7181                   | 78                       | 3199                | 110                   | 3199                         | 110                            |
-      | Cyclopoida nauplii             | 8724                   | 9                        | 8061                | 2                     | 8061                         | 2                              |
-      | Fritillaria borealis           | 5560                   | 2                        | 0                   | 0                     | 0                            | 0                              |
-      | Rotatoria                      | 607                    | 25                       | 0                   | 0                     | 0                            | 0                              |
-      
-      Note that: 
-      - The headers, which spanned over multiple rows, have been flattened, combined and standardised
-      - Superfluous information which can be derived elsewhere, such as the year which can be derived from the collection dates, have been discarded. 
+# Table AB:
+
+# | Sample details                 | 20-21.02.2017 (50-0 m) | 20-21.02.2017 (170-50 m) | 12.06.2018 (50-0 m) | 12.06.2018 (170-50 m) | Svartnes 12.06.2018 (50-0 m) | Svartnes 12.06.2018 (170-50 m) |
+# | ------------------------------ | ---------------------- | ------------------------ | ------------------- | --------------------- | ---------------------------- | ------------------------------ |
+# | Calanus spp.                   | 128                    | 259                      | 194                 | 562                   | 194                          | 562                            |
+# | Microcalanus spp.              | 471                    | 707                      | 16                  | 125                   | 16                           | 125                            |
+# | Pseudocalanus spp.             | 730                    | 35                       | 31                  | 20                    | 31                           | 20                             |
+# | Metridia longa                 | 31                     | 209                      | 6                   | 38                    | 6                            | 38                             |
+# | Acartia longiremis             | 768                    | 1                        | 273                 | 0                     | 273                          | 0                              |
+# | Microsetella norvegica         | 9889                   | 620                      | 8118                | 263                   | 8118                         | 263                            |
+# | Oithona similis                | 3510                   | 13                       | 1430                | 3                     | 1430                         | 3                              |
+# | Other copepods                 | 108                    | 12                       | 3                   | 3                     | 3                            | 3                              |
+# | Calanoida nauplii              | 3525                   | 19                       | 204                 | 59                    | 204                          | 59                             |
+# | Microsetella norvegica nauplii | 7181                   | 78                       | 3199                | 110                   | 3199                         | 110                            |
+# | Cyclopoida nauplii             | 8724                   | 9                        | 8061                | 2                     | 8061                         | 2                              |
+# | Fritillaria borealis           | 5560                   | 2                        | 0                   | 0                     | 0                            | 0                              |
+# | Rotatoria                      | 607                    | 25                       | 0                   | 0                     | 0                            | 0                              |
 
 - model: api.task
   fields:
@@ -568,7 +572,46 @@
     attempt_autonomous: false
     text: |-
       Carefully inspect these preprocessed dataframes. They should be nearly ready for publication. 
-      Are there any other outstanding issues you can see? Fix these and up, and then when you and the user are satisfied with the data tables publish the dataset using PublishDwC. 
+
+      Helpful examples - pay close attention:
+      We want to produce Tables like one of these examples:
+
+      Example 1, standalone occurrence data:
+      | recordedBy    | year | month | day | continent | country | stateProvince | decimalLatitude | decimalLongitude | coordinateUncertaintyInMeters | identifiedBy  | scientificName         | kingdom |
+      | ------------- | ---- | ----- | --- | --------- | ------- | ------------- | --------------- | ---------------- | ----------------------------- | ------------- | ---------------------- | ------- |
+      | Wesenberg, J. | 2010 | 6     | 18  | Europe    | Norway  | Akershus      | 59.931848       | 10.571654        | 10                            | Wesenberg, J. | Acer platanoides       | Plantae |
+      | Wesenberg, J. | 2010 | 6     | 18  | Europe    | Norway  | Akershus      | 59.931848       | 10.571654        | 10                            | Wesenberg, J. | Achillea millefolium   | Plantae |
+      | Wesenberg, J. | 2010 | 6     | 18  | Europe    | Norway  | Akershus      | 59.931848       | 10.571654        | 10                            | Wesenberg, J. | Alchemilla glaucescens | Plantae |
+      | Wesenberg, J. | 2010 | 6     | 18  | Europe    | Norway  | Akershus      | 59.931848       | 10.571654        | 10                            | Wesenberg, J. | Anemone  nemorosa      | Plantae |
+      | Wesenberg, J. | 2010 | 6     | 18  | Europe    | Norway  | Akershus      | 59.931848       | 10.571654        | 10                            | Wesenberg, J. | Avenula pubescens      | Plantae |
+
+      Example 2, occurrence data with measurement or fact data:
+      occurrence.csv:
+      | basisOfRecord    | occurrenceID                                  | recordNumber     | recordedBy | country | locality | decimalLatitude | decimalLongitude | coordinateUncertaintyInMeters                                      | footprintWKT                  | identifiedBy       | scientificName | kingdom |
+      | ---------------- | --------------------------------------------- | ---------------- | ---------- | ------- | -------- | --------------- | ---------------- | ------------------------------------------------------------------ | ----------------------------- | ------------------ | -------------- | ------- |
+      | HumanObservation | 1 | Rhoda Nankabirwa | Uganda     | Kituuza | 0.254    | 32.788          | 600              | POLYGON ((32.779 0.261, 32.779 0.250, 32.798 0.250, 32.798 0.261)) | Makerere University Herbarium | Albizzia sp        | Animalia       |
+      | HumanObservation | 2 | Rhoda Nankabirwa | Uganda     | Kituuza | 0.254    | 32.788          | 600              | POLYGON ((32.779 0.261, 32.779 0.250, 32.798 0.250, 32.798 0.261)) | Makerere University Herbarium | Antiaris toxicaria | Animalia       |
+      | HumanObservation | 3 | Rhoda Nankabirwa | Uganda     | Kituuza | 0.254    | 32.788          | 600              | POLYGON ((32.779 0.261, 32.779 0.250, 32.798 0.250, 32.798 0.261)) | Makerere University Herbarium | Antiaris toxicaria | Animalia       |
+
+      measurementorfact.csv, with the ids relating back to the main occurrence table:
+      | id                                            | measurementType  | measurementValue | measurementUnit |
+      | --------------------------------------------- | ---------------- | ---------------- | --------------- |
+      | 1 | tree diameter | 25.1             | cm              |
+      | 2 | tree diameter | 22               | cm              |
+      | 3 | tree diameter | 42               | cm              |
+      | 1 | tree height   | 200              | cm              |
+
+      Example 3, taxonomy checklist data:
+      | taxonID | scientificName            |
+      | ------- | ------------------------- |
+      | 1585    | Triturus cristatus        |
+      | 1601    | Coronella austriaca       |
+      | 1621    | Acanthonotozoma rusanovae |
+      | 1670    | Apolochus borealis        |
+      | 1724    | Nototropis smitti         |
+
+
+      Are there any outstanding issues you can see? Fix these and up, and then when you and the user are satisfied with the data tables publish the dataset using PublishDwC. 
 
       Be sure to warn the user that the publication process may take some time. 
       When the dataset is published, generate a congratulatory message with: 

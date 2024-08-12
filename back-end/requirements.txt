@@ -48,5 +48,6 @@ typing_extensions==4.10.0
 tzdata==2024.1
 uritemplate==4.1.1
 urllib3==2.2.2
+utm==0.7.0
 xlrd==2.0.1
 xmltodict==0.13.0

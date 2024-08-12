@@ -33,9 +33,13 @@
 body { overflow: auto !important }
 .initialise { font-size: 1.5em; }
 .initialise img { height: 50px; }
-.function-message { padding: 0; }
 .function-message .show { margin-bottom: 10px; }
-.function-message .inner-message { padding-left: 55px; padding-top: 10px; }
+.function-message .inner-function-message { margin-top: -20px; margin-bottom: 15px; }
+.function-message .inner-message { margin: 0; padding: 0; }
+.function-message .inner-message button { 
+    margin-top: -77px;
+    margin-left: 60px; }
+.function-message svg { margin-bottom: 10px; }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
 .complete h2 { color: #c0d6c5 } 
@@ -76,7 +80,7 @@ svg .s1 { fill: rgb(127, 198, 136) }
 svg { margin-right: 10px; }
 
 .assistant-message { display: flex; align-items: flex-start;}
-.assistant-message [svg] {margin-right: 10px; }
+.assistant-message [svg], .function-message [svg] {margin-right: 10px; }
 .accordion-body { padding: 20px 15px; }
 .user-input-loading { 
     border-radius: 10px;
