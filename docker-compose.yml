@@ -12,8 +12,6 @@ services:
       - ./back-end:/app
     depends_on:
       - db
-    # expose:
-      # - 80
     ports:
       - "8000:8000"
     env_file:
@@ -30,8 +28,6 @@ services:
       - ./front-end/.env
     depends_on:
         - back-end
-
-# networks:
-#   default:
-#     external:
-#       name: nginx-proxy
+    command: ["tail", "-f", "/dev/null"]
+    # command: ["npm", "run", "dev"]
+    

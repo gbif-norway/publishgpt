@@ -47,4 +47,5 @@ Your Task (#{{ agent.task.id }} of {{ all_tasks_count }}):
 {{ task_text }}
 ///
 
+- FINAL NOTE: Be VERY cautious about deleting things from dataframes. 
 - END GOAL: Once you complete this Task, call the SetAgentTaskToComplete function with agent_id = {{ agent.id }}. This is your primary goal: complete your task (calling any necessary functions) and SetAgentTaskToComplete. 

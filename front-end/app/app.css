@@ -89,3 +89,4 @@ svg { margin-right: 10px; }
 }
 .user-input-loading .spinner-border { margin-left: 20px; }
 .modal-content li { padding-bottom: 10px; }
+.modal-content li li {padding-bottom: 0; }
