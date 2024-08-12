@@ -5,8 +5,11 @@ import re
 import pandas as pd
 import numpy as np
 from api.helpers.openai_helpers import OpenAIBaseModel
+from typing import Optional
+from api.helpers.publish import upload_dwca, register_dataset_and_endpoint
 import datetime
 import uuid
+import utm
 
 
 def trim_dataframe(df):
@@ -84,11 +87,14 @@ class ValidateDwCTerms(OpenAIBaseModel):
         pass
 
 
+##class ViewCodeHistory
+
+
 class Python(OpenAIBaseModel):
     """
-    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re}, {})`. 
-    I.e., you have access to an environment with pandas (pd), numpy (np), uuid, datetime, re and a Django database with models `Table` and `Dataset`. DO NOT import other modules.
-    E.g. `table = Table.objects.get(id=df_id); print(table.df.to_string()); dataset = Dataset.objects.get(id=1);` etc
+    Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm}, {})`. 
+    I.e., you have access to an environment with those libraries and a Django database with models `Table` and `Dataset`. You cannot import anything else.
+    E.g. code: `table = Table.objects.get(id=df_id); print(table.df.to_string()); dataset = Dataset.objects.get(id=1);` etc
     Notes: - Edit, delete or create new Table objects as required - remember to save changes to the database (e.g. `table.save()`). 
     - Use print() if you want to see output - a string of stdout, truncated to 2000 chars 
     - IMPORTANT NOTE #1: State does not persist - Every time this function is called, the slate is wiped clean and you will not have access to objects created previously.
@@ -107,8 +113,10 @@ class Python(OpenAIBaseModel):
             from api.models import Dataset, Table
 
             locals = {}
-            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re }
-            exec(code, globals, locals)
+            globals = { 'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm }
+            combined_context = globals.copy()
+            combined_context.update(locals)
+            exec(code, combined_context, combined_context)  # See https://github.com/python/cpython/issues/86084
             stdout_value = new_stdout.getvalue()
             
             if stdout_value:
@@ -125,11 +133,10 @@ class Python(OpenAIBaseModel):
 class SetBasicMetadata(OpenAIBaseModel):
     """Sets the title and description (Metadata) for a Dataset via an Agent, returns a success message or an error message"""
     agent_id: PositiveInt = Field(...)
-    # dataset_id: PositiveInt = Field(...)
     title: str = Field(..., description="A short but descriptive title for the dataset as a whole")
     description: str = Field(..., description="A longer description of what the dataset contains, including any important information about why the data was gathered (e.g. for a study) as well as how it was gathered.")
-    structure_notes: str = Field(..., description="Optional - Use to note any significant data structural problems or oddities.") 
-    suitable_for_publication_on_gbif: bool = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
+    structure_notes: Optional[str] = Field(None, description="Optional - Use to note any significant data structural problems or oddities.") 
+    suitable_for_publication_on_gbif: Optional[bool] = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
 
     def run(self):
         from api.models import Agent
@@ -148,8 +155,10 @@ class SetBasicMetadata(OpenAIBaseModel):
         except Exception as e:
             return repr(e)[:2000]
 
+
 class RenameColumnsWithUserInput(OpenAIBaseModel):
     pass
+
 
 class SetAgentTaskToComplete(OpenAIBaseModel):
     """Mark an Agent's task as complete"""
@@ -185,9 +194,31 @@ class RejectDataset(OpenAIBaseModel):
 
 
 class PublishDwC(OpenAIBaseModel):
-    """To be used as the final step for publishing a dataset which is standardised to Darwin Core"""
-    dataset_id: PositiveInt = Field(...)
+    """
+    The final step required to publish the user's data to GBIF. 
+    Generates a darwin core archive and uploads it to a server, then registers it with the GBIF API. 
+    At the moment publishes the test GBIF platform, not production.
+    Returns the GBIF URL to the
+    """
+    agent_id: PositiveInt = Field(...)
 
     def run(self):
-        pass
+        from api.models import Agent
+        try:
+            agent = Agent.objects.get(id=self.agent_id)
+            dataset = agent.dataset
+            tables = dataset.table_set.all()
+            core_table = next((table for table in tables if 'occurrenceID' in table.df.columns), tables[0])
+            extension_tables = [table for table in tables if table != core_table]
+            mof_table =  extension_tables[0] if extension_tables else None
+            url = upload_dwca(core_table.df, dataset.title, dataset.description, mof_table.df)
+            dataset.dwca_url = url
+            gbif_url = register_dataset_and_endpoint(dataset.title, dataset.description, dataset.dwca_url)
+            dataset.published_at = datetime.datetime.now()
+            import pdb; pdb.set_trace()
+            dataset.save()
+            return(f'GBIF URL: {gbif_url}, Darwin core archive upload: {url}')
+        except Exception as e:
+            return repr(e)[:2000]
+
 

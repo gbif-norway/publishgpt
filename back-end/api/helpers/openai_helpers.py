@@ -1,13 +1,17 @@
 import ast
 from pydantic import BaseModel
 import json
-from openai import OpenAI
+from openai import OpenAI, InternalServerError
 from pprint import pprint
-from api import agent_tools
 from typing import Dict, Any
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
+@retry(retry=retry_if_exception_type(InternalServerError), stop=stop_after_attempt(10), wait=wait_fixed(2))
+def query_api(args):
+    with OpenAI() as client:
+        return client.chat.completions.create(**args)  
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0.8, model='gpt-4o-2024-08-06'): # gpt-3.5-turbo gpt-4o-mini	
+def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0.8, model='gpt-4o-2024-05-13'): # gpt-4o-2024-08-06
     messages = [m.openai_schema for m in messages]
     print('---')
     print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
@@ -15,15 +19,11 @@ def create_chat_completion(messages, functions=None, call_first_function=False, 
     if functions:
         args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
     print('---')
-    with OpenAI() as client:
-        response = client.chat.completions.create(**args)  
+    response = query_api(args)
     print('---Response---')
     pprint(response)
     print('---')
     return response
-
-def create_supervisor_chat_completion(messages, functions=None, temperature=1, model='gpt-4o'): # gpt-3.5-turbo gpt-4o-mini	
-    messages = [m.openai_schema for m in messages]
 
 def custom_schema(cls: BaseModel) -> Dict[str, Any]:
     parameters = cls.schema()
@@ -47,35 +47,14 @@ class OpenAIBaseModel(BaseModel):
     def openai_schema(cls):
         return custom_schema(cls)
 
+def get_function(fn):
+    if fn.name.lower() == 'python' and fn.arguments.replace(' ', '')[:8] != '{"code":':
+        print('Python args not wrapped in code')
+        fn.arguments = {'code': fn.arguments}
+    else:
+        fn.arguments = json.loads(fn.arguments, strict=False) 
 
-def load_openai_json_args(json_args, function_name):
-    # try:
-    return json.loads(json_args, strict=False)  # Throws json.decoder.JSONDecodeError with strict for e.g. """{\n"code": "\nprint('test')"\n}"""
-    # except json.decoder.JSONDecodeError:
-    #     required = getattr(agent_tools, function_name[0].upper() + function_name[1:]).openai_schema['parameters']['required']
-    #     if len(required) == 1:
-    #         return {required[0]: json_args}
-    #     else:
-    #         import pdb; pdb.set_trace()
-
-
-def get_function(tool):
-    # if message.function_call: # Note that function_call is deprecated, see https://platform.openai.com/docs/api-reference/chat/create#chat-create-functions
-    #     message.function_call.arguments = load_openai_json_args(message.function_call.arguments, message.function_call.name)
-    #     return message.function_call
-    # if message.tool_calls:
-    # tool = message.tool_calls[0]
-    fn = tool.function
-    fn.arguments = json.loads(fn.arguments, strict=False) # load_openai_json_args(fn.arguments,fn.name)
-    if tool.id:
-        fn.id = tool.id
     return fn
-    # return None
-
-
-def openai_message_content(response, choice=0):
-    return response['choices'][choice]['message'].get('content')
-
 
 def _remove_a_key(d, remove_key) -> None:
     """Remove a key from a dictionary recursively"""
@@ -85,11 +64,3 @@ def _remove_a_key(d, remove_key) -> None:
                 del d[key]
             else:
                 _remove_a_key(d[key], remove_key)
-
-
-def function_name_in_text(function_names, text):
-    for string in function_names:
-        if string in text:
-            return True
-    return False
-

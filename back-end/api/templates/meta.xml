@@ -1,0 +1,17 @@
+<archive xmlns="http://rs.tdwg.org/dwc/text/" metadata="eml.xml">
+  <core encoding="UTF-8" fieldsTerminatedBy="\t" linesTerminatedBy="\n" fieldsEnclosedBy="" ignoreHeaderLines="1" rowType="http://rs.tdwg.org/dwc/terms/Occurrence">
+    <files>
+      <location>occurrence.txt</location>
+    </files>
+    <id index="0" />
+    <field index="1" term="http://purl.org/dc/terms/type"/>
+    <field index="2" term="http://purl.org/dc/terms/modified"/>
+  </core>
+  <extension encoding="UTF-8" fieldsTerminatedBy="\t" linesTerminatedBy="\n" fieldsEnclosedBy="" ignoreHeaderLines="1" rowType="http://rs.tdwg.org/dwc/terms/Occurrence">
+    <files>
+      <location>occurrence.txt</location>
+    </files>
+    <coreid index="0" />
+    <field index="1" term="http://purl.org/dc/terms/type"/>
+    <field index="2" term="http://purl.org/dc/terms/modified"/>
+</archive>
