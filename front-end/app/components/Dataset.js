@@ -13,11 +13,12 @@ const fetchData = async (url, options = {}) => {
   return response.json();
 };
 
+const wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
+
 const Dataset = ({ initialDatasetId }) => {
   const [error, setError] = useState(null);
   const [dataset, setDataset] = useState(null);
   const [activeDatasetID, setActiveDatasetID] = useState(null);
-  const [agents, setAgents] = useState([]);
   const [activeAgentKey, setActiveAgentKey] = useState(null);
   const [tables, setTables] = useState([]);
   const [activeTableId, setActiveTableId] = useState(null);
@@ -36,45 +37,56 @@ const Dataset = ({ initialDatasetId }) => {
   }, [activeDatasetID]);
 
   const refreshDataset = useCallback(async () => {
+    console.log(dataset);
     try {
-      const dataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}`);
-      console.log(dataset.agent_set)
-      var last_non_complete_agent_index = dataset.agent_set.findIndex(agent => agent.completed_at === null);
-      if(last_non_complete_agent_index !== -1) { 
-        var visibleAgents = dataset.agent_set.slice(0, last_non_complete_agent_index + 1);
-      } else {
-        console.log('display all agents otherwise');
-        var visibleAgents = dataset.agent_set; 
-        if (dataset.published_at === null) { 
-          console.log('fetching next agent');
-          const next_agent = await fetch(`${config.baseApiUrl}/datasets/${activeDatasetID}/next_agent`);
-          console.log(next_agent);
-          setAgents(prevAgents => [...prevAgents, next_agent]);
-        }
-      }
-      console.log(visibleAgents);
-      setAgents(visibleAgents);
-      setActiveAgentKey(visibleAgents[visibleAgents.length - 1].id);
+      console.log('refreshing dataset');
+      const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${activeDatasetID}/refresh`);
+      setDataset(refreshedDataset);
+      setActiveAgentKey(refreshedDataset.visible_agent_set.at(-1).id);
       await refreshTables();
-      setDataset(dataset);
+      console.log('finished refreshing tables');
+
+      // If the dataset is published, don't do any more
+      if(refreshedDataset.published_at != null) { return }
+      console.log('dataset is not yet published')
+
+      // If the latest agent message is not an assistant message, we need to refresh again
+      if(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role != 'assistant') {
+        console.log('about to start looping')
+        console.log(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role);
+        await wait(500);
+        console.log('finished waiting, refreshing again');
+        refreshDataset();
+      }
+      console.log('end of refreshing dataset');
     } catch (err) {
       console.log(err.message);
     } finally {
       setLoading(false); // Stop loading when dataset is fully refreshed
     }
-  }, [activeDatasetID]);
+  }, [dataset, activeDatasetID, refreshTables]);
 
-  useEffect(() => {
-    if (initialDatasetId) {
-      setActiveDatasetID(initialDatasetId);
-    }
-  }, [initialDatasetId, setActiveDatasetID]);
+  // useEffect(() => {
+  //   if (initialDatasetId) {
+  //     console.log('initial dataset id changing')
+  //     setActiveDatasetID(initialDatasetId);
+  //   }
+  // }, [initialDatasetId]);
+  const initializeDatasetFromFileDrop = async (new_id) => {
+    console.log(new_id);
+    const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${new_id}/refresh`);
+    setActiveDatasetID(new_id);
+    setDataset(refreshedDataset);
+    console.log('initialising complete');
+  };
 
-  useEffect(() => {
-    if (activeDatasetID) {
-      refreshDataset();
-    }
-  }, [activeDatasetID, refreshDataset]);
+
+  // useEffect(() => {
+  //   if (activeDatasetID) {
+  //     console.log('refreshing from activeDatasetID changing')
+  //     refreshDataset();
+  //   }
+  // }, [activeDatasetID, refreshDataset]);
 
   const CustomTabTitle = ({ children }) => <span dangerouslySetInnerHTML={{ __html: children }} />;
 
@@ -93,7 +105,7 @@ const Dataset = ({ initialDatasetId }) => {
               <FileDrop
                 onFileAccepted={(data) => { 
                   setLoading(true);  // Start loading when file is accepted
-                  setActiveDatasetID(data); 
+                  initializeDatasetFromFileDrop(data); 
                 }}
                 onError={(errorMessage) => setError(errorMessage)}
                 loading={loading}  // Pass loading state to FileDrop
@@ -114,13 +126,21 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
           <div className="row mx-auto p-4">
             <div className="col-6">
-              {Array.isArray(agents) && agents.length > 0 &&
+              {Array.isArray(dataset.visible_agent_set) && dataset.visible_agent_set.length > 0 &&
                 <Accordion activeKey={activeAgentKey} onSelect={(key) => setActiveAgentKey(key)}>
-                  {agents.map(agent => (
+                  {dataset.visible_agent_set.map(agent => (
                     <Agent key={agent.id} agent={agent} refreshDataset={refreshDataset} />
                   ))}
                 </Accordion>
               }
+              {dataset.visible_agent_set.at(-1).completed_at != null && (
+                <div className="message user-input-loading">
+                  <div className="d-flex align-items-center">
+                    <strong>Loading next task</strong>
+                    <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+                  </div>
+                </div>
+              )}
               {dataset.rejected_at && (<div className="alert alert-warning" role="alert"> This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.</div>)}
             </div>
             <div className="col-6">

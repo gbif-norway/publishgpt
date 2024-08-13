@@ -5,59 +5,43 @@ import Badge from 'react-bootstrap/Badge';
 import config from '../config.js';
 
 const Agent = ({ agent, refreshDataset }) => {
-  const [messages, setMessages] = useState(agent.message_set);
+  // const [messages, setMessages] = useState(agent.message_set);
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
 
-  useEffect(() => {
-    setIsLoading(true);
-    console.log('triggered useffect');
-    console.log(agent.id);
-    console.log(agent.completed_at);
-    if (agent.completed_at) { 
-      setIsLoading(false);
-    } 
-    setMessages(agent.message_set); // Update messages if the agent prop changes
-  }, [agent]);
+  const wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
+
+  // useEffect(() => {
+  //   setIsLoading(true);
+  //   console.log('triggered useffect');
+  //   console.log(agent.id);
+  //   console.log(agent.completed_at);
+  //   if (agent.completed_at) { 
+  //     setIsLoading(false);
+  //   } 
+  //   // setMessages(agent.message_set); // Update messages if the agent prop changes
+  //   setIsLoading(false);
+  // }, [agent]);
 
   useEffect(() => {
+    const runAsyncEffect = async () => {
     if (agent.completed_at === null) { 
       setIsLoading(true);
       console.log('running this only once when component is loaded if completed_at is null');
       console.log(agent.completed_at);
-      fetchNextMessage();
+      await refreshDataset();
+      setIsLoading(false);
     }
-  }, []);
+  };
+  runAsyncEffect();
+}, []);
 
   const formatTableIDs = (ids) => {
     if (!ids || !ids.length) return "[Deleted table(s)]";
     const prefix = ids.length === 1 ? "(Table ID " : "(Table IDs ";
     return prefix + ids.join(", ") + ")";
   }
-
-  const fetchNextMessage = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`${config.baseApiUrl}/agents/${agent.id}/next_message`);
-      const data = await response.json();
-      console.log(agent);
-      await refreshDataset();
-      console.log(data);
-      console.log(agent);
-
-      if (data.agent === null) { // Either the agent is completed, or there is no next message because we require user input
-        setIsLoading(false);
-      } else {
-        console.log('there is a next message, add it to the others then call next message again')
-        setMessages(prevMessages => [...prevMessages, data]);
-        fetchNextMessage(); // Keep fetching next messages until done
-      }
-    } catch (error) {
-      console.error("Error fetching next message:", error);
-      setIsLoading(false);
-    }
-  };
 
   const handleUserInput = async (event) => {
     if (event.key === 'Enter') {
@@ -72,7 +56,8 @@ const Agent = ({ agent, refreshDataset }) => {
           body: JSON.stringify({ content: userInput, role: 'user', agent: agent.id })
         });
         setUserInput("");
-        fetchNextMessage(); // Start fetching messages again
+        await refreshDataset();
+        setIsLoading(false);
       } catch (error) {
         console.error("Error:", error);
         setIsLoading(false);

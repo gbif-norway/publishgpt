@@ -165,6 +165,7 @@ class Agent(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
     tables = models.ManyToManyField(Table, blank=True)
+    busy_thinking = models.BooleanField(default=False)
 
     @property
     def callable_functions(self):
@@ -183,22 +184,38 @@ class Agent(models.Model):
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
 
     def next_message(self):
+        self.refresh_from_db()
         last_message = self.message_set.last()
-        # import pdb; pdb.set_trace()
+        print(f'Last message role: {last_message.role}')
+        print(f'Completed at value for this agent: {self.completed_at}')
         if last_message.role == Message.Role.ASSISTANT or self.completed_at:
+            print('return (assistant or completed)')
             return None
+        if self.busy_thinking:
+            print('busy thinking')
+            return last_message
+        else: 
+            print('busy thinking')
+            self.busy_thinking = True
+            self.save()
         
         # Otherwise last message was from the user, was the return from a function, or was the starting system message
         # So we need to send it to GPT
         try:
             response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
         except Exception as e:
-            error_message = f'Unfortunately the OpenAI API seems to be down. Try again later, and please report this error to the developers. Full error: {e}'
+            error_message = f'Unfortunately there was a problem querying the OpenAI API. Try again later, and please report this error to the developers. Full error: {e}'
+            self.busy_thinking = False
+            self.save()
+            print('busy thinking set to false - return error with openai')
             return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=error_message)
         
         response_message = response.choices[0].message
     
         if not response_message.tool_calls:  # It's a simple assistant message
+            self.busy_thinking = False
+            self.save()
+            print('busy thinking set to false - returning assistant message')
             return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
 
         fn = response_message.tool_calls[0].function
@@ -208,7 +225,7 @@ class Agent(models.Model):
         except (json.decoder.JSONDecodeError, Exception) as e:
             error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. \nError: {e}'
             return self.create_function_message(response_message, error)
-            
+        
         return self.create_function_message(response_message, function_result)
     
     def run_function(self, function_call):
@@ -224,6 +241,10 @@ class Agent(models.Model):
         if response_message.tool_calls[0].id:
             function_message.function_id = response_message.tool_calls[0].id
         function_message.save()
+        self.refresh_from_db()  # Necessary so that completed_at doesn't get overwritten
+        self.busy_thinking = False
+        self.save()
+        print('busy thinking set to false - returning function message or possibly error')
         return function_message
         
 

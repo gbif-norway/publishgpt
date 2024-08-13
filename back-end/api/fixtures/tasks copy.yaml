@@ -184,7 +184,9 @@
     text: |-
       Carefully look at all of the Tables and decide if any contain the same data and belong together. Quite often users split up data by location (all observations at site 1 in one sheet, all observations at site 2 in another sheet) or taxonomic group (all raptors in one sheet, all other birds in another), for example. What we're aiming for is single Tables for all of the same sort of data - all species observations or species names should go into a single Table, all measurements/facts should go into another Table. Look for patterns in the different Tables, look at the data content of each Table, think about this critically and analytically. Users are human, illogical and unreliable - they may name and order column headings differently from one Table to the next, so you need to be on your toes with this one.
 
-      You can also split Tables and extract the additional MeasurementOrFact data into a different Table, if you think that makes sense. Look at the helpful examples mentioned below.
+      If Tables make sense as they are, keep them separate. For example, if all species observations are in one Table, and additional variables are in another Table, leave them as is. 
+
+      You can also split Tables and extract the additional MeasurementOrFact data into a different Table, if you think that makes sense.
 
 - model: api.task
   fields:

@@ -17,6 +17,17 @@ class DatasetViewSet(viewsets.ModelViewSet):
         serializer = AgentSerializer(dataset.next_agent())
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True)
+    def refresh(self, request, *args, **kwargs):
+        dataset = self.get_object()
+
+        # Do a refresh of agents and messages, so we get the next one of each if necessary
+        next_agent = dataset.next_agent()
+        next_message = next_agent.next_message()
+        dataset.refresh_from_db()
+        
+        serializer = self.get_serializer(dataset)
+        return Response(serializer.data)
 
 class TableViewSet(viewsets.ModelViewSet):
     queryset = Table.objects.all()

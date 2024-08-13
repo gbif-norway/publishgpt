@@ -150,9 +150,15 @@ class SetBasicMetadata(OpenAIBaseModel):
                 print('rejecting dataset')
                 dataset.rejected_at = datetime.datetime.now()
             dataset.save()
-            SetAgentTaskToComplete(agent_id=self.agent_id).run()
+            print(f'setting agent {agent.id} completed_at date now:')
+            agent.completed_at = datetime.datetime.now()
+            agent.save()
+            print(f'From within SetBasicMetadata, this should be set: {agent.completed_at}')
+            agentcopy = Agent.objects.get(id=self.agent_id)
+            print(f'TEST2 From within SetBasicMetadata, this should be set: {agentcopy.completed_at}')
             return 'Basic Metadata has been successfully set and Agent Task has been set to complete'
         except Exception as e:
+            print('There has been an error with SetBasicMetadata')
             return repr(e)[:2000]
 
 

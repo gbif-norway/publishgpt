@@ -43,11 +43,19 @@ class AgentSerializer(serializers.ModelSerializer):
 
 
 class DatasetSerializer(serializers.ModelSerializer):
-    agent_set = AgentSerializer(many=True, read_only=True)
+    # agent_set = AgentSerializer(many=True, read_only=True)
+    visible_agent_set = serializers.SerializerMethodField()
 
     class Meta:
         model = Dataset
         fields = '__all__'
+    
+    def get_visible_agent_set(self, dataset):
+        agents = list(dataset.agent_set.filter(completed_at__isnull=False))
+        next_active_agent = dataset.agent_set.filter(completed_at__isnull=True).first()
+        if next_active_agent:
+            agents.append(next_active_agent)
+        return AgentSerializer(agents, many=True).data
 
     def create(self, data):
         try:
