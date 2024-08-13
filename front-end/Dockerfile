@@ -1,8 +1,10 @@
 FROM node:latest
 WORKDIR /app
+#COPY package*.json ./
+#RUN npm install
+#COPY . ./
+#CMD ["npm", "start"]
+#EXPOSE 3000
+#CMD ["tail", "-f", "/dev/null"]
 
-# COPY ./front-end /app
-# RUN npm install
-# RUN npm run build
-# RUN npm install -g serve
-# CMD ["serve", "-s", "build", "-l", "3000"]
+# npm run dev
