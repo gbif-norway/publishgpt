@@ -1,4 +1,6 @@
-# Welcome to ChatIPT
+# Welcome to ChatIPT ![logosmall](https://github.com/user-attachments/assets/9aded457-b39e-41dc-bad6-92a9258ac563)
+
+
 
 ChatIPT is a chatbot for students and researchers who are new to data publication or only occasionally publish data.
 
