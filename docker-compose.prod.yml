@@ -8,6 +8,7 @@ services:
   back-end:
     build: ./back-end
     #entrypoint: "tail -f /dev/null"
+    command: ["./manage.py", "runserver", "0.0.0.0:8000"]
     volumes:
       - ./back-end:/app
     depends_on:
@@ -26,7 +27,7 @@ services:
       - ./front-end/.env
     depends_on:
         - back-end
-    #command: ["./manage.py", "runserver", "0.0.0.0:8000"]
+    command: ["npm", "run", "dev"]
   nginx:
     image: nginx:latest
     ports:
@@ -37,5 +38,4 @@ services:
     depends_on:
       - front-end
       - back-end
-    command: ["npm", "run", "dev"]
     
