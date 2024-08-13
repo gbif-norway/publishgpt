@@ -7,35 +7,28 @@ services:
     platform: linux/amd64
   back-end:
     build: ./back-end
-    #entrypoint: "tail -f /dev/null"
+    # entrypoint: "tail -f /dev/null"
     entrypoint: "./manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./back-end:/app
     depends_on:
       - db
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     env_file:
       - ./back-end/.env
   front-end:
     build: ./front-end
     volumes:
       - ./front-end:/app
-    expose:
-      - "3000"
+    stdin_open: true
+    tty: true
+    ports:
+      - "3000:3000"
     env_file:
       - ./front-end/.env
     depends_on:
         - back-end
+    # command: ["tail", "-f", "/dev/null"]
     command: ["npm", "run", "dev"]
-  nginx:
-    image: nginx:latest
-    ports:
-      - "80:80"  # Expose Nginx on port 80
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./.htpasswd:/etc/nginx/.htpasswd
-    depends_on:
-      - front-end
-      - back-end
     
