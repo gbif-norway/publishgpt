@@ -1,3 +1,4 @@
+# Welcome to ChatIPT
 
 ChatIPT is a chatbot for students and researchers who are new to data publication or only occasionally publish data.
 
