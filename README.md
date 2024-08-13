@@ -6,6 +6,8 @@ ChatIPT is a chatbot for students and researchers who are new to data publicatio
 
 It cleans and standardises spreadsheets, creates basic metadata, asking the user for guidance where necessary through natural conversation. Finally, it publishes the data on gbif.org as a Darwin Core Archive.
 
+> If you would like access to the testing version, please contact me rukayasj@uio.no.
+
 * * *
 
 **Why is it necessary?**
