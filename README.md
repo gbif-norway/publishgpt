@@ -50,9 +50,9 @@ ChatIPT solves these problems: a non-technical user without training or speciali
 Note: Not suitable for publishing data from a database, or for large data sources, and there are no plans to support this. A chatbot is not the right format as it needs to be done by a technician who understands the database, and as there are far fewer databases than ad-hoc spreadsheets it is (in many ways) a different problem, which we already have a great tool for: the IPT. The IPT is less good for those new to data publication who only need to publish a small, single datase once or twice every few years.
 
 * * *
-# How it works - technical details
+## How it works - technical details
 
-There is a React.js front end handling the chat interface and displaying the dataframes, and a python (Django) API which interacts with the OpenAI API for GPT4o. The model is given a series of prompts that it runs through in order to standardise the data - this works better (so far) than trying to do it in single prompt. The generic prompt template is here: https://github.com/gbif-norway/publishgpt/blob/main/back-end/api/templates/prompt.txt, and the specific tasks the model runs through are here: https://github.com/gbif-norway/publishgpt/blob/main/back-end/api/fixtures/tasks.yaml
+There is a React front end handling the chat interface and displaying the dataframes, and a Python (Django) API which interacts with the OpenAI API for GPT4o. The model is given a series of prompts that it runs through in order to standardise the data - this works better (so far) than trying to do it in single prompt. The generic prompt template is here: https://github.com/gbif-norway/publishgpt/blob/main/back-end/api/templates/prompt.txt, and the specific tasks the model runs through are here: https://github.com/gbif-norway/publishgpt/blob/main/back-end/api/fixtures/tasks.yaml
 
 The data is stored in a Postgres database, with different models for Datasets, Tables (dataframes), Tasks and the Agent/Messages conversation system needed for managing the Tasks.
 
