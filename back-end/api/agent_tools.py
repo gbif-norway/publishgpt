@@ -137,6 +137,7 @@ class SetBasicMetadata(OpenAIBaseModel):
     description: str = Field(..., description="A longer description of what the dataset contains, including any important information about why the data was gathered (e.g. for a study) as well as how it was gathered.")
     structure_notes: Optional[str] = Field(None, description="Optional - Use to note any significant data structural problems or oddities.") 
     suitable_for_publication_on_gbif: Optional[bool] = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
+    user_language: Optional[str] = Field(None, description="Optional - Note down if the user wants to speak in any language other than English.") 
 
     def run(self):
         from api.models import Agent
@@ -145,7 +146,10 @@ class SetBasicMetadata(OpenAIBaseModel):
             dataset = agent.dataset
             dataset.title = self.title
             dataset.description = self.description
-            dataset.structure_notes = self.structure_notes
+            if self.structure_notes:
+                dataset.structure_notes = self.structure_notes
+            if self.user_language:
+                dataset.user_language = self.user_language
             if not self.suitable_for_publication_on_gbif:
                 print('rejecting dataset')
                 dataset.rejected_at = datetime.datetime.now()

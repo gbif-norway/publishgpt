@@ -21,6 +21,7 @@ class Dataset(models.Model):
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     dwca_url = models.CharField(max_length=50, blank=True)
+    user_language = models.CharField(max_length=100, blank=True)
 
     class DWCCore(models.TextChoices):
         EVENT = 'event_occurrences'
@@ -179,7 +180,7 @@ class Agent(models.Model):
     def create_with_system_message(cls, dataset, task, tables):
         agent = cls.objects.create(dataset=dataset, task=task)
         agent.tables.set([t.id for t in tables])
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous,  })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
 

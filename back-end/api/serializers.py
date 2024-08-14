@@ -43,7 +43,6 @@ class AgentSerializer(serializers.ModelSerializer):
 
 
 class DatasetSerializer(serializers.ModelSerializer):
-    # agent_set = AgentSerializer(many=True, read_only=True)
     visible_agent_set = serializers.SerializerMethodField()
 
     class Meta:
@@ -70,7 +69,7 @@ class DatasetSerializer(serializers.ModelSerializer):
                 for row in sheet.iter_rows():
                     for cell in row:
                         if cell.data_type == 'f':  # 'f' indicates a formula
-                            cell.value = f'[FORMULA: {cell.value}]'
+                            cell.value = '' # f'[FORMULA: {cell.value}]'
                 for merged_cell in list(sheet.merged_cells.ranges):
                     min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
                     value = sheet.cell(row=min_row, column=min_col).value
