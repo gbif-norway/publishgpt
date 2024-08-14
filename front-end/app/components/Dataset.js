@@ -47,13 +47,18 @@ const Dataset = ({ initialDatasetId }) => {
       console.log('finished refreshing tables');
 
       // If the dataset is published, don't do any more
-      if(refreshedDataset.published_at != null) { return }
+      if(refreshedDataset.published_at != null && refreshedDataset.visible_agent_set.at(-1).completed_at != null) { return }
       console.log('dataset is not yet published')
 
       // If the latest agent message is not an assistant message, we need to refresh again
       if(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role != 'assistant') {
         console.log('about to start looping')
         console.log(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role);
+        // If the latest agent is not complete we should mark it as busy thinking
+        if(refreshedDataset.visible_agent_set.at(-1).completed_at == null) { 
+          refreshedDataset.visible_agent_set.at(-1).busy_thinking = true;
+        }
+        console.log(refreshedDataset.visible_agent_set.at(-1).busy_thinking);
         await wait(500);
         console.log('finished waiting, refreshing again');
         refreshDataset();

@@ -72,6 +72,7 @@ const Home = () => {
                   <li>Build in strict safety rails to ensure the bot is only used for legitimate data publication</li>
                   <li>Create a front page dashboard listing a logged-in user's datasets, along with some stats for each dataset from the GBIF API</li>
                   <li>Provide edit access for already published or work-in-progress datasets</li>
+                  <li>Provide a rollback function for when GPT4 makes mistakes and deletes data it shouldn't</li>
                   <li>Currently publishing using the GBIF Norway publishing institution - this would need to be opened up to more countries. National nodes would sign up for it (agreeing that ad-hoc users can publish to a generic national institution), and publicise it at their higher education institutions. </li>
                   <li>Only works well at the moment for occurrence data - expand to sampling event, checklist and others.</li>
                   <li>Add support for frictionless data & the new data models</li>

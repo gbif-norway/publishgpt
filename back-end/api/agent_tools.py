@@ -87,9 +87,6 @@ class ValidateDwCTerms(OpenAIBaseModel):
         pass
 
 
-##class ViewCodeHistory
-
-
 class Python(OpenAIBaseModel):
     """
     Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm}, {})`. 
@@ -130,33 +127,46 @@ class Python(OpenAIBaseModel):
         return f'`{code}` executed, result: {str(result)[:2000]}'
 
 
+##class ViewCodeHistory
+
+
+class RollBack(OpenAIBaseModel):
+    """USE WITH CAUTION! Resets to the original dataframes loaded into pandas from the Excel sheet uploaded by the user. ALL CHANGES WILL BE UNDONE. Use as a last resort if data columns have been accidentally deleted or lost."""
+    agent_id: PositiveInt = Field(...)
+
+    def run(self):
+        from api.models import Agent
+        agent = Agent.objects.get(id=self.agent_id)
+        # agent.dataset.table_set.all().delete()
+
+
 class SetBasicMetadata(OpenAIBaseModel):
     """Sets the title and description (Metadata) for a Dataset via an Agent, returns a success message or an error message"""
     agent_id: PositiveInt = Field(...)
     title: str = Field(..., description="A short but descriptive title for the dataset as a whole")
     description: str = Field(..., description="A longer description of what the dataset contains, including any important information about why the data was gathered (e.g. for a study) as well as how it was gathered.")
+    user_language: str = Field('English', description="Note down if the user wants to speak in a particular language. Default is English.") 
     structure_notes: Optional[str] = Field(None, description="Optional - Use to note any significant data structural problems or oddities.") 
     suitable_for_publication_on_gbif: Optional[bool] = Field(default=True, description="An OPTIONAL boolean field, set to false if the data is deemed unsuitable for publication on GBIF.")
-    user_language: Optional[str] = Field(None, description="Optional - Note down if the user wants to speak in any language other than English.") 
 
     def run(self):
-        from api.models import Agent
         try:
+            from api.models import Agent
             agent = Agent.objects.get(id=self.agent_id)
             dataset = agent.dataset
             dataset.title = self.title
             dataset.description = self.description
             if self.structure_notes:
                 dataset.structure_notes = self.structure_notes
-            if self.user_language:
+            if self.user_language != 'English':
                 dataset.user_language = self.user_language
             if not self.suitable_for_publication_on_gbif:
                 print('rejecting dataset')
                 dataset.rejected_at = datetime.datetime.now()
             dataset.save()
-            print(f'setting agent {agent.id} completed_at date now:')
-            agent.completed_at = datetime.datetime.now()
-            agent.save()
+            # print(f'setting agent {agent.id} completed_at date now:')
+            # agent.completed_at = datetime.datetime.now()
+            # agent.save()
             print(f'From within SetBasicMetadata, this should be set: {agent.completed_at}')
             agentcopy = Agent.objects.get(id=self.agent_id)
             print(f'TEST2 From within SetBasicMetadata, this should be set: {agentcopy.completed_at}')
@@ -221,13 +231,16 @@ class PublishDwC(OpenAIBaseModel):
             core_table = next((table for table in tables if 'occurrenceID' in table.df.columns), tables[0])
             extension_tables = [table for table in tables if table != core_table]
             mof_table =  extension_tables[0] if extension_tables else None
-            url = upload_dwca(core_table.df, dataset.title, dataset.description, mof_table.df)
+            if mof_table:
+                url = upload_dwca(core_table.df, dataset.title, dataset.description, mof_table.df)
+            else:
+                url = upload_dwca(core_table.df, dataset.title, dataset.description)
             dataset.dwca_url = url
             gbif_url = register_dataset_and_endpoint(dataset.title, dataset.description, dataset.dwca_url)
             dataset.published_at = datetime.datetime.now()
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             dataset.save()
-            return(f'GBIF URL: {gbif_url}, Darwin core archive upload: {url}')
+            return(f'Successfully published. GBIF URL: {gbif_url}, Darwin core archive upload: {url}')
         except Exception as e:
             return repr(e)[:2000]
 

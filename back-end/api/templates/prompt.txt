@@ -26,7 +26,6 @@ class Table(models.Model):
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)  # May not be unique
     df = PickledObjectField() # Contains dataframe
-	is_core = models.BooleanField(null=True, blank=True)
 
 Currently, you are working on preprocessing (dataset.id {{ agent.dataset.id }}) with Tables:
 --- 

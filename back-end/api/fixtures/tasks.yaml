@@ -10,7 +10,7 @@
 
       Carefully look at this data, especially the column headings: is it suitable for publication on gbif.org? This is the first task and no work has been done on formatting the data structure, so it may be extremely cryptic and messy. Be cautious! Ask about the relationship between different sheets if it's not clear. Keep in mind that it's highly likely at least some of this data is redundant (derived from primary data elsewhere in other sheets). Try to figure out if there is a list of species occurrences (WHAT, WHERE and WHEN), or perhaps a list of names as the main focus, or if it is something else entirely that does not belong on GBIF. 
       
-      Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. In your description, try to include the general area (country, sea, or even just region, etc) where the data was gathered - ask the user if this is not obvious. Don't include any information about the Table structures in the description - these should go in structure_notes. 
+      Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. In your description, include the general area (country, sea, or even just region such as central Asia, southern Africa, etc) where the data was gathered - ask the user if this is not obvious from the data. Don't include any information about the Table structures in the description - these should go in structure_notes. 
       
       If anything's missing, explain that occurrence data needs locations, observation dates and scientific names to be published to GBIF, ask the user for this extra information. If they say they have additional data in another file, tell them they need to upload everything in one spreadsheet and set suitable_for_publication_on_gbif to False using SetBasicMetadata. 
       
@@ -22,8 +22,8 @@
 
       For this task, you should ALWAYS check first if the user has some feedback on your generated Title and Description. When you and the user are both happy, use SetBasicMetadata to: 
       - save the Title and Description
+      - save the user_language (the language the user speaks to you in), use the default "English" for English
       - use structure_notes to save anything unusual you discover about the dataset structure or cryptic column names. E.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), if a column called 'R' actually contains a calculated measurement of species richness, etc. 
-      - save the user_language if they prefer to speak in a language other than English
       - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
     additional_function: SetBasicMetadata
@@ -37,7 +37,6 @@
       If the user has occurrence data, check for image URLs. If there are none, ask the user if they have an images of the observations they've made which they wish to upload, and if they do explain the images need to be hosted online prior to dataset publication. Suggest a scientific repository such as Zenodo to upload the images, and explain that the URLs must be put in an associatedMedia column as an extra step after image upload. Then tell them to start this process again.
       If the user wishes to get help with uploading images, tell them that you (this system) are currently in beta and are not able to handle image publication for them yet, but that this will come in the future. 
 
-
 - model: api.task
   fields:
     name: adhoc_processing_first_pass
@@ -50,7 +49,13 @@
        - occurrenceID REQUIRED (if there is something appropriate in the dataset already use that, otherwise create UUIDs for each record)
        - basisOfRecord REQUIRED (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation), [NOTE: you will almost always have to create and fill in this column for the user]
        - eventDate REQUIRED (must be ISO format) OR 3 columns: a year, month & day
-       - locality
+       - scientificName REQUIRED
+       - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
+       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
+       - individualCount or organismQuantity/organismQuantityType: One of these is REQUIRED IF occurrenceStatus is null(IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact). Whole numbers are probably individualCounts, decimals/fractions etc are more likely to be organismQuantity, in which case you should ask the user what the organismQuantityType is (don't assume), it might be e.g. % biomass, abundance, etc. organismQuantityType is REQUIRED if organismQuantity is populated. VERY IMPORTANT - KEEP THIS IN THE OCCURRENCE TABLE!
+       - locality (REQUIRED if decimalLatitude and decimalLongitude are null)
+       - decimalLatitude and decimalLongitude (REQUIRED if locality is null)
+       - geodeticDatum (SRS or geodeticDatum pertaining to decimalLatitude and decimalLongitude, REQUIRED if decimalLatitude and decimalLongitude are populated)
        - locationRemarks
        - waterBody (if a marine or aquatic occurrence, e.g. Baltic Sea, Hudson River)
        - islandGroup
@@ -62,16 +67,10 @@
        - minimumDistanceAboveSurfaceInMeters
        - maximumDistanceAboveSurfaceInMeters
        - country
-       - decimalLatitude
-       - decimalLongitude
-       - geodeticDatum (SRS or geodeticDatum pertaining to decimalLatitude and decimalLongitude, REQUIRED if decimalLatitude and decimalLongitude are populated)
        - coordinateUncertaintyInMeters
        - fieldNotes
        - recordedBy (collector/observer's name)
        - recordedByID (often ORCID, NOTE: ask the user for ORCIDs if recordedBy is populated with only a few names)
-       - scientificName REQUIRED
-       - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
-       - individualCount or organismQuantity/organismQuantityType (IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact)
        - occurrenceRemarks (can hold any miscellaneous information)
        - sex
        - lifeStage
@@ -79,7 +78,6 @@
        - vitality (valid values: alive, dead, mixedLot, uncertain, notAssessed)
        - establishmentMeans (valid values: native, nativeReintroduced, introduced, introducedAssistedColonisation, vagrant, uncertain)
        - degreeOfEstablishment (valid values: native, captive, cultivated, released, failing, casual, reproducing, established, colonising, invasive, widespreadInvasive)
-       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
        - preparations (preparation/preservation methods, e.g. fossil, cast, photograph, DNA extract)
        - associatedSequences (list of associated genetic sequence information, e.g. http://www.ncbi.nlm.nih.gov/nuccore/U34853.1)
        - habitat
@@ -103,13 +101,14 @@
        - measurementMethod (OPTIONAL)
        - measurementRemarks (OPTIONAL)
 
-      NOTE 1: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. DO NOT use it for individual counts or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
-      NOTE 2: In almost all cases, if you are publishing Occurrence data, you should discard any Tables containing summary taxonomy information that a user may have gathered - that should not get published. 
+      NOTE 1: The MeasurementOrFact extension should be used to store facts or measurements which do not fit into the core fields or where there are multiple measurements per field. Examples: length, weight, temperature, salinity, age, growth rate, symbiotic relationships, predator-prey interactions, etc. IMPORTANT - DO NOT use the MeasurementOrFact Table for any of the columns listed as Occurrence fields, including individual counts, biomass percentages or abundance, those numbers should go into individualCount or organismQuantity/organismQuantityType.
+      NOTE 2: If you are publishing Occurrence data, you should discard any Tables or columns containing summary information, and do not publish any derived data from formulae etc, only primary data. 
 
       Your Task: 
       1) Discuss your recommendations for DwC core and extension with the user, note that extensions are optional. If the user is knowledgeable and asks for a specific extension besides MeasurementOrFact, do your best to accommodate them.
       2) Rename the core columns in the Tables to DwC fields (see above for common fields), if column data/names are cryptic and difficult to understand, ask the user about them. If you think it's necessary, use SetBasicMetadata to update the dataset Title and Description to better reflect the dataset, feel free to add to the structural_notes to help future Agents with their tasks. A future Agent & Task will validate and standardise all the other columns to DwC, so just do the best you can.
-      3) Organize the Tables, joining or deleting dataframes as necessary so the data structure resembles what is required (see examples). 
+      3) Organize the Tables, joining or deleting as necessary so the data structure resembles what is required (see examples). IMPORTANT - When joining Tables, DOUBLE CHECK you have CORRECTLY JOINED them before deleting! 
+      4) Often users have a crosstab of species x locations, with the value cells being individualCount or organismQuantity. If this is the case, convert the crosstab to long format as shown in the examples, 1 row should equal 1 species observation at a location and date/time. 
 
       Example 1, standalone occurrence data:
       | recordedBy    | individualCount | eventDate  | country | locality   | decimalLatitude | decimalLongitude | scientificName        | kingdom  |
@@ -138,7 +137,7 @@
       Here are some additional guidelines: 
        - Use your intelligence and make as many guesses about the data as you can, but ask the user if you are completely unsure of something
        - Aim to have 1 - 2 Tables: a core Table and an extension Table
-       - Note that the 'what' (species AND either presence/absence, counts or ), 'where' (location), 'when' (dates) and 'who' (collector/observer, if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one) 
+       - Note that the 'what' (species AND either presence/absence, individualCount or organismQuantity), 'where' (location), 'when' (dates) and 'who' (collector/observer, if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one) 
        - The next Tasks will focus on converting all the columns to Darwin Core terms and validating the data (including dates), so your main focus should be to organise and structure the data
        - Summarise your final result tables and the work you have done to the user before calling SetAgentTaskToComplete
 
@@ -370,7 +369,11 @@
     text: |-
       Carefully inspect these preprocessed dataframes. They should adhere to the Darwin Core standard and be  ready for publication. 
 
-      Are there any outstanding issues you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up, and then when you and the user are satisfied with the data tables publish the dataset using PublishDwC. 
+      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up and get it polished.
+
+      2. With the restructured data in mind, are there any changes that you feel should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. 
+      
+      When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
 
       Be sure to warn the user that the publication process may take some time. 
       When the dataset is published, generate a congratulatory message with: 
@@ -379,63 +382,3 @@
       3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication
       4. Another message asking if they would like to make any edits, or upload a new dataset, and then call SetAgentTaskToComplete
     additional_function: PublishDwC
-
-# - model: api.task
-#   fields:
-#     name: set_basic_metadata
-#     per_table: false
-#     attempt_autonomous: false
-#     text: |-
-#       Examine the data presented in these tables carefully and the current dataset Description (a draft with some information about columns and data structure), and use it to derive a very short but descriptive draft Title (max 50 words) and Description (approx 3-5 sentences) for the dataset as a whole. Incorporate the current dataset Description and keep information about the columns and data structure at the end of the Description. But you can ignore the data structure in sheets - that will change, just focus on the contents of the data. Ask the user to improve your Title and Description, and finalise in consultation with them before saving to the database using SetBasicMetadata.
-#     additional_function: SetBasicMetadata
-
-# - model: api.task
-#   fields:
-#     name: check_data_suitability
-#     per_table: false
-#     attempt_autonomous: false
-#     text: |-
-#       GBIF.org is a global database for biodiversity data. Suitable data for publication includes:
-#       - Species Occurrence Data and Sampling Event Data: Records of WHEN (columns for year/month/day, date, etc) and WHERE (columns for locality, latitude/longitude, footprintwkt, etc) a species/WHAT (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc) was observed or collected. Often also includes WHO made the observation (collector, citizen scientist, researcher, etc) - these may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level.
-#       - Checklists: Lists of species found in a specific area or ecosystem.
-#       Look at this data, especially the column headings, and the metadata description critically. 
-#       Is this data suitable for publication on gbif.org? If it is, mark this Task as complete, otherwise let the user know and reject the the dataset using the RejectDataset function. 
-#     additional_function: RejectDataset
-
-# - model: api.task
-#   fields: 
-#     name: delete_unnecessary_tables
-#     per_table: false
-#     attempt_autonomous: true
-#     text: >
-#       Delete any tables which are not primary data - i.e. which can be derived from other tables. If the data is cryptic or the column headers are not obvious check with the user before doing a deletion. 
-
-
-# - model: api.task
-#   fields:
-#     name: flatten_headers
-#     per_table: true
-#     attempt_autonomous: true
-#     text: >
-#       Flatten any of the top rows which you think might contain header information into a single row (try to preserve as much information as possible), and convert it to the dataframe header. If there is more than two candidate header rows, rearrange the data , for example: 
-
-#       Original table: 
-
-#       WP2	 64 µm mesh (ind m-3)			
-#       Date	2017	2017	2018	2018
-#       Sample/Net number	AVERAGE 20-21.02.17	AVERAGE 20-21.02.17	12.06.2018	12.06.2018
-#       Layer [m]	50-0 m	170-50 m	50-0 m	170-50 m
-#       Calanus spp.	128	259	194	562
-#       Microcalanus spp.	471	707	16	125
-#       Cyclopoida nauplii	8724	9	8061	2
-#       Fritillaria borealis	5560	2	0	0
-#       Rotatoria	607	25	0	0
-#       SUM Others	16721	84	223	32
-
-#       Resulting table:
-#       Date	Sample/Net number	Layer [m]	Calanus spp.	Microcalanus spp.	Cyclopoida nauplii	Fritillaria borealis	Rotatoria	SUM Others
-#       2017	AVERAGE 20-21.02.17	50-0 m	128	471	8724	5560	607	16721
-#       2017	AVERAGE 20-21.02.17	170-50 m	259	707	9	2	25	84
-#       2018	12.06.2018	50-0 m	194	16	8061	0	0	223
-#       2018	12.06.2018	170-50 m	562	125	2	0	0	32
-

@@ -5,37 +5,22 @@ import Badge from 'react-bootstrap/Badge';
 import config from '../config.js';
 
 const Agent = ({ agent, refreshDataset }) => {
-  // const [messages, setMessages] = useState(agent.message_set);
   const [userInput, setUserInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Working...");
 
-  const wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
-
-  // useEffect(() => {
-  //   setIsLoading(true);
-  //   console.log('triggered useffect');
-  //   console.log(agent.id);
-  //   console.log(agent.completed_at);
-  //   if (agent.completed_at) { 
-  //     setIsLoading(false);
-  //   } 
-  //   // setMessages(agent.message_set); // Update messages if the agent prop changes
-  //   setIsLoading(false);
-  // }, [agent]);
-
   useEffect(() => {
-    const runAsyncEffect = async () => {
-    if (agent.completed_at === null) { 
-      setIsLoading(true);
-      console.log('running this only once when component is loaded if completed_at is null');
-      console.log(agent.completed_at);
-      await refreshDataset();
-      setIsLoading(false);
-    }
-  };
-  runAsyncEffect();
-}, []);
+      const runAsyncEffect = async () => {
+      if (agent.completed_at === null) { 
+        setIsLoading(true);
+        console.log('running this only once when component is loaded if completed_at is null');
+        console.log(agent.completed_at);
+        await refreshDataset();
+        setIsLoading(false);
+      }
+    };
+    runAsyncEffect();
+  }, []);
 
   const formatTableIDs = (ids) => {
     if (!ids || !ids.length) return "[Deleted table(s)]";
@@ -45,6 +30,7 @@ const Agent = ({ agent, refreshDataset }) => {
 
   const handleUserInput = async (event) => {
     if (event.key === 'Enter') {
+      console.log(agent.busy_thinking);
       event.preventDefault();
       setIsLoading(true);
       setLoadingMessage("Working...");
@@ -81,8 +67,8 @@ const Agent = ({ agent, refreshDataset }) => {
         {agent.message_set.filter(function (message) { return message.role != 'system' }).map((message) => (
             <Message key={message.id} message={message} />
           ))}
-
-          {isLoading && (
+          
+          {(isLoading || agent.busy_thinking) && (
             <div className="message user-input-loading">
               <div className="d-flex align-items-center">
                 <strong>{loadingMessage}</strong>
@@ -90,7 +76,7 @@ const Agent = ({ agent, refreshDataset }) => {
               </div>
             </div>
           )}
-          {!agent.completed_at && !isLoading && (
+          {!agent.completed_at && !isLoading && !agent.busy_thinking && (
             <div className="input-group">
               <input type="text" className="form-control user-input" value={userInput} onKeyPress={handleUserInput} onChange={e => setUserInput(e.target.value)} placeholder="Message ChatIPT" />
               <div className="input-group-append"><span className="input-group-text"><i className="bi bi-arrow-up-circle"></i></span></div>

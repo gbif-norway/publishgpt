@@ -13,14 +13,14 @@ from pydantic_core._pydantic_core import ValidationError
 
 class Dataset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
-    orcid = models.CharField(max_length=50, blank=True)
+    orcid = models.CharField(max_length=2000, blank=True)
     file = models.FileField(upload_to='user_files')
-    title = models.CharField(max_length=500, blank=True, default='')
+    title = models.CharField(max_length=2000, blank=True, default='')
     structure_notes = models.CharField(max_length=2000, blank=True, default='')
     description = models.CharField(max_length=2000, blank=True, default='')
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
-    dwca_url = models.CharField(max_length=50, blank=True)
+    dwca_url = models.CharField(max_length=2000, blank=True)
     user_language = models.CharField(max_length=100, blank=True)
 
     class DWCCore(models.TextChoices):
@@ -83,6 +83,8 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
         functions = [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
         if self.additional_function:
             functions.append(self.additional_function)
+        if self.name == 'adhoc_processing_final_pass':
+            functions.append(agent_tools.SetBasicMetadata.__name__)
         return functions
 
     def create_agents_with_system_messages(self, dataset:Dataset):
@@ -180,7 +182,7 @@ class Agent(models.Model):
     def create_with_system_message(cls, dataset, task, tables):
         agent = cls.objects.create(dataset=dataset, task=task)
         agent.tables.set([t.id for t in tables])
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous,  })
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
         print(system_message_text)
         Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
 

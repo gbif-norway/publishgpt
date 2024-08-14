@@ -62,7 +62,7 @@ def register_dataset_and_endpoint(title, description, url):
         'type': 'OCCURRENCE'
     }
     response = requests.post(f"{os.getenv('GBIF_API_URL')}/dataset", json=payload, headers={'Content-Type': 'application/json'}, auth=HTTPBasicAuth(os.getenv('GBIF_USER'), os.getenv('GBIF_PASSWORD')))
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if response.status_code == 201:
         dataset_key = response.json()
     else:
@@ -70,7 +70,7 @@ def register_dataset_and_endpoint(title, description, url):
 
     print(dataset_key)
     register_endpoint(dataset_key, url)
-    return f'https://gbif.org/dataset/{dataset_key}'
+    return f"{os.getenv('GBIF_API_URL')}/dataset/{dataset_key}"
 
 
 def register_endpoint(dataset_key, url):
