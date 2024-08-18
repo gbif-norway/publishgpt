@@ -33,13 +33,13 @@
 body { overflow: auto !important }
 .initialise { font-size: 1.5em; }
 .initialise img { height: 50px; }
-.function-message .show { margin-bottom: 10px; }
-.function-message .inner-function-message { margin-top: -20px; margin-bottom: 15px; }
-.function-message .inner-message { margin: 0; padding: 0; }
-.function-message .inner-message button { 
+.tool-message .show { margin-bottom: 10px; }
+.tool-message .inner-function-message { margin-top: -20px; margin-bottom: 15px; }
+.tool-message .inner-message { margin: 0; padding: 0; }
+.tool-message .inner-message button { 
     margin-top: -77px;
     margin-left: 60px; }
-.function-message svg { margin-bottom: 10px; }
+.tool-message svg { margin-bottom: 10px; }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
 .complete h2 { color: #c0d6c5 } 

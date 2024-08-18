@@ -4,20 +4,17 @@ import Collapse from 'react-bootstrap/Collapse';
 import { CodeBlock, dracula } from "react-code-blocks";
 
 
-function FunctionMessage({ message }) {
+function FunctionMessage({ message_content, message_id }) {
   const [open, setOpen] = useState(false);
-
-  var content = message.openai_obj.content.replace('` executed, result:', '\n').replace('`', '')
-
   return (
     <>
-      <div className={`inner-message ${message.openai_obj.function_name}`}>
-        <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message.id}`} aria-expanded={open}>Show work</Button>
+      <div className='inner-message python'>
+        <Button onClick={() => setOpen(!open)} aria-controls={`collapseFor${message_id}`} aria-expanded={open}>Show work</Button>
       </div>
       <div className="inner-function-message">
         <Collapse in={open}>
-          <div id={`collapseFor${message.id}`}>
-            <CodeBlock text={content} language="python" theme={dracula} />
+          <div id={`collapseFor${message_id}`}>
+            <CodeBlock text={message_content} language="python" theme={dracula} />
           </div>
         </Collapse>
       </div>

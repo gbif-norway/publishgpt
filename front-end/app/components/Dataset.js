@@ -72,37 +72,21 @@ const Dataset = ({ initialDatasetId }) => {
     }
   }, [dataset, activeDatasetID, refreshTables]);
 
+  useEffect(() => {if (initialDatasetId) { initialLoadDataset(initialDatasetId); }}, [initialDatasetId]);
 
-  // useEffect(() => {
-  //   if (initialDatasetId && activeDatasetID === null) {
-  //     setActiveDatasetID(initialDatasetId);
-  //     refreshDataset();
-  //   }
-  // }, [initialDatasetId]);
-
-  // useEffect(() => {
-  //   if (activeDatasetID) {
-  //     console.log('activeDatasetID is set to: ' + activeDatasetID);
-  //     refreshDataset();
-  //   }
-  // }, [activeDatasetID]);
-  // useEffect(() => {
-  //   if (initialDatasetId) {
-  //     console.log('initial dataset id changing to ' + initialDatasetId)
-  //     setActiveDatasetID(initialDatasetId);
-      
-  //   }
-  // }, [initialDatasetId]);
-  // useEffect(() => {if (initialDatasetId) {  setActiveDatasetID(initialDatasetId); }}, [initialDatasetId]);
-  // useEffect(() => {if (activeDatasetID !== null) { refreshDataset(); }}, [activeDatasetID, refreshDataset]);
-
-  const initializeDatasetFromFileDrop = async (new_id) => {
-    console.log(new_id);
-    const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${new_id}/refresh`);
-    setActiveDatasetID(new_id);
+  const initialLoadDataset = async (datasetId) => {
+    const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${datasetId}/refresh`);
+    setActiveDatasetID(datasetId); 
     setDataset(refreshedDataset);
-    console.log('initialising complete');
-  };
+    console.log(refreshedDataset);
+  };  
+  // const initializeDatasetFromFileDrop = async (new_id) => {
+  //   console.log(new_id);
+  //   const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${new_id}/refresh`);
+  //   setActiveDatasetID(new_id);
+  //   setDataset(refreshedDataset);
+  //   console.log('initialising complete');
+  // };
 
   const CustomTabTitle = ({ children }) => <span dangerouslySetInnerHTML={{ __html: children }} />;
 
@@ -122,7 +106,8 @@ const Dataset = ({ initialDatasetId }) => {
               <FileDrop
                 onFileAccepted={(data) => { 
                   setLoading(true);  // Start loading when file is accepted
-                  initializeDatasetFromFileDrop(data); 
+                  // initializeDatasetFromFileDrop(data); 
+                  initialLoadDataset(data);
                 }}
                 onError={(errorMessage) => setError(errorMessage)}
                 loading={loading}  // Pass loading state to FileDrop

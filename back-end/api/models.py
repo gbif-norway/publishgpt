@@ -215,7 +215,7 @@ class Agent(models.Model):
             try:
                 result = self.run_function(tool_call.function)
             except Exception as e:
-                result = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response (Calling {tool_call.function.name} with {tool_call.function.arguments}), please try again. \nError: {e}'
+                result = f'ERROR CALLING FUNCTION: Invalid JSON or code provided in your last response (Calling {tool_call.function.name} with the given arguments for {tool_call.id}), please try again. \nError: {e}'
 
             messages.append(Message.create_function_message(agent=self, function_result=result, tool_call_id=tool_call.id))
         
