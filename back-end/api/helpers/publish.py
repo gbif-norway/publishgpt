@@ -70,7 +70,7 @@ def register_dataset_and_endpoint(title, description, url):
 
     print(dataset_key)
     register_endpoint(dataset_key, url)
-    return f"{os.getenv('GBIF_API_URL')}/dataset/{dataset_key}"
+    return f'https://gbif-uat.org/dataset/{dataset_key}'
 
 
 def register_endpoint(dataset_key, url):

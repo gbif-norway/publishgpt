@@ -53,6 +53,7 @@ const Dataset = ({ initialDatasetId }) => {
       // If the latest agent message is not an assistant message, we need to refresh again
       if(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role != 'assistant') {
         console.log('about to start looping')
+        console.log(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1));
         console.log(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role);
         // If the latest agent is not complete we should mark it as busy thinking
         if(refreshedDataset.visible_agent_set.at(-1).completed_at == null) { 
@@ -71,12 +72,29 @@ const Dataset = ({ initialDatasetId }) => {
     }
   }, [dataset, activeDatasetID, refreshTables]);
 
+
   // useEffect(() => {
-  //   if (initialDatasetId) {
-  //     console.log('initial dataset id changing')
+  //   if (initialDatasetId && activeDatasetID === null) {
   //     setActiveDatasetID(initialDatasetId);
+  //     refreshDataset();
   //   }
   // }, [initialDatasetId]);
+
+  // useEffect(() => {
+  //   if (activeDatasetID) {
+  //     console.log('activeDatasetID is set to: ' + activeDatasetID);
+  //     refreshDataset();
+  //   }
+  // }, [activeDatasetID]);
+  // useEffect(() => {
+  //   if (initialDatasetId) {
+  //     console.log('initial dataset id changing to ' + initialDatasetId)
+  //     setActiveDatasetID(initialDatasetId);
+      
+  //   }
+  // }, [initialDatasetId]);
+  // useEffect(() => {if (initialDatasetId) {  setActiveDatasetID(initialDatasetId); }}, [initialDatasetId]);
+  // useEffect(() => {if (activeDatasetID !== null) { refreshDataset(); }}, [activeDatasetID, refreshDataset]);
 
   const initializeDatasetFromFileDrop = async (new_id) => {
     console.log(new_id);

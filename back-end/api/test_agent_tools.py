@@ -10,7 +10,7 @@ class TestPythonRun(TestCase):
         self.dataset = Dataset.objects.create(file='path/to/file')
         self.task = Task.objects.create(name='Test', text='Test', per_table=False)
         self.agent = Agent.objects.create(dataset=self.dataset, task=self.task)
-        self.function_message = Message.objects.create(agent=self.agent, role=Message.Role.FUNCTION, function_name='test_function')
+        self.function_message = Message.objects.create(agent=self.agent, role=Message.Role.TOOL, function_name='test_function')
 
     def test_successful_execution_without_output(self):
         python_code = 'a = 1 + 1'

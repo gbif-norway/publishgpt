@@ -39,7 +39,7 @@ const Agent = ({ agent, refreshDataset }) => {
         await fetch(`${config.baseApiUrl}/messages/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: userInput, role: 'user', agent: agent.id })
+          body: JSON.stringify({ openai_obj: { content: userInput, role: 'user' }, agent: agent.id })
         });
         setUserInput("");
         await refreshDataset();
@@ -64,7 +64,7 @@ const Agent = ({ agent, refreshDataset }) => {
         </Accordion.Header>
         <Accordion.Body>
 
-        {agent.message_set.filter(function (message) { return message.role != 'system' }).map((message) => (
+        {agent.message_set.map((message) => (
             <Message key={message.id} message={message} />
           ))}
           

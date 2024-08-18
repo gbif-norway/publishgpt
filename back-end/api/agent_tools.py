@@ -12,70 +12,6 @@ import uuid
 import utm
 
 
-def trim_dataframe(df):
-    # Replace empty spaces with NaN
-    df.replace('', np.nan, inplace=True)
-
-    # Get the bounds where the non-NaN values start and end
-    rows = np.where(df.notna().any(axis=1))[0]
-    cols = np.where(df.notna().any(axis=0))[0]
-
-    trimmed_df = df.iloc[rows[0]:rows[-1]+1, cols[0]:cols[-1]+1]
-
-    # If the first column is just a list of numbers from 0+ or 1+, it is meaningless, drop it
-    first_column = trimmed_df.iloc[:, 0]
-    if first_column.is_monotonic_increasing and first_column.min() in [0, 1] and np.all(np.diff(first_column) == 1):
-        trimmed_df = trimmed_df.drop(trimmed_df.columns[0], axis=1)
-
-    return trimmed_df.fillna('')
- 
-def extract_sub_tables(df, min_rows=2):
-    all_null_rows = df.isnull().all(axis=1)
-    start = 0
-    tables = []
-    for i, is_null in enumerate(all_null_rows):
-        if is_null:
-            if i - start >= min_rows:
-                tables.append(df.iloc[start:i])
-            start = i + 1
-    if len(df) - start >= min_rows:
-        tables.append(df.iloc[start:])
-    return [trim_dataframe(t) for t in tables]
-
-class BasicExtractEmptyBoundaryTables(OpenAIBaseModel):
-    """
-    This works by looking for blank rows and columns. NB - Should only be used as a first pass, and further checks should be carried out. 
-    If only one Table is found (i.e., there are no sub tables), it returns False. 
-    If multiple Tables are found, the old composite Table is deleted and the new Tables are saved - the total number of new Tables, new Table snapshots and new Table ids are returned.
-    """
-    table_id: PositiveInt = Field(...)
-
-    def run(self):
-        from api.models import Table
-        try:
-            table = Table.objects.get(id=self.table_id)
-            sub_tables = extract_sub_tables(table.df)
-            text = False
-
-            if len(sub_tables) > 1:
-                distinct_tables = []
-                for idx, new_df in enumerate(sub_tables):
-                    new_table = Table.objects.create(dataset=table.dataset, title=f'{table.title} - {idx}', df=new_df)
-                    distinct_tables.append(new_table)
-
-                snapshots = '\n\n'.join([f'Sub-table #{idx} - (Table.id: {d.id})\n{d.str_snapshot}' for idx, d in enumerate(distinct_tables)])
-                if len(snapshots) > 4000:
-                    snapshots = snapshots[0:4000] + '\n...'
-                text = f'Table id {self.table_id} divided into {len(distinct_tables)} new, separate tables:\n{snapshots}\n\n'
-
-                table.delete()
-            if text:
-                print(f'Extract Sub Tables results: {text}')
-            return text
-        except Exception as e:
-            return repr(e)[:2000]
-
-
 class ValidateDwCTerms(OpenAIBaseModel):
     """
     Checks that column names for a given Table comply with the Darwin Core standard
@@ -124,10 +60,7 @@ class Python(OpenAIBaseModel):
             result = repr(e)
         finally:
             sys.stdout = old_stdout
-        return f'`{code}` executed, result: {str(result)[:2000]}'
-
-
-##class ViewCodeHistory
+        return str(result)[:8000]
 
 
 class RollBack(OpenAIBaseModel):
@@ -161,23 +94,13 @@ class SetBasicMetadata(OpenAIBaseModel):
             if self.user_language != 'English':
                 dataset.user_language = self.user_language
             if not self.suitable_for_publication_on_gbif:
-                print('rejecting dataset')
+                print('Rejecting dataset')
                 dataset.rejected_at = datetime.datetime.now()
             dataset.save()
-            # print(f'setting agent {agent.id} completed_at date now:')
-            # agent.completed_at = datetime.datetime.now()
-            # agent.save()
-            print(f'From within SetBasicMetadata, this should be set: {agent.completed_at}')
-            agentcopy = Agent.objects.get(id=self.agent_id)
-            print(f'TEST2 From within SetBasicMetadata, this should be set: {agentcopy.completed_at}')
-            return 'Basic Metadata has been successfully set and Agent Task has been set to complete'
+            return 'Basic Metadata has been successfully set.'
         except Exception as e:
             print('There has been an error with SetBasicMetadata')
             return repr(e)[:2000]
-
-
-class RenameColumnsWithUserInput(OpenAIBaseModel):
-    pass
 
 
 class SetAgentTaskToComplete(OpenAIBaseModel):
@@ -192,23 +115,6 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent.save()
             print('Marking as complete...')
             return f'Task marked as complete for agent id {self.agent_id} .'
-        except Exception as e:
-            return repr(e)[:2000]
-
-
-class RejectDataset(OpenAIBaseModel):
-    """Have an agent reject a dataset"""
-    agent_id: PositiveInt = Field(...)
-
-    def run(self):
-        from api.models import Agent
-        try:
-            agent = Agent.objects.get(id=self.agent_id)
-            dataset = agent.dataset
-            dataset.rejected_at = datetime.datetime.now()
-            dataset.save()
-            print('Rejecting dataset as unsuitable')
-            return f'Dataset rejected for publication by agent id {self.agent_id} .'
         except Exception as e:
             return repr(e)[:2000]
 
