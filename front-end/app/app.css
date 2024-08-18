@@ -15,31 +15,26 @@
 }
 .messages { margin: 0 }
 .inner-message {
-    padding: 15px;
     border-radius: 10px;
-    margin: 10px 0;
     white-space: pre-wrap;
 }
 .assistant-message > .inner-message { 
     background-color: rgb(196 255 122 / 0%); 
-    flex: 1;
-    padding: 0;
-    margin: 0;
-    margin-left: 5px;
 }
 .user-message { width: 100%; display: flex; justify-content: flex-end; margin-top: 10px; margin-bottom: 10px; }
-.user-message > .inner-message { background-color: rgba(190, 255, 206, 0.2); max-width: 70% }
+.user-message > .inner-message { 
+    background-color: rgba(190, 255, 206, 0.2); 
+    max-width: 70%;
+    padding: 10px;
+}
+.inner-function-message { 
+    width: 550px;
+}
 
 body { overflow: auto !important }
 .initialise { font-size: 1.5em; }
 .initialise img { height: 50px; }
 .tool-message .show { margin-bottom: 10px; }
-.tool-message .inner-function-message { margin-top: -20px; margin-bottom: 15px; }
-.tool-message .inner-message { margin: 0; padding: 0; }
-.tool-message .inner-message button { 
-    margin-top: -77px;
-    margin-left: 60px; }
-.tool-message svg { margin-bottom: 10px; }
 .agent-task h2 { font-size: 1em; font-weight: 500;}
 .messages h1 { font-size: 1.5em; font-weight: bold; }
 .complete h2 { color: #c0d6c5 } 
@@ -50,6 +45,7 @@ body { overflow: auto !important }
 .dataset-info-wrapper button { margin-right: 10px; margin-bottom: 10px; }
 .rdt_Pagination svg { fill: #FFF !important; }
 button small { font-size: 0.6em; }
+button.results { background-color: #6c9de7; }
 .publishing-heading { 
     text-align: center;
     margin-top: -5px;
@@ -79,8 +75,7 @@ svg .s0 { fill: rgba(255, 255, 255, 0.1) }
 svg .s1 { fill: rgb(127, 198, 136) } 
 svg { margin-right: 10px; }
 
-.assistant-message { display: flex; align-items: flex-start;}
-.assistant-message [svg], .function-message [svg] {margin-right: 10px; }
+/* .assistant-message { display: flex; align-items: flex-start;} */
 .accordion-body { padding: 20px 15px; }
 .user-input-loading { 
     border-radius: 10px;
@@ -90,3 +85,4 @@ svg { margin-right: 10px; }
 .user-input-loading .spinner-border { margin-left: 20px; }
 .modal-content li { padding-bottom: 10px; }
 .modal-content li li {padding-bottom: 0; }
+code { margin-bottom: 10px;}
