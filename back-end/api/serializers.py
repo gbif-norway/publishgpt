@@ -4,6 +4,7 @@ import pandas as pd
 import openpyxl
 import tempfile
 import os
+from api.helpers import discord_bot
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -62,6 +63,7 @@ class DatasetSerializer(serializers.ModelSerializer):
         return AgentSerializer(agents, many=True).data
 
     def create(self, data):
+        discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT. User file: {data['file'].name}.")
         try:
             df = pd.read_csv(data['file'].file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape')
             if len(df) < 4:
@@ -94,4 +96,5 @@ class DatasetSerializer(serializers.ModelSerializer):
             if not df.empty:
                 tables.append(Table.objects.create(dataset=dataset, title=sheet_name, df=df))
         agent = Agent.create_with_system_message(dataset=dataset, task=Task.objects.first(), tables=tables)
+        discord_bot.send_discord_message(f"Dataset ID assigned: {dataset.id}.")
         return dataset
