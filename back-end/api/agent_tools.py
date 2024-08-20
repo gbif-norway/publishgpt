@@ -72,22 +72,30 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
     """
     agent_id: PositiveInt = Field(...)
 
-    def validate_and_format_event_dates(self, df):
+    def validate_and_format_event_dates(df):
         failed_indices = []
 
-        if 'eventDate' in df.columns:
-            for idx, date_str in df['eventDate'].items():
+        if "eventDate" in df.columns:
+            for idx, date_value in df["eventDate"].iteritems():
                 try:
-                    # Handle date ranges
-                    if '/' in str(date_str):
-                        start_date, end_date = date_str.split('/')
-                        start_date_parsed = parse(start_date).isoformat()
-                        end_date_parsed = parse(end_date).isoformat()
-                        df.at[idx, 'eventDate'] = f'{start_date_parsed}/{end_date_parsed}'
-                    else:
-                        # Parse single date and format as ISO
-                        df.at[idx, 'eventDate'] = parse(date_str).isoformat()
-                except (ParserError, ValueError):
+                    if isinstance(date_value, pd.Timestamp):  # Already a datetime object
+                        formatted_date = date_value.isoformat()
+                    elif isinstance(date_value, str):
+                        # Handle date ranges
+                        if "/" in str(date_value):
+                            start_date, end_date = date_value.split("/")
+                            start_date_parsed = parse(start_date).isoformat()
+                            end_date_parsed = parse(end_date).isoformat()
+                            formatted_date = f"{start_date_parsed}/{end_date_parsed}"
+                            df.at[idx, "eventDate"] = formatted_date
+                        else:
+                            # Parse single date and format as ISO
+                            formatted_date = parse(date_value).isoformat()
+                            df.at[idx, "eventDate"] = formatted_date
+                    else: 
+                        failed_indices.append(idx)
+                
+                except (ParserError, ValueError, TypeError):
                     # If parsing fails, add the index to the failed_indices list
                     failed_indices.append(idx)
 
@@ -140,7 +148,6 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
         return render_to_string('validation.txt', context={ 'tables': table_results })
 
 
-
 class Python(OpenAIBaseModel):
     """
     Run python code using `exec(code, globals={'Dataset': Dataset, 'Table': Table, 'pd': pd, 'np': np, 'uuid': uuid, 'datetime': datetime, 're': re, 'utm': utm}, {})`. 
@@ -182,7 +189,10 @@ class Python(OpenAIBaseModel):
 
 
 class RollBack(OpenAIBaseModel):
-    """USE WITH CAUTION! Resets to the original dataframes loaded into pandas from the Excel sheet uploaded by the user. ALL CHANGES WILL BE UNDONE. Use as a last resort if data columns have been accidentally deleted or lost."""
+    """
+    USE WITH CAUTION! Resets to the original dataframes loaded into pandas from the Excel sheet uploaded by the user. ALL CHANGES WILL BE UNDONE. Use as a last resort if data columns have been accidentally deleted or lost.
+    Returns the IDs of the new, reloaded Tables (note the old Tables will be deleted)
+    """
     agent_id: PositiveInt = Field(...)
 
     def run(self):
