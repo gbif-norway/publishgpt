@@ -1,0 +1,15 @@
+Basic validation reports:
+{% for id, validation in tables.items %}
+    Report for Table id {{ id }} 
+        - Column names not matching allowed set of darwin core terms: {% if validation.unmatched_columns %}{{ validation.unmatched_columns|join:", " }}{% else %}None{% endif %}
+
+        - basisOfRecord: Checked that the column only contains one of the allowed values. 
+        {% if validation.validation_errors.basisOfRecord %}Found rows with incorrect values, first 30 indices: {{ validation.validation_errors.basisOfRecord|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - decimalLatitude: Checked values are within range of -90 to 90.
+        {% if validation.validation_errors.decimalLatitude %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.decimalLatitude|length }}) indices: {{ validation.validation_errors.decimalLatitude|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - decimalLongitude: Checked values are within range of -180 to 180.
+        {% if validation.validation_errors.decimalLongitude %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.decimalLongitude|length }}) indices: {{ validation.validation_errors.decimalLongitude|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - eventDate: Checked dates are in an acceptable ISO format.
+        {% if validation.validation_errors.eventDate %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.eventDate|length }}) indices: {{ validation.validation_errors.eventDate|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+    
+{% endfor %}

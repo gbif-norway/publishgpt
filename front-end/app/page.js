@@ -25,7 +25,7 @@ const Home = () => {
 
   return (
     <main>
-      <Dataset initialDatasetId={103} />
+      <Dataset initialDatasetId={null} />
 
       <div className="modal modal-lg fade" id="myModal" tabIndex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
         <div className="modal-dialog">

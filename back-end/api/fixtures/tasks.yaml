@@ -161,7 +161,7 @@
         institutionCode: The name (or acronym) in use by the institution having custody of the object(s) or information referred to in the record. Egs - MVZ / FMNH / CLO / UCMP
         collectionCode: The name, acronym, coden, or initialism identifying the collection or data set from which the record was derived. Egs - Mammals / Hildebrandt / EBIRD / VP
         ownerInstitutionCode: The name (or acronym) in use by the institution having ownership of the object(s) or information referred to in the record. Egs - NPS / APN / InBio
-        basisOfRecord: The specific nature of the data record. Egs - MaterialEntity / PreservedSpecimen / FossilSpecimen / LivingSpecimen / MaterialSample / Event / HumanObservation / MachineObservation / Taxon / Occurrence / MaterialCitation
+        basisOfRecord: The specific nature of the data record. Must be one of - MaterialEntity / PreservedSpecimen / FossilSpecimen / LivingSpecimen / MaterialSample / Event / HumanObservation / MachineObservation / Taxon / Occurrence / MaterialCitation
         informationWithheld: Additional information that exists, but that has not been shared in the given record. Egs - location information not given for endangered species / collector identities withheld | ask about tissue samples
         dynamicProperties: A list of additional measurements, facts, characteristics, or assertions about the record. Meant to provide a mechanism for structured content. Egs - {"heightInMeters":1.5} / {"targusLengthInMeters":0.014, "weightInGrams":120} / {"natureOfID":"expert identification", "identificationEvidence":"cytochrome B sequence"} / {"relativeHumidity":28, "airTemperatureInCelsius":22, "sampleSizeInKilograms":10} / {"aspectHeading":277, "slopeInDegrees":6} / {"iucnStatus":"vulnerable", "taxonDistribution":"Neuquén, Argentina"}
       Occurrence:
@@ -356,10 +356,12 @@
       ---
 
       Take a deep breath, and methodically go through each of the columns in this Table: 
-      1) Make sure that each column heading corresponds to a Darwin Core term
-      2) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
-      3) Check the date columns and make sure they are valid dates. If there are one or two invalid dates, try to correct them. Make sure dates are in ISO format Y-m-d
-      4) Check decimalLatitude and decimalLongitude (if present), do any conversion necessary. Be sure to note geodeticDatum if it is not WGS84.
+      1) Run BasicValidationForSomeDwCTerms and go through all of the unmatched column names and either try to match them to a Darwin Core term (do this yourself if it's reasonably clear, otherwise discuss with the user)
+      2) Fix any formatting issues in the validation output you received from BasicValidationForSomeDwCTerms. Make some intelligent guesses and try to correct things on your own, but ask the user if there's ambiguity.
+      3) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
+      4) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
+      5) Do one last sense check of all columns
+    additional_function: BasicValidationForSomeDwCTerms
 
 - model: api.task
   fields:

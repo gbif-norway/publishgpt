@@ -10,17 +10,135 @@ from api.helpers.publish import upload_dwca, register_dataset_and_endpoint
 import datetime
 import uuid
 import utm
+from dateutil.parser import parse, ParserError
+from django.template.loader import render_to_string
 
 
-class ValidateDwCTerms(OpenAIBaseModel):
+# Allowed Darwin Core terms
+DARWIN_CORE_TERMS = {
+    # Record-level
+    "type", "modified", "language", "references", "institutionID", "collectionID", "institutionCode",
+    "collectionCode", "ownerInstitutionCode", "basisOfRecord", "informationWithheld", "dynamicProperties",
+    # Occurrence
+    "occurrenceID", "catalogNumber", "recordNumber", "recordedBy", "recordedByID", "individualCount",
+    "organismQuantity", "organismQuantityType", "sex", "lifeStage", "reproductiveCondition", "caste",
+    "behavior", "vitality", "establishmentMeans", "degreeOfEstablishment", "pathway", "georeferenceVerificationStatus",
+    "occurrenceStatus", "associatedMedia", "associatedOccurrences", "associatedReferences", "associatedTaxa",
+    "otherCatalogNumbers", "occurrenceRemarks",
+    # Organism
+    "organismID", "organismName", "organismScope", "associatedOrganisms", "previousIdentifications",
+    "organismRemarks",
+    # MaterialEntity
+    "materialEntityID", "preparations", "disposition", "verbatimLabel", "associatedSequences", "materialEntityRemarks",
+    # MaterialSample
+    "materialSampleID",
+    # Event
+    "eventID", "parentEventID", "eventType", "fieldNumber", "eventDate", "eventTime", "startDayOfYear", "endDayOfYear",
+    "year", "month", "day", "verbatimEventDate", "habitat", "samplingProtocol", "sampleSizeValue", "sampleSizeUnit",
+    "samplingEffort", "fieldNotes", "eventRemarks",
+    # Location
+    "locationID", "higherGeographyID", "higherGeography", "continent", "waterBody", "islandGroup", "island", "country",
+    "countryCode", "stateProvince", "county", "municipality", "locality", "verbatimLocality", "minimumElevationInMeters",
+    "maximumElevationInMeters", "verbatimElevation", "verticalDatum", "minimumDepthInMeters", "maximumDepthInMeters",
+    "verbatimDepth", "minimumDistanceAboveSurfaceInMeters", "maximumDistanceAboveSurfaceInMeters", "locationAccordingTo",
+    "locationRemarks", "decimalLatitude", "decimalLongitude", "geodeticDatum", "coordinateUncertaintyInMeters",
+    "coordinatePrecision", "pointRadiusSpatialFit", "verbatimCoordinates", "verbatimLatitude", "verbatimLongitude",
+    "verbatimCoordinateSystem", "verbatimSRS", "footprintWKT", "footprintSRS", "footprintSpatialFit", "georeferencedBy",
+    "georeferencedDate", "georeferenceProtocol", "georeferenceSources", "georeferenceRemarks",
+    # GeologicalContext
+    "geologicalContextID", "earliestEonOrLowestEonothem", "latestEonOrHighestEonothem", "earliestEraOrLowestErathem",
+    "latestEraOrHighestErathem", "earliestPeriodOrLowestSystem", "latestPeriodOrHighestSystem", "earliestEpochOrLowestSeries",
+    "latestEpochOrHighestSeries", "earliestAgeOrLowestStage", "latestAgeOrHighestStage", "lowestBiostratigraphicZone",
+    "highestBiostratigraphicZone", "lithostratigraphicTerms", "group", "formation", "member", "bed",
+    # Identification
+    "identificationID", "verbatimIdentification", "identificationQualifier", "typeStatus", "identifiedBy", "identifiedByID",
+    "dateIdentified", "identificationReferences", "identificationVerificationStatus", "identificationRemarks",
+    # Taxon
+    "taxonID", "scientificNameID", "acceptedNameUsageID", "parentNameUsageID", "originalNameUsageID", "nameAccordingToID",
+    "namePublishedInID", "taxonConceptID", "scientificName", "acceptedNameUsage", "parentNameUsage", "originalNameUsage",
+    "nameAccordingTo", "namePublishedIn", "namePublishedInYear", "higherClassification", "kingdom", "phylum", "class", "order",
+    "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "genericName", "subgenus", "infragenericEpithet",
+    "specificEpithet", "infraspecificEpithet", "cultivarEpithet", "taxonRank", "verbatimTaxonRank", "scientificNameAuthorship",
+    "vernacularName", "nomenclaturalCode", "taxonomicStatus", "nomenclaturalStatus", "taxonRemarks",
+    # MeasurementOrFact
+    "measurementID", "parentMeasurementID", "measurementType", "measurementValue", "measurementAccuracy", "measurementUnit",
+    "measurementDeterminedBy", "measurementDeterminedDate", "measurementMethod", "measurementRemarks"
+}
+
+class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
     """
-    Checks that column names for a given Table comply with the Darwin Core standard
-    Returns a list of column names which are incorrect. 
+    A few automatic basic checks for an Agent's tables against the Darwin Core standard.
+    Returns a basic validation report.
     """
-    table_id: PositiveInt = Field(...)
+    agent_id: PositiveInt = Field(...)
 
+    def validate_and_format_event_dates(self, df):
+        failed_indices = []
+
+        if 'eventDate' in df.columns:
+            for idx, date_str in df['eventDate'].items():
+                try:
+                    # Handle date ranges
+                    if '/' in str(date_str):
+                        start_date, end_date = date_str.split('/')
+                        start_date_parsed = parse(start_date).isoformat()
+                        end_date_parsed = parse(end_date).isoformat()
+                        df.at[idx, 'eventDate'] = f'{start_date_parsed}/{end_date_parsed}'
+                    else:
+                        # Parse single date and format as ISO
+                        df.at[idx, 'eventDate'] = parse(date_str).isoformat()
+                except (ParserError, ValueError):
+                    # If parsing fails, add the index to the failed_indices list
+                    failed_indices.append(idx)
+
+        return df, failed_indices
+    
     def run(self):
-        pass
+        from api.models import Agent, Table
+        agent = Agent.objects.get(id=self.agent_id)
+        dataset = agent.dataset
+        tables = dataset.table_set.all()
+        table_results = {}
+        for table in tables:
+            table_results[table.id] = {}
+            df = table.df
+            standardized_columns = {col.lower(): col for col in df.columns}
+            matched_columns = {}
+            for term in DARWIN_CORE_TERMS:
+                if term.lower() in standardized_columns:
+                    original_col = standardized_columns[term.lower()]
+                    matched_columns[term] = original_col
+                    if term != original_col:
+                        df.rename(columns={original_col: term}, inplace=True)
+            table_results[table.id]['unmatched_columns'] = [col for col in df.columns if col not in matched_columns.values()]
+            
+            validation_errors = {}
+            allowed_basis_of_record = {'MaterialEntity', 'PreservedSpecimen', 'FossilSpecimen', 'LivingSpecimen', 'MaterialSample', 'Event', 'HumanObservation', 'MachineObservation', 'Taxon', 'Occurrence', 'MaterialCitation'}
+            if 'basisOfRecord' in df.columns:
+                invalid_basis = df[~df['basisOfRecord'].isin(allowed_basis_of_record)]
+                if not invalid_basis.empty:
+                    validation_errors['basisOfRecord'] = invalid_basis.index.tolist()
+            if 'decimalLatitude' in df.columns:
+                df['decimalLatitude'] = pd.to_numeric(df['decimalLatitude'], errors='coerce')
+                invalid_latitude = df[(df['decimalLatitude'] < -90) | (df['decimalLatitude'] > 90)]
+                if not invalid_latitude.empty:
+                    validation_errors['decimalLatitude'] = invalid_latitude.index.tolist()
+            if 'decimalLongitude' in df.columns:
+                df['decimalLongitude'] = pd.to_numeric(df['decimalLongitude'], errors='coerce')
+                invalid_longitude = df[(df['decimalLongitude'] < -180) | (df['decimalLongitude'] > 180)]
+                if not invalid_longitude.empty:
+                    validation_errors['decimalLongitude'] = invalid_longitude.index.tolist()
+            
+            corrected_dates_df, event_date_error_indices = self.validate_and_format_event_dates(df)
+            validation_errors['eventDate'] = event_date_error_indices
+            
+            table_results[table.id]['validation_errors'] = validation_errors
+
+            table.df = corrected_dates_df
+            table.save()
+        
+        return render_to_string('validation.txt', context={ 'tables': table_results })
+
 
 
 class Python(OpenAIBaseModel):
