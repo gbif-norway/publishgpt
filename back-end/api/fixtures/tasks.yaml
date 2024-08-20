@@ -26,7 +26,8 @@
       - use structure_notes to save anything unusual you discover about the dataset structure or cryptic column names. E.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), if a column called 'R' actually contains a calculated measurement of species richness, etc. 
       - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
-    additional_function: SetBasicMetadata
+    additional_functions: 
+      - SetBasicMetadata
 
 - model: api.task
   fields:
@@ -140,6 +141,9 @@
        - Note that the 'what' (species AND either presence/absence, individualCount or organismQuantity), 'where' (location), 'when' (dates) and 'who' (collector/observer, if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one) 
        - The next Tasks will focus on converting all the columns to Darwin Core terms and validating the data (including dates), so your main focus should be to organise and structure the data
        - Summarise your final result tables and the work you have done to the user before calling SetAgentTaskToComplete
+    additional_functions: 
+       - SetBasicMetadata
+       - RollBack
 
 - model: api.task
   fields:
@@ -361,7 +365,8 @@
       3) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
       4) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
       5) Do one last sense check of all columns
-    additional_function: BasicValidationForSomeDwCTerms
+    additional_functions: 
+      - BasicValidationForSomeDwCTerms
 
 - model: api.task
   fields:
@@ -383,4 +388,7 @@
       3. The DOI/URL to the dataset (returned from PublishDwC)
       3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication
       4. Another message asking if they would like to make any edits, or upload a new dataset, and then call SetAgentTaskToComplete
-    additional_function: PublishDwC
+    additional_functions: 
+      - SetBasicMetadata
+      - RollBack
+      - PublishDwC

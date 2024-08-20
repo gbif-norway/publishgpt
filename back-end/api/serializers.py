@@ -1,9 +1,5 @@
 from api.models import Dataset, Table, Agent, Message, Task
 from rest_framework import serializers
-import pandas as pd
-import openpyxl
-import tempfile
-import os
 from api.helpers import discord_bot
 
 
@@ -64,32 +60,10 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def create(self, data):
         discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT. User file: {data['file'].name}.")
-        try:
-            df = pd.read_csv(data['file'].file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape')
-            if len(df) < 4:
-                raise serializers.ValidationError(f"Your dataset has only {len(df)} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
-            dfs = {data['file'].name: df}
-        except:
-            # dfs = pd.read_excel(data['file'].file, dtype='str', sheet_name=None)
-            workbook = openpyxl.load_workbook(data['file'].file)
-            for sheet in workbook.worksheets:
-                for row in sheet.iter_rows():
-                    for cell in row:
-                        if cell.data_type == 'f':  # 'f' indicates a formula
-                            cell.value = '' # f'[FORMULA: {cell.value}]'
-                for merged_cell in list(sheet.merged_cells.ranges):
-                    min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
-                    value = sheet.cell(row=min_row, column=min_col).value
-                    sheet.unmerge_cells(str(merged_cell))
-                    for row in range(min_row, max_row + 1):
-                        for col in range(min_col, max_col + 1):
-                            sheet.cell(row=row, column=col).value = f"{value} [UNMERGED CELL]"
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-                temp_file_name = tmp.name
-                workbook.save(temp_file_name)
-            dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
-            os.remove(temp_file_name)
-
+        dfs = Dataset.get_dfs_from_user_file(data['file'].file, data['file'].name)
+        # if len(df) < 4:
+        #     raise serializers.ValidationError(f"Your dataset has only {len(df)} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
+            
         dataset = Dataset.objects.create(**data)
         tables = []
         for sheet_name, df in dfs.items():

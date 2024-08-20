@@ -6,8 +6,10 @@ from api.helpers.openai_helpers import create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
-from os import path
+import os
 import json
+import openpyxl
+import tempfile
 
 
 class Dataset(models.Model):
@@ -36,7 +38,7 @@ class Dataset(models.Model):
 
     @property
     def filename(self):
-        return path.basename(self.file.name)
+        return os.path.basename(self.file.name)
     
     def next_agent(self):
         self.refresh_from_db()
@@ -61,6 +63,32 @@ class Dataset(models.Model):
         else:
             raise Exception('Agent set for this dataset appears to be empty')
 
+    @staticmethod
+    def get_dfs_from_user_file(file, file_name):
+        try:
+            df = pd.read_csv(file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape')
+            return {file_name: df}
+        except:
+            workbook = openpyxl.load_workbook(file)
+            for sheet in workbook.worksheets:
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        if cell.data_type == 'f':  # 'f' indicates a formula
+                            cell.value = '' # f'[FORMULA: {cell.value}]'
+                for merged_cell in list(sheet.merged_cells.ranges):
+                    min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
+                    value = sheet.cell(row=min_row, column=min_col).value
+                    sheet.unmerge_cells(str(merged_cell))
+                    for row in range(min_row, max_row + 1):
+                        for col in range(min_col, max_col + 1):
+                            sheet.cell(row=row, column=col).value = f"{value} [UNMERGED CELL]"
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                temp_file_name = tmp.name
+                workbook.save(temp_file_name)
+            dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
+            os.remove(temp_file_name)
+            return dfs
+
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
@@ -71,7 +99,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     text = models.TextField()
     per_table = models.BooleanField()
     attempt_autonomous = models.BooleanField()
-    additional_function = models.CharField(max_length=300, null=True, blank=True)
+    additional_functions = models.ArrayField(models.CharField(max_length=300, null=True, blank=True))
 
     class Meta:
         get_latest_by = 'id'
@@ -80,10 +108,9 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     @property
     def functions(self):
         functions = [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
-        if self.additional_function:
-            functions.append(self.additional_function)
-        if self.name == 'adhoc_processing_final_pass':
-            functions.append(agent_tools.SetBasicMetadata.__name__)
+        if self.additional_functions:
+            for func in self.additional_functions:
+                functions.append(func)
         return functions
 
     def create_agents_with_system_messages(self, dataset:Dataset):
