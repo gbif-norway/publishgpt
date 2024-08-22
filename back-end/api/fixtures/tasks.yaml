@@ -50,7 +50,7 @@
        - occurrenceID REQUIRED (if there is something appropriate in the dataset already use that, otherwise create UUIDs for each record)
        - basisOfRecord REQUIRED (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation), [NOTE: you will almost always have to create and fill in this column for the user]
        - eventDate REQUIRED (must be ISO format) OR 3 columns: a year, month & day
-       - scientificName REQUIRED
+       - scientificName REQUIRED (Can be species, genus, or family level, or higher ranks. Often users are not able to identify to species level for all data points, in which case you should backfill with higher level taxonomy.)
        - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
        - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
        - individualCount or organismQuantity/organismQuantityType: One of these is REQUIRED IF occurrenceStatus is null(IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact). Whole numbers are probably individualCounts, decimals/fractions etc are more likely to be organismQuantity, in which case you should ask the user what the organismQuantityType is (don't assume), it might be e.g. % biomass, abundance, etc. organismQuantityType is REQUIRED if organismQuantity is populated. VERY IMPORTANT - KEEP THIS IN THE OCCURRENCE TABLE!
@@ -316,7 +316,7 @@
         nameAccordingToID: An identifier for the source in which the specific taxon concept circumscription is defined or implied. See dwc:nameAccordingTo.
         namePublishedInID: An identifier for the publication in which the dwc:scientificName was originally established under the rules of the associated dwc:nomenclaturalCode.
         taxonConceptID: An identifier for the taxonomic concept to which the record refers - not for the nomenclatural details of a dwc:Taxon.
-        scientificName: The full scientific name, with authorship and date information if known. When forming part of a dwc:Identification, this should be the name in lowest level taxonomic rank that can be determined. This term should not contain identification qualifications, which should instead be supplied in the dwc:identificationQualifier term. Egs - Coleoptera</code> (order)</li><li class="list-group-item"><code>Vespertilionidae</code> (family)</li><li class="list-group-item"><code>Manis</code> (genus)</li><li class="list-group-item"><code>Ctenomys sociabilis</code> (genus + specificEpithet)</li><li class="list-group-item"><code>Ambystoma tigrinum diaboli</code> (genus + specificEpithet + infraspecificEpithet)</li><li class="list-group-item"><code>Roptrocerus typographi (Györfi, 1952)</code> (genus + specificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>Quercus agrifolia var. oxyadenia (Torr.) J.T. Howell</code> (genus + specificEpithet + taxonRank + infraspecificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>×Agropogon littoralis (Sm.) C. E. Hubb. / Mentha ×smithiana R. A. Graham / Agrostis stolonifera L. × Polypogon monspeliensis (L.) Desf.
+        scientificName: The full scientific name, with authorship and date information if known. When forming part of a dwc:Identification, this should be the name in lowest level taxonomic rank that can be determined. Often users are not able to identify to species level for all data points, in which case you should backfill with higher level taxonomy. This term should not contain identification qualifications, which should instead be supplied in the dwc:identificationQualifier term. Egs - Coleoptera</code> (order)</li><li class="list-group-item"><code>Vespertilionidae</code> (family)</li><li class="list-group-item"><code>Manis</code> (genus)</li><li class="list-group-item"><code>Ctenomys sociabilis</code> (genus + specificEpithet)</li><li class="list-group-item"><code>Ambystoma tigrinum diaboli</code> (genus + specificEpithet + infraspecificEpithet)</li><li class="list-group-item"><code>Roptrocerus typographi (Györfi, 1952)</code> (genus + specificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>Quercus agrifolia var. oxyadenia (Torr.) J.T. Howell</code> (genus + specificEpithet + taxonRank + infraspecificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>×Agropogon littoralis (Sm.) C. E. Hubb. / Mentha ×smithiana R. A. Graham / Agrostis stolonifera L. × Polypogon monspeliensis (L.) Desf.
         acceptedNameUsage: The full name, with authorship and date information if known, of the currently valid (zoological) or accepted (botanical) dwc:Taxon.
         parentNameUsage: The full name, with authorship and date information if known, of the direct, most proximate higher-rank parent dwc:Taxon (in a classification) of the most specific element of the dwc:scientificName. Egs - Rubiaceae / Gruiformes / Testudinae
         originalNameUsage: The taxon name, with authorship and date information if known, as it originally appeared when first established under the rules of the associated dwc:nomenclaturalCode. The basionym (botany) or basonym (bacteriology) of the dwc:scientificName or the senior/earlier homonym for replaced names. Egs - Pinus abies / Gasterosteus saltatrix Linnaeus 1768
@@ -324,18 +324,17 @@
         namePublishedIn: A reference for the publication in which the dwc:scientificName was originally established under the rules of the associated dwc:nomenclaturalCode. Egs - Pearson O. P., and M. I. Christie. 1985. Historia Natural, 5(37):388 / Forel, Auguste, Diagnosies provisoires de quelques espèces nouvelles de fourmis de Madagascar, récoltées par M. Grandidier., Annales de la Societe Entomologique de Belgique, Comptes-rendus des Seances 30, 1886
         namePublishedInYear: The four-digit year in which the dwc:scientificName was published. Egs - 1915 / 2008
         higherClassification: A list (concatenated and separated) of taxa names terminating at the rank immediately superior to the referenced dwc:Taxon. Egs - Plantae | Tracheophyta | Magnoliopsida | Ranunculales | Ranunculaceae | Ranunculus / Animalia / Animalia | Chordata | Vertebrata | Mammalia | Theria | Eutheria | Rodentia | Hystricognatha | Hystricognathi | Ctenomyidae | Ctenomyini | Ctenomys
-        kingdom: The full scientific name of the kingdom in which the dwc:Taxon is classified. Egs - Animalia / Archaea / Bacteria / Chromista / Fungi / Plantae / Protozoa / Viruses
-        phylum: The full scientific name of the phylum or division in which the dwc:Taxon is classified.
-        class: The full scientific name of the class in which the dwc:Taxon is classified. Egs - Mammalia / Hepaticopsida
-        order: The full scientific name of the order in which the dwc:Taxon is classified. Egs - Carnivora / Monocleales
-        superfamily: The full scientific name of the superfamily in which the dwc:Taxon is classified. Egs - Achatinoidea / Cerithioidea / Helicoidea / Hypsibioidea / Valvatoidea / Zonitoidea
-        family: The full scientific name of the family in which the dwc:Taxon is classified. Egs - Felidae / Monocleaceae
-        subfamily: The full scientific name of the subfamily in which the dwc:Taxon is classified. Egs - Periptyctinae / Orchidoideae / Sphindociinae
-        tribe: The full scientific name of the tribe in which the dwc:Taxon is classified. Egs - Ortaliini / Arethuseae
-        subtribe: The full scientific name of the subtribe in which the dwc:Taxon is classified. Egs - Plotinini / Typhaeini
-        genus: The full scientific name of the genus in which the dwc:Taxon is classified. Egs - Puma / Monoclea
-        genericName: The genus part of the dwc:scientificName without authorship.
-        subgenus: The full scientific name of the subgenus in which the dwc:Taxon is classified. Values should include the genus to avoid homonym confusion. Egs - Strobus / Amerigo / Pilosella
+        kingdom: The name of the kingdom in which the dwc:Taxon is classified. Egs - Animalia / Archaea / Bacteria / Chromista / Fungi / Plantae / Protozoa / Viruses
+        phylum: The name of the phylum or division in which the dwc:Taxon is classified.
+        class: The name of the class in which the dwc:Taxon is classified. Egs - Mammalia / Hepaticopsida
+        order: The name of the order in which the dwc:Taxon is classified. Egs - Carnivora / Monocleales
+        superfamily: The name of the superfamily in which the dwc:Taxon is classified. Egs - Achatinoidea / Cerithioidea / Helicoidea / Hypsibioidea / Valvatoidea / Zonitoidea
+        family: The name of the family in which the dwc:Taxon is classified. Egs - Felidae / Monocleaceae
+        subfamily: The name of the subfamily in which the dwc:Taxon is classified. Egs - Periptyctinae / Orchidoideae / Sphindociinae
+        tribe: The name of the tribe in which the dwc:Taxon is classified. Egs - Ortaliini / Arethuseae
+        subtribe: The name of the subtribe in which the dwc:Taxon is classified. Egs - Plotinini / Typhaeini
+        genus: The name of the genus in which the dwc:Taxon is classified. Egs - Puma / Monoclea
+        subgenus: The name of the subgenus in which the dwc:Taxon is classified. Values should include the genus to avoid homonym confusion. Egs - Strobus / Amerigo / Pilosella
         infragenericEpithet: The infrageneric part of a binomial name at ranks above species but below genus.
         specificEpithet: The name of the first or species epithet of the dwc:scientificName. Egs - concolor / gottschei
         infraspecificEpithet: The name of the lowest or terminal infraspecific epithet of the dwc:scientificName, excluding any rank designation.
@@ -382,7 +381,7 @@
 
       1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up and get it polished.
 
-      2. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. 
+      2. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. ALWAYS check with the user for any last final changes before publishing.
       
       When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
 
@@ -390,8 +389,7 @@
       When the dataset is published, generate a congratulatory message with: 
       1. A small piece of celebratory ascii art
       3. The DOI/URL to the dataset (returned from PublishDwC)
-      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication
-      4. Another message asking if they would like to make any edits, or upload a new dataset, and then call SetAgentTaskToComplete
+      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. Let the user know that future functionality will let them edit the dataset, and then call SetAgentTaskToComplete.
     additional_functions: 
       - SetBasicMetadata
       - RollBack
