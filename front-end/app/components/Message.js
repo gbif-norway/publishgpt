@@ -22,7 +22,7 @@ const Message = ({ message }) => {
         <div className="dataset-info-wrapper" id={message.id}>
             <div className={`${message.role}-message d-flex`}>
                 {message.role == 'user' ? (
-                    <div class="d-flex justify-content-end user-message">
+                    <div className="d-flex justify-content-end user-message">
                         <div className="inner-message ">
                             {message.openai_obj.content}
                         </div>

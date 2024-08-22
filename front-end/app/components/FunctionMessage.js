@@ -7,10 +7,15 @@ import { CodeBlock, dracula } from "react-code-blocks";
 function FunctionMessage({ message_content, message_id, is_python }) {
   const [open, setOpen] = useState(false);
   let content = message_content
-  if(message_content.replace(/[ \t\n\r]/gm,'').startsWith('{"code":"')) { 
-    console.log('starts with code ' + message_id);
-    content = JSON.parse(message_content);
-    content = content['code']
+  if(typeof message_content === 'string') {
+    if(message_content.replace(/[ \t\n\r]/gm,'').startsWith('{"code":"')) { 
+      console.log('starts with code ' + message_id);
+      content = JSON.parse(message_content);
+      content = content['code']
+    }
+  }
+  else {
+    content = JSON.stringify(content)
   }
   console.log(content);
 

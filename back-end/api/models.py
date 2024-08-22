@@ -10,6 +10,7 @@ import os
 import json
 import openpyxl
 import tempfile
+import re
 
 
 class Dataset(models.Model):
@@ -99,7 +100,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     text = models.TextField()
     per_table = models.BooleanField()
     attempt_autonomous = models.BooleanField()
-    additional_functions = models.ArrayField(models.CharField(max_length=300, null=True, blank=True))
+    additional_functions = ArrayField(models.CharField(max_length=300, null=True, blank=True), null=True, blank=True)
 
     class Meta:
         get_latest_by = 'id'
@@ -253,7 +254,11 @@ class Agent(models.Model):
     
     def run_function(self, fn):
         function_model_class = getattr(agent_tools, fn.name)
-        fn_args = json.loads(fn.arguments, strict=False)
+        fnargs = fn.arguments
+        if fn.name == 'Python':
+            if not re.sub(r'[\s"\']', '', fn.arguments).startswith('{code'):
+                fnargs = json.dumps({'code': fn.arguments})
+        fn_args = json.loads(fnargs, strict=False)
         function_model_obj = function_model_class(**fn_args)
         return function_model_obj.run()
 

@@ -12,6 +12,9 @@ import uuid
 import utm
 from dateutil.parser import parse, ParserError
 from django.template.loader import render_to_string
+from django.db.models import Q
+from api.helpers import discord_bot
+import json
 
 
 # Allowed Darwin Core terms
@@ -72,11 +75,11 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
     """
     agent_id: PositiveInt = Field(...)
 
-    def validate_and_format_event_dates(df):
+    def validate_and_format_event_dates(self, df):
         failed_indices = []
 
         if "eventDate" in df.columns:
-            for idx, date_value in df["eventDate"].iteritems():
+            for idx, date_value in df["eventDate"].items():
                 try:
                     if isinstance(date_value, pd.Timestamp):  # Already a datetime object
                         formatted_date = date_value.isoformat()
@@ -190,15 +193,43 @@ class Python(OpenAIBaseModel):
 
 class RollBack(OpenAIBaseModel):
     """
-    USE WITH CAUTION! Resets to the original dataframes loaded into pandas from the Excel sheet uploaded by the user. ALL CHANGES WILL BE UNDONE. Use as a last resort if data columns have been accidentally deleted or lost.
-    Returns the IDs of the new, reloaded Tables (note the old Tables will be deleted)
+    USE WITH EXTREME CAUTION! RESETS TABLES COMPLETELY to the original dataframes loaded into pandas from the Excel sheet uploaded by the user. 
+    ALL CHANGES WILL BE UNDONE. Use as a last resort if data columns have been accidentally deleted or lost.
+    Returns: 
+     - the IDs of the new, reloaded Tables (note the old Tables will be deleted)
+     - a list of all Python code snippets which have been run on the old deleted Tables up till now, and the results given after running them. NOTE: code may not always have executed fully due to errors, so check the results as well. 
     """
     agent_id: PositiveInt = Field(...)
 
     def run(self):
-        from api.models import Agent
+        from api.models import Agent, Dataset, Table, Message
         agent = Agent.objects.get(id=self.agent_id)
-        # agent.dataset.table_set.all().delete()
+        agent.dataset.table_set.all().delete()
+        dfs = Dataset.get_dfs_from_user_file(agent.dataset.file, agent.dataset.file.name)
+        tables = []
+        for sheet_name, df in dfs.items():
+            if not df.empty:
+                tables.append(Table.objects.create(dataset=agent.dataset, title=sheet_name, df=df))
+
+        # Get all code run 
+        code_snippets = []
+        agents = Agent.objects.filter(dataset_id=agent.dataset.id)
+        function_messages = Message.objects.filter(
+            agent__in=agents,
+            openai_obj__tool_calls__contains=[{'function': {'name': 'Python'}}]
+        )
+        for msg in function_messages:
+            for tool_call in msg.openai_obj['tool_calls']:
+                if tool_call['function']['name'] == 'Python':
+                    result = Message.objects.filter(agent__in=agents, openai_obj__tool_call_id=tool_call['id']).first()
+                    snippet = {
+                        'code_run': tool_call['function']['arguments'],
+                        'results': result.openai_obj['content']
+                    }
+                    code_snippets.append(snippet)
+        
+        discord_bot.send_discord_message(f"Dataset tables rolled back for Dataset id {agent.dataset.id}.")
+        return json.dumps({'new_table_ids': [t.id for t in tables], 'code_snippets': code_snippets})
 
 
 class SetBasicMetadata(OpenAIBaseModel):

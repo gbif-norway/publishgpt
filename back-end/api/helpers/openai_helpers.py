@@ -16,7 +16,10 @@ def create_chat_completion(messages, functions=None, temperature=0.7, model='gpt
     print(f'---Calling GPT {model}---')
     openai_args = { 'model': model, 'temperature': temperature, 'messages': [m.openai_obj for m in messages] }
     if functions:
-        openai_args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
+        # Look into openai.pydantic_function_tool https://platform.openai.com/docs/guides/function-calling/function-calling-with-structured-outputs
+        # and using https://platform.openai.com/docs/guides/structured-outputs/introduction
+        # https://github.com/openai/openai-python/blob/main/helpers.md
+        openai_args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]  
     print(openai_args)
     response = query_api(openai_args)
     pprint(f'---Response---\n{response}\n---')

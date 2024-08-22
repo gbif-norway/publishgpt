@@ -141,6 +141,8 @@
        - Note that the 'what' (species AND either presence/absence, individualCount or organismQuantity), 'where' (location), 'when' (dates) and 'who' (collector/observer, if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one) 
        - The next Tasks will focus on converting all the columns to Darwin Core terms and validating the data (including dates), so your main focus should be to organise and structure the data
        - Summarise your final result tables and the work you have done to the user before calling SetAgentTaskToComplete
+
+      NOTE: By the end of this task you should have a MAXIMUM of TWO TABLES (either 1 or 2 Tables).
     additional_functions: 
        - SetBasicMetadata
        - RollBack
@@ -360,13 +362,15 @@
       ---
 
       Take a deep breath, and methodically go through each of the columns in this Table: 
-      1) Run BasicValidationForSomeDwCTerms and go through all of the unmatched column names and either try to match them to a Darwin Core term (do this yourself if it's reasonably clear, otherwise discuss with the user)
-      2) Fix any formatting issues in the validation output you received from BasicValidationForSomeDwCTerms. Make some intelligent guesses and try to correct things on your own, but ask the user if there's ambiguity.
-      3) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
-      4) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
-      5) Do one last sense check of all columns
+      1) Ensure there is a maximum of TWO Tables - one Occurrence core and one optional Measurement or Fact extension table. 
+      2) Run BasicValidationForSomeDwCTerms and go through all of the unmatched column names and either try to match them to a Darwin Core term (do this yourself if it's reasonably clear, otherwise discuss with the user)
+      3) Fix any formatting issues in the validation output you received from BasicValidationForSomeDwCTerms. Make some intelligent guesses and try to correct things on your own, but ask the user if there's ambiguity.
+      4) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
+      5) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
+      6) Do one last sense check of all columns
     additional_functions: 
       - BasicValidationForSomeDwCTerms
+      - RollBack
 
 - model: api.task
   fields:
@@ -378,7 +382,7 @@
 
       1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up and get it polished.
 
-      2. With the restructured data in mind, are there any changes that you feel should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. 
+      2. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. 
       
       When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
 
