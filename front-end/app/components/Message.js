@@ -11,12 +11,12 @@ const Message = ({ message }) => {
         python_calls = message.openai_obj.tool_calls.filter(
             function (tool_call) { return tool_call.function.name == 'Python' }
         )
-        console.log(python_calls);
+        // console.log(python_calls);
         // If there's no python calls, we dont show it 
         if (python_calls.length == 0) { return null }
 
         // Note that all function call results (including setBasicMedata etc are going to show)
-    } 
+    }   
 
     return (
         <div className="dataset-info-wrapper" id={message.id}>

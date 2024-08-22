@@ -130,11 +130,18 @@ const Dataset = ({ initialDatasetId }) => {
                   ))}
                 </Accordion>
               }
-              {dataset.visible_agent_set.at(-1).completed_at != null && (
+              {(dataset.visible_agent_set.at(-1).completed_at != null && dataset.published_at == null) && (
                 <div className="message user-input-loading">
                   <div className="d-flex align-items-center">
                     <strong>Loading next task</strong>
                     <div className="spinner-border ms-auto" role="status" aria-hidden="true"></div>
+                  </div>
+                </div>
+              )}
+              {dataset.published_at != null && (
+                <div className="message user-message">
+                  <div className="d-flex align-items-center">
+                  <div class="alert alert-danger" role="alert"><strong>Dataset has now been published. Editing and updating options will be available in the future. But for now, thanks for trying out ChatIPT.</strong></div>
                   </div>
                 </div>
               )}

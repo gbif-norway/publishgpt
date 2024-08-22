@@ -17,7 +17,7 @@ function FunctionMessage({ message_content, message_id, is_python }) {
   else {
     content = JSON.stringify(content)
   }
-  console.log(content);
+  // console.log(content);
 
   return (
     <>
