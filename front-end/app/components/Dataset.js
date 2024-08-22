@@ -141,7 +141,7 @@ const Dataset = ({ initialDatasetId }) => {
               {dataset.published_at != null && (
                 <div className="message user-message">
                   <div className="d-flex align-items-center">
-                  <div class="alert alert-danger" role="alert"><strong>Dataset has now been published. Editing and updating options will be available in the future. But for now, thanks for trying out ChatIPT.</strong></div>
+                  <div class="alert alert-success" role="alert"><strong>Dataset has now been published. Editing and updating options will be available in the future. But for now, thanks for trying out ChatIPT.</strong></div>
                   </div>
                 </div>
               )}
