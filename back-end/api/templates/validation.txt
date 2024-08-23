@@ -11,5 +11,17 @@ Basic validation reports:
         {% if validation.validation_errors.decimalLongitude %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.decimalLongitude|length }}) indices: {{ validation.validation_errors.decimalLongitude|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
         - eventDate: Checked dates are in an acceptable ISO format.
         {% if validation.validation_errors.eventDate %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.eventDate|length }}) indices: {{ validation.validation_errors.eventDate|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
-    
+        {% if validation.validation_errors.individualCount %}
+        - individualCount: Checked this is not a decimal value.
+        Found rows with incorrect values, first 30 (of {{ validation.validation_errors.individualCount|length }}) indices: {{ validation.validation_errors.individualCount|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+
+        {% if validation.general_errors %} 
+        General errors: {% for column, error in validation.general_errors.items %}
+        - {{column}}: {{error}}
+        {% endfor %}
+        {% endif %}
 {% endfor %}
+
+{% if tables|length > 2 %}Error - there are more than 2 Tables, delete or if necessary the extra Table. {% endif %}
+Remember: there should either 1 or 2 Tables, an Occurrence core Table and one additional optional MeasurementOrFacts Table. 
+

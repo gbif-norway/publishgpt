@@ -23,6 +23,7 @@ class Dataset(models.Model):
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     dwca_url = models.CharField(max_length=2000, blank=True)
+    gbif_url = models.CharField(max_length=2000, blank=True)
     user_language = models.CharField(max_length=100, blank=True)
 
     class DWCCore(models.TextChoices):
@@ -280,7 +281,6 @@ class Message(models.Model):
     
     @property
     def role(self):
-        print(self.openai_obj)
         return self.Role(self.openai_obj['role'])
 
     class Meta:

@@ -141,7 +141,14 @@ const Dataset = ({ initialDatasetId }) => {
               {dataset.published_at != null && (
                 <div className="message user-message">
                   <div className="d-flex align-items-center">
-                  <div class="alert alert-success" role="alert"><strong>🎉 Your dataset has now been published! 🎉<hr />Editing and updating options will be available in the future. But for now, thanks for trying out ChatIPT.</strong></div>
+                  <div class="alert alert-success" role="alert">
+                    <strong>🎉 Your dataset has now been published! 🎉</strong>
+                    <hr />
+                    <a href={dataset.gbif_url} className="btn btn-outline-primary" role="button" aria-pressed="true">View on GBIF</a> 
+                    &nbsp;
+                    <a href={dataset.dwca_url} className="btn btn-outline-secondary" role="button" aria-pressed="true">Download your Darwin Core Archive file</a>
+                    <br /><br />
+                    Editing and updating options will be available in the future. <strong>But for now, thanks for trying out ChatIPT.</strong></div>
                   </div>
                 </div>
               )}

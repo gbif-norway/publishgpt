@@ -52,11 +52,17 @@
        - eventDate REQUIRED (must be ISO format) OR 3 columns: a year, month & day
        - scientificName REQUIRED (Can be species, genus, or family level, or higher ranks. Often users are not able to identify to species level for all data points, in which case you should backfill with higher level taxonomy.)
        - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
-       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
-       - individualCount or organismQuantity/organismQuantityType: One of these is REQUIRED IF occurrenceStatus is null(IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact). Whole numbers are probably individualCounts, decimals/fractions etc are more likely to be organismQuantity, in which case you should ask the user what the organismQuantityType is (don't assume), it might be e.g. % biomass, abundance, etc. organismQuantityType is REQUIRED if organismQuantity is populated. VERY IMPORTANT - KEEP THIS IN THE OCCURRENCE TABLE!
        - locality (REQUIRED if decimalLatitude and decimalLongitude are null)
        - decimalLatitude and decimalLongitude (REQUIRED if locality is null)
        - geodeticDatum (SRS or geodeticDatum pertaining to decimalLatitude and decimalLongitude, REQUIRED if decimalLatitude and decimalLongitude are populated)
+
+      The next 3 fields are to do with WHAT has been seen (in terms of quantity). This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact - VERY IMPORTANT - KEEP THIS INFO IN THE OCCURRENCE TABLE! 
+      We REQUIRE least ONE of these fields:
+       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
+       - individualCount (MUST be a whole number, otherwise if you find a decimal value it is very important you use organismQuantity & organismQuantityType for decimals. DO NOT TRANSFORM THE DATA TO A WHOLE NUMBER.)
+       - organismQuantity & organismQuantityType (these are two columns which are always used together; if organismQuantityType is not present or obvious **ALWAYS** ask the user it should be, it might be e.g. % biomass, abundance, etc. DO NOT make assumptions about this!)
+       
+       Pick and choose from these other common Occurrence DwC fields: 
        - locationRemarks
        - waterBody (if a marine or aquatic occurrence, e.g. Baltic Sea, Hudson River)
        - islandGroup
@@ -91,7 +97,7 @@
        - kingdom
        - taxonRemarks
 
-      MeasurementOrFact DwC fields are a little different and limited to ONLY the following fields:
+      MeasurementOrFact DwC fields are a little different and limited to ONLY the following fields (Do not include organismQuantity or individualCount here):
        - occurrenceID (REQUIRED - an ID which links each measurement to a record in the occurrence core Table)
        - measurementType (REQUIRED e.g. tail length, temperature, UV-light trap)
        - measurementValue (REQUIRED e.g. 120, 25, 360)
@@ -176,7 +182,7 @@
         recordNumber: An identifier given to the dwc:Occurrence at the time it was recorded. Often serves as a link between field notes and a dwc:Occurrence record, such as a specimen collector's number.
         recordedBy: A list (concatenated and separated) of names of people, groups, or organizations responsible for recording the original dwc:Occurrence. The primary collector or observer, especially one who applies a personal identifier (dwc:recordNumber), should be listed first. Egs - José E. Crespo
         recordedByID: A list (concatenated and separated) of the globally unique identifier for the person, people, groups, or organizations responsible for recording the original dwc:Occurrence.
-        individualCount: The number of individuals present at the time of the dwc:Occurrence. Egs - 0 / 1 / 25
+        individualCount: The number of individuals present at the time of the dwc:Occurrence. This should be a whole number. Egs - 0 / 1 / 25, if it's a decimal then rename this column to organismQuantity and ask the user what organismQuantityType is. 
         organismQuantity: A number or enumeration value for the quantity of dwc:Organisms.
         organismQuantityType: The type of quantification system used for the quantity of dwc:Organisms.
         sex: The sex of the biological individual(s) represented in the dwc:Occurrence. Egs - female / male / hermaphrodite
@@ -366,7 +372,7 @@
       3) Fix any formatting issues in the validation output you received from BasicValidationForSomeDwCTerms. Make some intelligent guesses and try to correct things on your own, but ask the user if there's ambiguity.
       4) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
       5) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
-      6) Do one last sense check of all columns
+      6) Take nother deep breath, and look over the definitions of the Darwin Core Terms above, then look at each of the columns in each Table in turn. Do one last sense check of everything, check for any requirements, any data which does not fit the column it has been put into, etc. Do your last set of fixes. If you need to, ask the user about any missing or confusing data points.
     additional_functions: 
       - BasicValidationForSomeDwCTerms
       - RollBack
@@ -377,19 +383,21 @@
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully inspect these preprocessed dataframes. They should adhere to the Darwin Core standard and be  ready for publication. 
+      Carefully inspect these processed Tables. There should be an Occurrence core Table and one additional optional Measurement Or Fact Table - no others. Both should adhere to the Darwin Core standard and be ready for publication. 
 
-      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up and get it polished.
+      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core Table, not in the Measurement or Fact Table (if there is one). Fix everything up and get it polished.
 
       2. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. ALWAYS check with the user for any last final changes before publishing.
       
       When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
 
       Be sure to warn the user that the publication process may take some time. 
-      When the dataset is published, generate a congratulatory message with: 
+      IMPORTANT - When the dataset is published, generate a congratulatory message with: 
       1. A small piece of celebratory ascii art
       3. The DOI/URL to the dataset (returned from PublishDwC)
-      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. Let the user know that future functionality will let them edit the dataset, and then call SetAgentTaskToComplete.
+      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. Let the user know that future functionality will let them edit the dataset.
+      4. Finally, SetAgentTaskToComplete after the user has acknowledged your message.
+
     additional_functions: 
       - SetBasicMetadata
       - RollBack
