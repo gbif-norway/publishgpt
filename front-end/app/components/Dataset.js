@@ -93,7 +93,7 @@ const Dataset = ({ initialDatasetId }) => {
                 </div>
                 <div className="flex-grow-1 ms-3">
                   <div className="inner-message">
-                    So, you want to publish some biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>? I can help you with that! Let's start by taking a look at your data file. 
+                    So, you want to publish some biodiversity data to <a href="https://gbif.org" target="_blank" rel="noreferrer">gbif.org</a>? I can help you with that! Let's start by taking a look at your data file <small>(<a href="https://storage.gbif-no.sigma2.no/misc/static/TestDatasetChatIPT.xlsx">test data file also available</a>)</small>. 
                     <hr /><p><small>By the way, I'm going to start our conversation in English, but feel free to talk to me in your preferred language.</small></p>
                   </div>
                 </div>
