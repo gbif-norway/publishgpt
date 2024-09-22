@@ -37,16 +37,21 @@ def upload_file(client, bucket_name, object_name, local_path):
 
 def get_id_col_index(df, col_name='occurrenceID'):
     columns_lower = [col.lower() for col in df.columns]
-    col_name = col_name.lower()
 
-    if col_name in columns_lower:
-        return columns_lower.index(col_name)
+    if col_name.lower() in columns_lower:
+        ind = columns_lower.index(col_name.lower())
+        if not df[df.columns[ind]].is_unique:
+            df[df.columns[ind]] = [str(uuid.uuid4()) for _ in range(len(df))]
+        return ind
     elif 'id' in columns_lower:
-        return columns_lower.index('id')
+        ind = columns_lower.index('id')
+        if not df[df.columns[ind]].is_unique:
+            df[df.columns[ind]] = [str(uuid.uuid4()) for _ in range(len(df))]
+        return ind
     else:
         # No ID col exists, create with random UUIDs
-        df['id'] = [str(uuid.uuid4()) for _ in range(len(df))]
-        return df.columns.get_loc('id')
+        df[col_name] = [str(uuid.uuid4()) for _ in range(len(df))]
+        return df.columns.get_loc(col_name)
 
 def upload_dwca(df_core, title, description, df_extension=None):
     archive = Archive()
