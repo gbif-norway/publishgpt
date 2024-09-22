@@ -25,12 +25,14 @@ const Dataset = ({ initialDatasetId }) => {
   const [loading, setLoading] = useState(false);  
 
   const refreshTables = useCallback(async () => {
+    console.log('refreshing tables');
     const tables = await fetchData(`${config.baseApiUrl}/tables?dataset=${activeDatasetID}`);
     const updatedTables = tables.map(item => {
       const df = JSON.parse(item.df_json);
       delete item.df_json;
       return { ...item, df };
     });
+    console.log(updatedTables);
     setTables(updatedTables);
     const sortedTables = tables.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     setActiveTableId(sortedTables[0]?.id);
@@ -49,6 +51,11 @@ const Dataset = ({ initialDatasetId }) => {
       // If the dataset is published, don't do any more
       if(refreshedDataset.published_at != null && refreshedDataset.visible_agent_set.at(-1).completed_at != null) { return }
       console.log('dataset is not yet published')
+
+      // If the dataset is not suitable for publication, don't do any more
+      console.log('suitable for publication on gbif:')
+      console.log(refreshedDataset.rejected_at);
+      if(refreshedDataset.rejected_at != null) { return }
 
       // If the latest agent message is not an assistant message, we need to refresh again
       if(refreshedDataset.visible_agent_set.at(-1).message_set.at(-1).role != 'assistant') {
@@ -75,6 +82,7 @@ const Dataset = ({ initialDatasetId }) => {
   useEffect(() => {if (initialDatasetId) { initialLoadDataset(initialDatasetId); }}, [initialDatasetId]);
 
   const initialLoadDataset = async (datasetId) => {
+    console.log(`loading dataset with ${config.baseApiUrl}/datasets/${datasetId}/refresh`);
     const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${datasetId}/refresh`);
     setActiveDatasetID(datasetId); 
     setDataset(refreshedDataset);
@@ -118,7 +126,7 @@ const Dataset = ({ initialDatasetId }) => {
               <div className="publishing-heading">Publishing {dataset.file.split(/\//).pop()} (original file name) <span className="badge text-bg-secondary">Started {new Date(dataset.created_at).toLocaleString()}</span></div>
               {dataset.title && (<div className="alert alert-info" role="alert"><strong>Title</strong>: {dataset.title}<br /><strong>Description</strong>: {dataset.description}</div>)}
               {dataset.structure_notes && (<div className="alert alert-dark" role="alert">Notes about the structure: {dataset.structure_notes}</div>)}
-              {dataset.rejected_at && (<div className="alert alert-warning" role="alert"> This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.</div>)}
+              {dataset.rejected_at && (<div className="alert alert-warning" role="alert">This dataset cannot be published on GBIF as it does not contain valid occurrence or checklist data with all the required fields. Please try uploading a new dataset</div>)}
             </div>
           </div>
           <div className="row mx-auto p-4">
@@ -152,7 +160,7 @@ const Dataset = ({ initialDatasetId }) => {
                   </div>
                 </div>
               )}
-              {dataset.rejected_at && (<div className="alert alert-warning" role="alert"> This dataset cannot be published on GBIF as it does not contain occurrence or checklist data. Please try uploading a new dataset.</div>)}
+              {dataset.rejected_at && (<div className="alert alert-warning" role="alert">This dataset cannot be published on GBIF as it does not contain valid occurrence or checklist data with all the required fields. Please try uploading a new dataset</div>)}
             </div>
             <div className="col-6">
               <div className="sticky-top">
