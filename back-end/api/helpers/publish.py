@@ -7,6 +7,7 @@ from minio import Minio
 from tenacity import retry, stop_after_attempt, wait_fixed
 import requests
 from requests.auth import HTTPBasicAuth
+import uuid
 
 def make_eml(title, description):
     tree = ET.parse('api/templates/eml.xml')
@@ -34,13 +35,27 @@ def make_eml(title, description):
 def upload_file(client, bucket_name, object_name, local_path):
     client.fput_object(bucket_name, object_name, local_path)
 
+def get_id_col_index(df, col_name='occurrenceID'):
+    columns_lower = [col.lower() for col in df.columns]
+    col_name = col_name.lower()
+
+    if col_name in columns_lower:
+        return columns_lower.index(col_name)
+    elif 'id' in columns_lower:
+        return columns_lower.index('id')
+    else:
+        # No ID col exists, create with random UUIDs
+        df['id'] = [str(uuid.uuid4()) for _ in range(len(df))]
+        return df.columns.get_loc('id')
+
 def upload_dwca(df_core, title, description, df_extension=None):
     archive = Archive()
     archive.eml_text = make_eml(title, description)
-    core_table = Table(spec='https://rs.gbif.org/core/dwc_occurrence_2022-02-02.xml', data=df_core, id_index=0, only_mapped_columns=True)
+
+    core_table = Table(spec='https://rs.gbif.org/core/dwc_occurrence_2022-02-02.xml', data=df_core, id_index=get_id_col_index(df_core, 'occurrenceID'), only_mapped_columns=True)
     archive.core = core_table
     if df_extension is not None:
-        extension_table = Table(spec='https://rs.gbif.org/extension/dwc/measurements_or_facts_2022-02-02.xml', data=df_extension, id_index=0)
+        extension_table = Table(spec='https://rs.gbif.org/extension/dwc/measurements_or_facts_2022-02-02.xml', data=df_extension, id_index=get_id_col_index(df_extension, 'measurementID'))
         archive.extensions.append(extension_table)
 
     file_name = datetime.now().strftime('output-%Y-%m-%d-%H%M%S') + '.zip'

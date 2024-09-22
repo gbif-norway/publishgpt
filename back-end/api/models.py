@@ -8,6 +8,8 @@ import pandas as pd
 from django.template.loader import render_to_string
 import os
 import json
+import ujson
+import logging
 import openpyxl
 import tempfile
 import re
@@ -141,6 +143,30 @@ class Table(models.Model):
     def df_json(self):
         df = self.make_columns_unique(self.df)
         return df.to_json(orient='records', date_format='iso')
+        data = df.to_dict(orient='records')
+
+        try:
+            return ujson.dumps(data)
+        except Exception as e1:
+            logging.warning(f"ujson serialization failed: {e1}")
+            try:
+                return json.dumps(data, ensure_ascii=False, default=str)
+            except Exception as e2:
+                logging.warning(f"json serialization failed: {e2}")
+                def clean_strings_in_data(data):
+                    def clean_value(value):
+                        if isinstance(value, str):
+                            return value.encode('utf-8', 'replace').decode('utf-8')
+                        else:
+                            return value
+                    return [{k: clean_value(v) for k, v in record.items()} for record in data]
+
+                cleaned_data = clean_strings_in_data(data)
+                try:
+                    return json.dumps(cleaned_data, ensure_ascii=False, default=str)
+                except Exception as e3:
+                    logging.error(f"Serialization failed after cleaning data: {e3}")
+                    raise Exception(f"Serialization failed after cleaning data: {e3}")
 
     def _snapshot_df(self, df_obj):
         max_rows, max_columns, max_str_len = 10, 10, 70
@@ -211,7 +237,7 @@ class Agent(models.Model):
         agent = cls.objects.create(dataset=dataset, task=task)
         agent.tables.set([t.id for t in tables])
         system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'all_tasks_count': Task.objects.all().count() })
-        print(system_message_text)
+        # print(system_message_text)
         Message.objects.create(agent=agent, openai_obj={'content': system_message_text, 'role': Message.Role.SYSTEM})
 
     def next_message(self):
