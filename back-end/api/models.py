@@ -13,6 +13,7 @@ import logging
 import openpyxl
 import tempfile
 import re
+import numpy as np
 
 
 class Dataset(models.Model):
@@ -142,31 +143,20 @@ class Table(models.Model):
     @property
     def df_json(self):
         df = self.make_columns_unique(self.df)
-        return df.to_json(orient='records', date_format='iso')
-        data = df.to_dict(orient='records')
-
+        # return df.to_json(orient='records', date_format='iso')
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.where(pd.notnull(df), None)
+        def clean_strings_in_df(df):
+            for col in df.select_dtypes(include=['object']).columns:
+                df[col] = df[col].astype(str).apply(
+                    lambda x: x.encode('utf-8', 'replace').decode('utf-8')
+                )
+            return df
+        df = clean_strings_in_df(df)
         try:
-            return ujson.dumps(data)
-        except Exception as e1:
-            logging.warning(f"ujson serialization failed: {e1}")
-            try:
-                return json.dumps(data, ensure_ascii=False, default=str)
-            except Exception as e2:
-                logging.warning(f"json serialization failed: {e2}")
-                def clean_strings_in_data(data):
-                    def clean_value(value):
-                        if isinstance(value, str):
-                            return value.encode('utf-8', 'replace').decode('utf-8')
-                        else:
-                            return value
-                    return [{k: clean_value(v) for k, v in record.items()} for record in data]
-
-                cleaned_data = clean_strings_in_data(data)
-                try:
-                    return json.dumps(cleaned_data, ensure_ascii=False, default=str)
-                except Exception as e3:
-                    logging.error(f"Serialization failed after cleaning data: {e3}")
-                    raise Exception(f"Serialization failed after cleaning data: {e3}")
+            return df.to_json(orient='records', date_format='iso', force_ascii=False)
+        except Exception as e:
+            raise Exception(f"Serialization failed after cleaning data: {e}")
 
     def _snapshot_df(self, df_obj):
         max_rows, max_columns, max_str_len = 10, 10, 70
