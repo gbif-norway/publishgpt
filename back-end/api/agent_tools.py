@@ -160,9 +160,19 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
                 general_errors['organismQuantity'] = 'organismQuantityType is a column in this Table, but the corresponding required column "organismQuantity" is missing.'
             if 'basisOfRecord' not in df.columns:
                 general_errors['basisOfRecord'] = 'basisOfRecord is missing from this Table (this is fine if the core is Taxon or if this Table is a Measurement or Fact extension)'
-            
+            if 'scientificName' not in df.columns:
+                general_errors['scientificName'] = 'scientificName is missing from this Table (this is fine if this Table is a Measurement or Fact extension)'
+            if 'occurrenceID' not in df.columns:
+                general_errors['occurrenceID'] = 'occurrenceID is missing from this Table and is a required field. If this is a Measurement or Fact table, the occurrenceID column needs to link back to the core occurrence table.'
+            if 'id' not in df.columns and 'ID' not in df.columns and 'measurementID' not in df.columns:
+                # It is an occurrence core table
+                if not df['occurrenceID'].is_unique:
+                    general_errors['occurrenceID'] = f'This appears to be an occurrence core table, but occurrenceID is not unique! If it is not an occurrence core table you can ignore this error, otherwise use e.g. `df["occurrenceID"] = [str(uuid.uuid4()) for _ in range(len(df))]` to force a unique value for each row. Be careful of any extension tables with linkages using the ID column.'
+
             table_results[table.id]['general_errors'] = general_errors
         
+        print('validation report:')
+        print(render_to_string('validation.txt', context={ 'tables': table_results }))
         return render_to_string('validation.txt', context={ 'tables': table_results })
 
 
@@ -312,6 +322,9 @@ class PublishDwC(OpenAIBaseModel):
             core_table = next((table for table in tables if 'scientificName' in table.df.columns), None)
             if not core_table:
                 core_table = next((table for table in tables if 'kingdom' in table.df.columns), tables[0])
+            if not core_table:
+                return 'Validation error: The occurrence core table should contain species names/identifications in a field called scientificName. If species identifications are not known, this can even be as broad as kingdom level, i.e. df["scientificName"] = "Animalia"'
+
             extension_tables = [table for table in tables if table != core_table]
             mof_table =  extension_tables[0] if extension_tables else None
             if mof_table:

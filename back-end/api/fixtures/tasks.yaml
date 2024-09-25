@@ -385,20 +385,22 @@
     text: |-
       Carefully inspect these processed Tables. There should be an Occurrence core Table and one additional optional Measurement Or Fact Table - no others. Both should adhere to the Darwin Core standard and be ready for publication. 
 
-      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core Table, not in the Measurement or Fact Table (if there is one). Fix everything up and get it polished.
+      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core Table, not in the Measurement or Fact Table (if there is one). For the Occurrence core Table, there should be an occurrenceID column with unique values. Fix everything up and get it polished.
 
-      2. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. ALWAYS check with the user for any last final changes before publishing.
+      2. Run BasicValidationForSomeDwCTerms and make sure there are no serious validation errors. 
+
+      3. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary edits. 
+
+      4. ALWAYS check with the user for any last final changes before publishing, and explain to them clearly that you are now about to publish their data to the GBIF testing platform.
+
+      5. Run PublishDwC 
+
+      6. Notify the user that the dataset is published, generate a congratulatory message with the DOI/URL to the dataset (returned from PublishDwC) and a sentence to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. In the same message also let the user know that future functionality will let them edit the dataset.
       
-      When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
-
-      Be sure to warn the user that the publication process may take some time. 
-      IMPORTANT - When the dataset is published, generate a congratulatory message with: 
-      1. A small piece of celebratory ascii art
-      3. The DOI/URL to the dataset (returned from PublishDwC)
-      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. Let the user know that future functionality will let them edit the dataset.
-      4. Finally, SetAgentTaskToComplete after the user has acknowledged your message.
+      7. Finally, SetAgentTaskToComplete after the user has acknowledged your message.
 
     additional_functions: 
       - SetBasicMetadata
+      - BasicValidationForSomeDwCTerms
       - RollBack
       - PublishDwC

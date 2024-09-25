@@ -40,13 +40,9 @@ def get_id_col_index(df, col_name='occurrenceID'):
 
     if col_name.lower() in columns_lower:
         ind = columns_lower.index(col_name.lower())
-        if not df[df.columns[ind]].is_unique:
-            df[df.columns[ind]] = [str(uuid.uuid4()) for _ in range(len(df))]
         return ind
     elif 'id' in columns_lower:
         ind = columns_lower.index('id')
-        if not df[df.columns[ind]].is_unique:
-            df[df.columns[ind]] = [str(uuid.uuid4()) for _ in range(len(df))]
         return ind
     else:
         # No ID col exists, create with random UUIDs
