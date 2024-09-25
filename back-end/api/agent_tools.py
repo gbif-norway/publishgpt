@@ -168,7 +168,7 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
                 # It is an occurrence core table
                 if 'occurrenceID' in df.columns:
                     if not df['occurrenceID'].is_unique:
-                        general_errors['occurrenceID'] = f'Is this an occurrence core table? If it is, ooccurrenceID must be unique - use e.g. `df["occurrenceID"] = [str(uuid.uuid4()) for _ in range(len(df))]` to force a unique value for each row. Be careful of any extension tables with linkages using the ID column.'
+                        general_errors['occurrenceID'] = f'Is this an occurrence core table? If it is, occurrenceID must be unique - use e.g. `df["occurrenceID"] = [str(uuid.uuid4()) for _ in range(len(df))]` to force a unique value for each row. Be careful of any extension tables with linkages using the ID column.'
 
             table_results[table.id]['general_errors'] = general_errors
         
