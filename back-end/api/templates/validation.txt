@@ -20,6 +20,12 @@ Basic validation reports:
         - {{column}}: {{error}}
         {% endfor %}
         {% endif %}
+
+        {% if validation.table_errors %} 
+        {% for error in validation.table_errors %}
+        General table-wide error: {{error}}
+        {% endfor %}
+        {% endif %}
 {% endfor %}
 
 {% if tables|length > 2 %}Error - there are more than 2 Tables, delete or if necessary the extra Table. {% endif %}

@@ -63,7 +63,7 @@ class DatasetSerializer(serializers.ModelSerializer):
         dfs = Dataset.get_dfs_from_user_file(data['file'].file, data['file'].name)
         for sheet_name, df in dfs.items():
             if len(df) < 2:
-                raise serializers.ValidationError(f"Your sheet {sheet_name} has only {len(df)} row(s), are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication. Please refresh and try again.")
+                raise serializers.ValidationError(f"Your sheet {sheet_name} has only {len(df) + 1} row(s), are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication. Please refresh and try again.")
                 
         dataset = Dataset.objects.create(**data)
         tables = []

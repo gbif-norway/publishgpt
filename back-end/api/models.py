@@ -74,7 +74,7 @@ class Dataset(models.Model):
         try:
             file_content = file.read()
             file_io = io.StringIO(file_content.decode('utf-8', errors='surrogateescape'))
-            df = pd.read_csv(file_io, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', header=None)
+            df = pd.read_csv(file_io, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', header=0)
             return {file_name: df}
         except:
             workbook = openpyxl.load_workbook(file)

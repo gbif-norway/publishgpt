@@ -113,64 +113,67 @@ class BasicValidationForSomeDwCTerms(OpenAIBaseModel):
         for table in tables:
             table_results[table.id] = {}
             df = table.df
-            standardized_columns = {col.lower(): col for col in df.columns}
-            matched_columns = {}
-            for term in DARWIN_CORE_TERMS:
-                if term.lower() in standardized_columns:
-                    original_col = standardized_columns[term.lower()]
-                    matched_columns[term] = original_col
-                    if term != original_col:
-                        df.rename(columns={original_col: term}, inplace=True)
-            table_results[table.id]['unmatched_columns'] = [col for col in df.columns if col not in matched_columns.values()]
-            
-            validation_errors = {}
-            allowed_basis_of_record = {'MaterialEntity', 'PreservedSpecimen', 'FossilSpecimen', 'LivingSpecimen', 'MaterialSample', 'Event', 'HumanObservation', 'MachineObservation', 'Taxon', 'Occurrence', 'MaterialCitation'}
-            if 'basisOfRecord' in df.columns:
-                invalid_basis = df[~df['basisOfRecord'].isin(allowed_basis_of_record)]
-                if not invalid_basis.empty:
-                    validation_errors['basisOfRecord'] = invalid_basis.index.tolist()
-            if 'decimalLatitude' in df.columns:
-                df['decimalLatitude'] = pd.to_numeric(df['decimalLatitude'], errors='coerce')
-                invalid_latitude = df[(df['decimalLatitude'] < -90) | (df['decimalLatitude'] > 90)]
-                if not invalid_latitude.empty:
-                    validation_errors['decimalLatitude'] = invalid_latitude.index.tolist()
-            if 'decimalLongitude' in df.columns:
-                df['decimalLongitude'] = pd.to_numeric(df['decimalLongitude'], errors='coerce')
-                invalid_longitude = df[(df['decimalLongitude'] < -180) | (df['decimalLongitude'] > 180)]
-                if not invalid_longitude.empty:
-                    validation_errors['decimalLongitude'] = invalid_longitude.index.tolist()
-            if 'individualCount' in df.columns:
-                df['individualCount'] = pd.to_numeric(df['individualCount'], errors='coerce')
-                invalid_individual_count = df[(df['individualCount'] <= 0) | (df['individualCount'] % 1 != 0)]
-                if not invalid_individual_count.empty:
-                    validation_errors['individualCount'] = invalid_individual_count.index.tolist()
-            
-            corrected_dates_df, event_date_error_indices = self.validate_and_format_event_dates(df)
-            validation_errors['eventDate'] = event_date_error_indices
-            table_results[table.id]['validation_errors'] = validation_errors
+            if all(isinstance(col, int) for col in df.columns):            
+                table_results[table.id]['table_errors'] = f'Table {table.id} appears to only have ints as column headers - most probably the column headers are row 1 or you need to make column headers. Fix this and run the validation report again.'
+            else:
+                standardized_columns = {col.lower(): col for col in df.columns}
+                matched_columns = {}
+                for term in DARWIN_CORE_TERMS:
+                    if term.lower() in standardized_columns:
+                        original_col = standardized_columns[term.lower()]
+                        matched_columns[term] = original_col
+                        if term != original_col:
+                            df.rename(columns={original_col: term}, inplace=True)
+                table_results[table.id]['unmatched_columns'] = [col for col in df.columns if col not in matched_columns.values()]
+                
+                validation_errors = {}
+                allowed_basis_of_record = {'MaterialEntity', 'PreservedSpecimen', 'FossilSpecimen', 'LivingSpecimen', 'MaterialSample', 'Event', 'HumanObservation', 'MachineObservation', 'Taxon', 'Occurrence', 'MaterialCitation'}
+                if 'basisOfRecord' in df.columns:
+                    invalid_basis = df[~df['basisOfRecord'].isin(allowed_basis_of_record)]
+                    if not invalid_basis.empty:
+                        validation_errors['basisOfRecord'] = invalid_basis.index.tolist()
+                if 'decimalLatitude' in df.columns:
+                    df['decimalLatitude'] = pd.to_numeric(df['decimalLatitude'], errors='coerce')
+                    invalid_latitude = df[(df['decimalLatitude'] < -90) | (df['decimalLatitude'] > 90)]
+                    if not invalid_latitude.empty:
+                        validation_errors['decimalLatitude'] = invalid_latitude.index.tolist()
+                if 'decimalLongitude' in df.columns:
+                    df['decimalLongitude'] = pd.to_numeric(df['decimalLongitude'], errors='coerce')
+                    invalid_longitude = df[(df['decimalLongitude'] < -180) | (df['decimalLongitude'] > 180)]
+                    if not invalid_longitude.empty:
+                        validation_errors['decimalLongitude'] = invalid_longitude.index.tolist()
+                if 'individualCount' in df.columns:
+                    df['individualCount'] = pd.to_numeric(df['individualCount'], errors='coerce')
+                    invalid_individual_count = df[(df['individualCount'] <= 0) | (df['individualCount'] % 1 != 0)]
+                    if not invalid_individual_count.empty:
+                        validation_errors['individualCount'] = invalid_individual_count.index.tolist()
+                
+                corrected_dates_df, event_date_error_indices = self.validate_and_format_event_dates(df)
+                validation_errors['eventDate'] = event_date_error_indices
+                table_results[table.id]['validation_errors'] = validation_errors
 
-            table.df = corrected_dates_df
-            table.save()
-            
-            general_errors = {}
+                table.df = corrected_dates_df
+                table.save()
+                
+                general_errors = {}
 
-            if ('organismQuantity' in df.columns and 'organismQuantityType' not in df.columns):
-                general_errors['organismQuantity'] = 'organismQuantity is a column in this Table, but the corresponding required column "organismQuantityType" is missing.'
-            elif ('organismQuantityType' in df.columns and 'organismQuantity' not in df.columns):
-                general_errors['organismQuantity'] = 'organismQuantityType is a column in this Table, but the corresponding required column "organismQuantity" is missing.'
-            if 'basisOfRecord' not in df.columns:
-                general_errors['basisOfRecord'] = 'basisOfRecord is missing from this Table (this is fine if the core is Taxon or if this Table is a Measurement or Fact extension)'
-            if 'scientificName' not in df.columns:
-                general_errors['scientificName'] = 'scientificName is missing from this Table (this is fine if this Table is a Measurement or Fact extension)'
-            if 'occurrenceID' not in df.columns:
-                general_errors['occurrenceID'] = 'occurrenceID is missing from this Table and is a required field. If this is a Measurement or Fact table, the occurrenceID column needs to link back to the core occurrence table.'
-            if 'id' not in df.columns and 'ID' not in df.columns and 'measurementID' not in df.columns:
-                # It is an occurrence core table
-                if 'occurrenceID' in df.columns:
-                    if not df['occurrenceID'].is_unique:
-                        general_errors['occurrenceID'] = f'Is this an occurrence core table? If it is, occurrenceID must be unique - use e.g. `df["occurrenceID"] = [str(uuid.uuid4()) for _ in range(len(df))]` to force a unique value for each row. Be careful of any extension tables with linkages using the ID column.'
+                if ('organismQuantity' in df.columns and 'organismQuantityType' not in df.columns):
+                    general_errors['organismQuantity'] = 'organismQuantity is a column in this Table, but the corresponding required column "organismQuantityType" is missing.'
+                elif ('organismQuantityType' in df.columns and 'organismQuantity' not in df.columns):
+                    general_errors['organismQuantity'] = 'organismQuantityType is a column in this Table, but the corresponding required column "organismQuantity" is missing.'
+                if 'basisOfRecord' not in df.columns:
+                    general_errors['basisOfRecord'] = 'basisOfRecord is missing from this Table (this is fine if the core is Taxon or if this Table is a Measurement or Fact extension)'
+                if 'scientificName' not in df.columns:
+                    general_errors['scientificName'] = 'scientificName is missing from this Table (this is fine if this Table is a Measurement or Fact extension)'
+                if 'occurrenceID' not in df.columns:
+                    general_errors['occurrenceID'] = 'occurrenceID is missing from this Table and is a required field. If this is a Measurement or Fact table, the occurrenceID column needs to link back to the core occurrence table.'
+                if 'id' not in df.columns and 'ID' not in df.columns and 'measurementID' not in df.columns:
+                    # It is an occurrence core table
+                    if 'occurrenceID' in df.columns:
+                        if not df['occurrenceID'].is_unique:
+                            general_errors['occurrenceID'] = f'Is this an occurrence core table? If it is, occurrenceID must be unique - use e.g. `df["occurrenceID"] = [str(uuid.uuid4()) for _ in range(len(df))]` to force a unique value for each row. Be careful of any extension tables with linkages using the ID column.'
 
-            table_results[table.id]['general_errors'] = general_errors
+                table_results[table.id]['general_errors'] = general_errors
         
         print('validation report:')
         print(render_to_string('validation.txt', context={ 'tables': table_results }))
