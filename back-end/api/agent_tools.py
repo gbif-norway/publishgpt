@@ -248,14 +248,15 @@ class RollBack(OpenAIBaseModel):
             openai_obj__tool_calls__contains=[{'function': {'name': 'Python'}}]
         )
         for msg in function_messages:
-            for tool_call in msg.openai_obj['tool_calls']:
-                if tool_call['function']['name'] == 'Python':
-                    result = Message.objects.filter(agent__in=agents, openai_obj__tool_call_id=tool_call['id']).first()
-                    snippet = {
-                        'code_run': tool_call['function']['arguments'],
-                        'results': result.openai_obj['content']
-                    }
-                    code_snippets.append(snippet)
+            if msg:
+                for tool_call in msg.openai_obj['tool_calls']:
+                    if tool_call['function']['name'] == 'Python':
+                        result = Message.objects.filter(agent__in=agents, openai_obj__tool_call_id=tool_call['id']).first()
+                        snippet = {
+                            'code_run': tool_call['function']['arguments'],
+                            'results': result.openai_obj['content']
+                        }
+                        code_snippets.append(snippet)
         
         discord_bot.send_discord_message(f"Dataset tables rolled back for Dataset id {agent.dataset.id}.")
         return json.dumps({'new_table_ids': [t.id for t in tables], 'code_snippets': code_snippets})
