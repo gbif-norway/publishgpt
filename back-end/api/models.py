@@ -71,7 +71,23 @@ class Dataset(models.Model):
     @staticmethod
     def get_dfs_from_user_file(file, file_name):
         try:
-            df = pd.read_csv(file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape')
+            sample = pd.read_csv(file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', nrows=3)
+            if all(isinstance(x, str) for x in sample.iloc[0]):
+                header = 0
+            else:
+                header = None
+
+            file.seek(0)
+            df = pd.read_csv(
+                file,
+                dtype='str',
+                encoding='utf-8',
+                encoding_errors='surrogateescape',
+                sep=None,
+                engine='python',
+                header=header
+            )
+
             return {file_name: df}
         except:
             workbook = openpyxl.load_workbook(file)
