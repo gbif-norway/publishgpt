@@ -14,6 +14,7 @@ import openpyxl
 import tempfile
 import re
 import numpy as np
+import io
 
 
 class Dataset(models.Model):
@@ -71,23 +72,9 @@ class Dataset(models.Model):
     @staticmethod
     def get_dfs_from_user_file(file, file_name):
         try:
-            sample = pd.read_csv(file, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', nrows=3)
-            if all(isinstance(x, str) for x in sample.iloc[0]):
-                header = 0
-            else:
-                header = None
-
-            file.seek(0)
-            df = pd.read_csv(
-                file,
-                dtype='str',
-                encoding='utf-8',
-                encoding_errors='surrogateescape',
-                sep=None,
-                engine='python',
-                header=header
-            )
-
+            file_content = file.read()
+            file_io = io.StringIO(file_content.decode('utf-8', errors='surrogateescape'))
+            df = pd.read_csv(file_io, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', header=None)
             return {file_name: df}
         except:
             workbook = openpyxl.load_workbook(file)

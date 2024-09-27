@@ -61,9 +61,10 @@ class DatasetSerializer(serializers.ModelSerializer):
     def create(self, data):
         discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT. User file: {data['file'].name}.")
         dfs = Dataset.get_dfs_from_user_file(data['file'].file, data['file'].name)
-        # if len(df) < 4:
-        #     raise serializers.ValidationError(f"Your dataset has only {len(df)} rows, are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication.")
-            
+        for sheet_name, df in dfs.items():
+            if len(df) < 2:
+                raise serializers.ValidationError(f"Your sheet {sheet_name} has only {len(df)} row(s), are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication. Please refresh and try again.")
+                
         dataset = Dataset.objects.create(**data)
         tables = []
         for sheet_name, df in dfs.items():
