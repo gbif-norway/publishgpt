@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "publishgpt.fullname" . }}-backend
+  labels:
+    {{- include "publishgpt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  {{- if not .Values.backEnd.autoscaling.enabled }}
+  replicas: {{ .Values.backEnd.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "publishgpt.backendSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.backEnd.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "publishgpt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+        {{- with .Values.backEnd.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.backEnd.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.backEnd.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}-backend
+          securityContext:
+            {{- toYaml .Values.backEnd.securityContext | nindent 12 }}
+          image: "{{ .Values.backEnd.image.repository }}:{{ .Values.backEnd.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backEnd.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backEnd.service.port }}
+              protocol: TCP
+          {{- if .Values.backEnd.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.backEnd.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.backEnd.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.backEnd.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.backEnd.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- with .Values.backEnd.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backEnd.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

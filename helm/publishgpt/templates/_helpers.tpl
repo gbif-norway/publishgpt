@@ -60,3 +60,19 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Selector labels for frontend
+*/}}
+{{- define "publishgpt.frontendSelectorLabels" -}}
+{{ include "publishgpt.selectorLabels" . }}
+app.kubernetes.io/component: frontend
+{{- end }}
+
+{{/*
+Selector labels for backend
+*/}}
+{{- define "publishgpt.backendSelectorLabels" -}}
+{{ include "publishgpt.selectorLabels" . }}
+app.kubernetes.io/component: backend
+{{- end }}

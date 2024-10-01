@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "publishgpt.fullname" . }}-frontend
+  labels:
+    {{- include "publishgpt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  {{- if not .Values.frontEnd.autoscaling.enabled }}
+  replicas: {{ .Values.frontEnd.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "publishgpt.frontendSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.frontEnd.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "publishgpt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+        {{- with .Values.frontEnd.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.frontEnd.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.frontEnd.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}-frontend
+          securityContext:
+            {{- toYaml .Values.frontEnd.securityContext | nindent 12 }}
+          image: "{{ .Values.frontEnd.image.repository }}:{{ .Values.frontEnd.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.frontEnd.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.frontEnd.service.port }}
+              protocol: TCP
+          {{- if .Values.frontEnd.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.frontEnd.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.frontEnd.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.frontEnd.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.frontEnd.resources | nindent 12 }}
+          {{- with .Values.frontEnd.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.frontEnd.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.frontEnd.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.frontEnd.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.frontEnd.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
