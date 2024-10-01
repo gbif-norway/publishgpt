@@ -11,7 +11,7 @@ def query_api(args):
     with OpenAI() as client:
         return client.chat.completions.create(**args)  
 
-def create_chat_completion(messages, functions=None, temperature=0.7, model='gpt-4-turbo'): # gpt-4o-2024-05-13 gpt-4o-2024-08-06
+def create_chat_completion(messages, functions=None, temperature=0.7, model='gpt-4o-2024-05-13'): # gpt-4o-2024-05-13 gpt-4o-2024-08-06
     print('---')
     print(f'---Calling GPT {model}---')
     openai_args = { 'model': model, 'temperature': temperature, 'messages': [m.openai_obj for m in messages] }
