@@ -369,3 +369,6 @@ user_files/
 .vscode/
 .next/
 .htpasswd
+
+# Ignore DevSpace cache and log folder
+.devspace/
