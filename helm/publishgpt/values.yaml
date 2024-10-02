@@ -36,6 +36,8 @@ backEnd:
     httpGet:
       path: /ready
       port: http
+  secretRef:
+    name: backend-env-secrets
 
   service:
     type: ClusterIP
