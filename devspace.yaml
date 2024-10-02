@@ -18,6 +18,12 @@ pipelines:
       build_images --all -t $(git describe --always)    # 3. Build, tag (git commit hash) and push all images (see "images")
       create_deployments --all                          # 4. Deploy Helm charts and manifests specfied as "deployments"
 
+  deploy-only:
+    run: |-
+      run_dependencies --all                            # 1. Deploy any projects this project needs (see "dependencies")
+      ensure_pull_secrets --all                         # 2. Ensure pull secrets
+      create_deployments --all                          # 4. Deploy Helm charts and manifests specfied as "deployments"
+
 # This is a list of `images` that DevSpace can build for this project
 # We recommend to skip image building during development (devspace dev) as much as possible
 images:
@@ -81,10 +87,10 @@ dev:
       - gitCredentials: true
     # Forward the following ports to be able access your back-endlication via localhost
     ports:
-      - port: 8446:446
+      - port: 8000:8000
     # Open the following URLs once they return an HTTP status code other than 502 or 503
     open:
-      - url: http://localhost:8446
+      - url: http://localhost:8000
 
   front-end:
     imageSelector: gbifnorway/publishgpt-front-end:latest

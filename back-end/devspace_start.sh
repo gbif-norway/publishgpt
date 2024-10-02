@@ -7,9 +7,9 @@ COLOR_RESET="\033[0m"
 
 # Print useful output for user
 echo -e "${COLOR_BLUE}
-     %########%      
-     %###########%       ____                 _____                      
-         %#########%    |  _ \   ___ __   __ / ___/  ____    ____   ____ ___ 
+     %########%
+     %###########%       ____                 _____
+         %#########%    |  _ \   ___ __   __ / ___/  ____    ____   ____ ___
          %#########%    | | | | / _ \\\\\ \ / / \___ \ |  _ \  / _  | / __// _ \\
      %#############%    | |_| |(  __/ \ V /  ____) )| |_) )( (_| |( (__(  __/
      %#############%    |____/  \___|  \_/   \____/ |  __/  \__,_| \___\\\\\___|
@@ -32,5 +32,9 @@ if [ -z "$BASH" ]; then export PS1="$ "; fi
 # Include project's bin/ folder in PATH
 export PATH="./bin:$PATH"
 
-# Open shell
+# Start the application using Gunicorn with auto-reload and enhanced logging
+echo -e "${COLOR_GREEN}Starting the application with Gunicorn (auto-reload enabled)...${COLOR_RESET}"
+gunicorn --bind 0.0.0.0:8000 --reload --log-level debug --access-logfile - --error-logfile - app.wsgi:application
+
+# Open shell (this will only run if Gunicorn is stopped)
 bash --norc
