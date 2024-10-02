@@ -24,7 +24,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Do a refresh of agents and messages, so we get the next one of each if necessary
         next_agent = dataset.next_agent()
         if next_agent:
-            next_message = next_agent.next_message()
+            next_agent.next_message()
             dataset.refresh_from_db()
 
         serializer = self.get_serializer(dataset)
@@ -46,16 +46,10 @@ class TaskViewSet(viewsets.ModelViewSet):
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
-    filterset_fields = '__all__'
+    filterset_fields = ['agent', 'created_at']
 
 
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
     filterset_fields = ['created_at', 'completed_at', 'dataset', 'task']
-
-    @action(detail=True)
-    def next_message(self, request, *args, **kwargs):
-        agent = self.get_object()
-        serializer = MessageSerializer(agent.next_message())
-        return Response(serializer.data, status=status.HTTP_200_OK)
