@@ -50,13 +50,13 @@ deployments:
     helm:
       chart:
         name: ./helm/publishgpt
-      values:
-        backEnd:
-          image:
-            tag: $(git describe --always)
-        frontEnd:
-          image:
-            tag: $(git describe --always)
+      # values:
+      #   backEnd:
+      #     image:
+      #       tag: $(git describe --always)
+      #   frontEnd:
+      #     image:
+      #       tag: $(git describe --always)
 
 # This is a list of `dev` containers that are based on the containers created by your deployments
 dev:
