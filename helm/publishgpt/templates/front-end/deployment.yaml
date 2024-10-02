@@ -43,6 +43,6 @@ spec:
               protocol: TCP
           env:
             - name: API_URL
-              value: {{ .Values.frontEnd.apiUrl | quote }}
+              value: https://{{ .Values.backEnd.ingress.hosts[0].host }}/api
           resources:
             {{- toYaml .Values.frontEnd.resources | nindent 12 }}

@@ -10,6 +10,14 @@ pipelines:
       ensure_pull_secrets --all    # 2. Ensure pull secrets
       create_deployments --all     # 3. Deploy Helm charts and manifests specfied as "deployments"
       start_dev back-end                # 4. Start dev mode "back-end" (see "dev" section)
+
+  dev-fe:
+    run: |-
+      run_dependencies --all       # 1. Deploy any projects this project needs (see "dependencies")
+      ensure_pull_secrets --all    # 2. Ensure pull secrets
+      create_deployments --all     # 3. Deploy Helm charts and manifests specfied as "deployments"
+      start_dev front-end                # 4. Start dev mode "back-end" (see "dev" section)
+
   # You can run this pipeline via `devspace deploy` (or `devspace run-pipeline deploy`)
   deploy:
     run: |-
@@ -98,7 +106,7 @@ dev:
     sync:
       - path: ./front-end
     terminal:
-      command: ./devspace_start_frontend.sh
+      command: ./devspace_start.sh
     ssh:
       enabled: true
     proxyCommands:
