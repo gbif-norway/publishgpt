@@ -39,25 +39,7 @@ spec:
           imagePullPolicy: {{ .Values.backEnd.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.backEnd.service.port }}
+              containerPort: {{ .Values.backEnd.service.targetPort }}
               protocol: TCP
-          {{- if .Values.backEnd.livenessProbe }}
-          livenessProbe:
-            {{- toYaml .Values.backEnd.livenessProbe | nindent 12 }}
-          {{- end }}
-          {{- if .Values.backEnd.readinessProbe }}
-          readinessProbe:
-            {{- toYaml .Values.backEnd.readinessProbe | nindent 12 }}
-          {{- end }}
           resources:
             {{- toYaml .Values.backEnd.resources | nindent 12 }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- with .Values.backEnd.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.backEnd.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}

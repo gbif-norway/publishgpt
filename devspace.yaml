@@ -9,7 +9,8 @@ pipelines:
       run_dependencies --all       # 1. Deploy any projects this project needs (see "dependencies")
       ensure_pull_secrets --all    # 2. Ensure pull secrets
       create_deployments --all     # 3. Deploy Helm charts and manifests specfied as "deployments"
-      start_dev app                # 4. Start dev mode "app" (see "dev" section)
+      start_dev back-end                # 4. Start dev mode "back-end" (see "dev" section)
+      start_dev front-end
   # You can run this pipeline via `devspace deploy` (or `devspace run-pipeline deploy`)
   deploy:
     run: |-
@@ -21,31 +22,49 @@ pipelines:
 # This is a list of `images` that DevSpace can build for this project
 # We recommend to skip image building during development (devspace dev) as much as possible
 images:
-  app:
-    image: gbifnorway/publishgpt-back-end:latest
+  back-end:
+    image: gbifnorway/publishgpt-back-end
     dockerfile: ./back-end/Dockerfile
     context: back-end/
+    kaniko:
+      cache: true
+      snapshotMode: redo
+      insecure: false
+    tags:
+      - $(git describe --always)
+
+  front-end:
+    image: gbifnorway/publishgpt-front-end
+    dockerfile: ./front-end/Dockerfile
+    context: front-end/
+    kaniko:
+      cache: true
+      snapshotMode: redo
+      insecure: false
+    tags:
+      - $(git describe --always)
 
 # This is a list of `deployments` that DevSpace can create for this project
 deployments:
-  app:
-    # This deployment uses `helm` but you can also define `kubectl` deployments or kustomizations
+  publishgpt:
     helm:
-      # We are deploying this project with the Helm chart you provided
       chart:
         name: ./helm/publishgpt
-      # Under `values` we can define the values for this Helm chart used during `helm install/upgrade`
-      # You may also use `valuesFiles` to load values from files, e.g. valuesFiles: ["values.yaml"]
       values:
-        someChartValue: ""
+        backEnd:
+          image:
+            tag: $(git describe --always)
+        frontEnd:
+          image:
+            tag: $(git describe --always)
 
 # This is a list of `dev` containers that are based on the containers created by your deployments
 dev:
-  app:
+  back-end:
     # Search for the container that runs this image
     imageSelector: gbifnorway/publishgpt-back-end:latest
     # Replace the container image with this dev-optimized image (allows to skip image building during development)
-    devImage: ghcr.io/loft-sh/devspace-containers/python:3-alpine
+    # devImage: ghcr.io/loft-sh/devspace-containers/python:3-alpine
     # Sync files between the local filesystem and the development container
     sync:
       - path: ./
@@ -61,14 +80,33 @@ dev:
       - command: kubectl
       - command: helm
       - gitCredentials: true
-    # Forward the following ports to be able access your application via localhost
+    # Forward the following ports to be able access your back-endlication via localhost
     ports:
       - port: 8446:446
     # Open the following URLs once they return an HTTP status code other than 502 or 503
     open:
       - url: http://localhost:8446
 
-# Use the `commands` section to define repeatable dev workflows for this project 
+  front-end:
+    imageSelector: gbifnorway/publishgpt-front-end:latest
+    devImage: ghcr.io/loft-sh/devspace-containers/nodejs:18-alpine
+    sync:
+      - path: ./front-end
+    terminal:
+      command: ./devspace_start_frontend.sh
+    ssh:
+      enabled: true
+    proxyCommands:
+      - command: devspace
+      - command: kubectl
+      - command: helm
+      - gitCredentials: true
+    ports:
+      - port: 3000:3000
+    open:
+      - url: http://localhost:3000
+
+# Use the `commands` section to define repeatable dev workflows for this project
 commands:
   migrate-db:
     command: |-
