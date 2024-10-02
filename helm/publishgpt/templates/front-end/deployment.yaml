@@ -41,5 +41,8 @@ spec:
             - name: http
               containerPort: {{ .Values.frontEnd.service.targetPort }}
               protocol: TCP
+          env:
+            - name: API_URL
+              value: {{ .Values.frontEnd.apiUrl | quote }}
           resources:
             {{- toYaml .Values.frontEnd.resources | nindent 12 }}

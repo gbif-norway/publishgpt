@@ -111,3 +111,5 @@ frontEnd:
        hosts:
          - publishgpt.svc.gbif.no
     securityContext: {}
+
+  apiUrl: "https://{{ .Values.backEnd.ingress.hosts[0].host }}/api"
