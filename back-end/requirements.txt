@@ -47,6 +47,7 @@ tenacity==9.0.0
 tqdm==4.66.2
 typing_extensions==4.10.0
 tzdata==2024.1
+ujson==5.10.0
 uritemplate==4.1.1
 urllib3==2.2.2
 utm==0.7.0
