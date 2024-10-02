@@ -11,13 +11,19 @@ const Agent = ({ agent, refreshDataset }) => {
 
   useEffect(() => {
       const runAsyncEffect = async () => {
-      if (agent.completed_at === null) { 
-        setIsLoading(true);
-        console.log('running this only once when component is loaded if completed_at is null');
-        console.log(agent.completed_at);
-        await refreshDataset();
-        setIsLoading(false);
-      }
+        console.log('running this for every agent I think?')
+        console.log(agent);
+        var last_message_role = null;
+        if (agent.message_set.length > 0) { last_message_role = agent.message_set.at(-1).role }
+        if (agent.completed_at === null && last_message_role != 'user') { 
+          setIsLoading(true);
+          console.log('running this only once when component is loaded if completed_at is null for agent ' + agent.id);
+          console.log(agent.completed_at);
+          await refreshDataset();
+          setIsLoading(false);
+        } else {
+          setIsLoading(false);
+        }
     };
     runAsyncEffect();
   }, []);
@@ -39,7 +45,7 @@ const Agent = ({ agent, refreshDataset }) => {
         await fetch(`${config.baseApiUrl}/messages/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: userInput, role: 'user', agent: agent.id })
+          body: JSON.stringify({ openai_obj: { content: userInput, role: 'user' }, agent: agent.id })
         });
         setUserInput("");
         await refreshDataset();
@@ -58,16 +64,12 @@ const Agent = ({ agent, refreshDataset }) => {
           Task: {agent.task.name.replace(/^[-_]*(.)/, (_, c) => c.toUpperCase()).replace(/[-_]+(.)/g, (_, c) => ' ' + c.toUpperCase())} 
           &nbsp;-&nbsp;<small>{formatTableIDs(agent.tables)}</small>
           {agent.completed_at != null && (
-            <span>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
+            <span className={`agent-id-${agent.id}-message`}>&nbsp;<Badge bg="secondary">complete <i className="bi-check-square"></i></Badge></span>
           )}
           &nbsp;
         </Accordion.Header>
         <Accordion.Body>
-
-        {agent.message_set.filter(function (message) { return message.role != 'system' }).map((message) => (
-            <Message key={message.id} message={message} />
-          ))}
-          
+          {agent.message_set.map((message) => ( <Message key={message.id} message={message} /> ))}
           {(isLoading || agent.busy_thinking) && (
             <div className="message user-input-loading">
               <div className="d-flex align-items-center">

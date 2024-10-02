@@ -1,0 +1,34 @@
+Basic validation reports:
+{% for id, validation in tables.items %}
+    Report for Table id {{ id }} 
+        - Column names not matching allowed set of darwin core terms: {% if validation.unmatched_columns %}{{ validation.unmatched_columns|join:", " }}{% else %}None{% endif %}
+
+        - basisOfRecord: Checked that the column only contains one of the allowed values. 
+        {% if validation.validation_errors.basisOfRecord %}Found rows with incorrect values, first 30 indices: {{ validation.validation_errors.basisOfRecord|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - decimalLatitude: Checked values are within range of -90 to 90.
+        {% if validation.validation_errors.decimalLatitude %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.decimalLatitude|length }}) indices: {{ validation.validation_errors.decimalLatitude|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - decimalLongitude: Checked values are within range of -180 to 180.
+        {% if validation.validation_errors.decimalLongitude %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.decimalLongitude|length }}) indices: {{ validation.validation_errors.decimalLongitude|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+        - eventDate: Checked dates are in an acceptable ISO format.
+        {% if validation.validation_errors.eventDate %}Found rows with incorrect values, first 30 (of {{ validation.validation_errors.eventDate|length }}) indices: {{ validation.validation_errors.eventDate|slice:":30"|join:", " }} 
+        When correcting eventDate errors, remember to format as ISO. Do not automatically assume days or months if they are missing, it's better to default to just year-month or even just year. Some valid egs: 2009-02-20T08:40Z, 1809-02-12, 1906-06, 1971, 1900/1909, 2007-11-13/15{% else %}All rows were compliant{% endif %}
+        {% if validation.validation_errors.individualCount %}
+        - individualCount: Checked this is not a decimal value.
+        Found rows with incorrect values, first 30 (of {{ validation.validation_errors.individualCount|length }}) indices: {{ validation.validation_errors.individualCount|slice:":30"|join:", " }}{% else %}All rows were compliant{% endif %}
+
+        {% if validation.general_errors %} 
+        General errors: {% for column, error in validation.general_errors.items %}
+        - {{column}}: {{error}}
+        {% endfor %}
+        {% endif %}
+
+        {% if validation.table_errors %} 
+        {% for error in validation.table_errors %}
+        General table-wide error: {{error}}
+        {% endfor %}
+        {% endif %}
+{% endfor %}
+
+{% if tables|length > 2 %}Error - there are more than 2 Tables, delete or if necessary the extra Table. {% endif %}
+Remember: there should either 1 or 2 Tables, an Occurrence core Table and one additional optional MeasurementOrFacts Table. 
+

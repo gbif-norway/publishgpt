@@ -11,19 +11,19 @@ def query_api(args):
     with OpenAI() as client:
         return client.chat.completions.create(**args)  
 
-def create_chat_completion(messages, functions=None, call_first_function=False, temperature=0.7, model='gpt-4o-2024-05-13'): # gpt-4o-2024-08-06
-    messages = [m.openai_schema for m in messages]
+def create_chat_completion(messages, functions=None, temperature=0.7, model='gpt-4o-2024-05-13'): # gpt-4o-2024-05-13 gpt-4o-2024-08-06
     print('---')
-    print(f'---Calling GPT {model} with functions and call_first_function {call_first_function}---')
-    args = {'model': model, 'temperature': temperature, 'messages': messages }
+    print(f'---Calling GPT {model}---')
+    openai_args = { 'model': model, 'temperature': temperature, 'messages': [m.openai_obj for m in messages] }
     if functions:
-        args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]
-    print('---')
-    response = query_api(args)
-    print('---Response---')
-    pprint(response)
-    print('---')
-    return response
+        # Look into openai.pydantic_function_tool https://platform.openai.com/docs/guides/function-calling/function-calling-with-structured-outputs
+        # and using https://platform.openai.com/docs/guides/structured-outputs/introduction
+        # https://github.com/openai/openai-python/blob/main/helpers.md
+        openai_args['tools'] = [{'type': 'function', 'function': f.openai_schema()} for f in functions]  
+    # print(openai_args)
+    response = query_api(openai_args)
+    pprint(f'---Response---\n{response}\n---')
+    return response.choices[0].message
 
 def custom_schema(cls: BaseModel) -> Dict[str, Any]:
     parameters = cls.schema()
@@ -47,14 +47,13 @@ class OpenAIBaseModel(BaseModel):
     def openai_schema(cls):
         return custom_schema(cls)
 
-def get_function(fn):
-    if fn.name.lower() == 'python' and fn.arguments.replace(' ', '')[:8] != '{"code":':
-        print('Python args not wrapped in code')
-        fn.arguments = {'code': fn.arguments}
-    else:
-        fn.arguments = json.loads(fn.arguments, strict=False) 
-
-    return fn
+# def get_function(fn):
+#     if fn.name.lower() == 'python' and fn.arguments.replace(' ', '')[:8] != '{"code":':
+#         print('Python args not wrapped in code')
+#         fn.arguments = {'code': fn.arguments}
+#     else:
+#         fn.arguments = json.loads(fn.arguments, strict=False) 
+#     return fn
 
 def _remove_a_key(d, remove_key) -> None:
     """Remove a key from a dictionary recursively"""
