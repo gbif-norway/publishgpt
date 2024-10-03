@@ -65,10 +65,13 @@ class DatasetSerializer(serializers.ModelSerializer):
         except Exception as e:
             raise serializers.ValidationError(f"An error was encountered when loading your data. Error details: {e}.")
 
+        if "error" in dfs:
+            raise serializers.ValidationError(dfs["error"])
+        
         for sheet_name, df in dfs.items():
             if len(df) < 2:
                 raise serializers.ValidationError(f"Your sheet {sheet_name} has only {len(df) + 1} row(s), are you sure you uploaded the right thing? I need a larger spreadsheet to be able to help you with publication. Please refresh and try again.")
-                
+
         dataset = Dataset.objects.create(**data)
         tables = []
         for sheet_name, df in dfs.items():
