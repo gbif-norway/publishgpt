@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:latest # To clear database: docker rm -v publishgpt-db-1 
+    image: postgres:latest # To clear database: docker rm -v publishgpt-db-1
     shm_size: 5g
     environment:
         - POSTGRES_HOST_AUTH_METHOD=trust
@@ -9,6 +9,7 @@ services:
     build: ./back-end
     # entrypoint: "tail -f /dev/null"
     entrypoint: "./manage.py runserver 0.0.0.0:8000"
+    image: gbifnorway/publishgpt-back-end:latest
     volumes:
       - ./back-end:/app
     depends_on:
@@ -19,6 +20,7 @@ services:
       - ./back-end/.env
   front-end:
     build: ./front-end
+    image: gbifnorway/publishgpt-front-end:latest
     volumes:
       - ./front-end:/app
     stdin_open: true
@@ -31,4 +33,3 @@ services:
         - back-end
     # command: ["tail", "-f", "/dev/null"]
     command: ["npm", "run", "dev"]
-    

@@ -1,10 +1,11 @@
 FROM node:latest
 WORKDIR /app
-#COPY package*.json ./
-#RUN npm install
-#COPY . ./
-#CMD ["npm", "start"]
-#EXPOSE 3000
-CMD ["tail", "-f", "/dev/null"]
+COPY package*.json ./
+RUN npm install
+COPY . ./
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+# CMD ["tail", "-f", "/dev/null"]
 
 # npm run dev
