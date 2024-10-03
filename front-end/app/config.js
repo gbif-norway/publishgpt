@@ -1,6 +1,6 @@
 const config = {
-  // baseApiUrl: "http://68.183.64.100:8000/api"
-  baseApiUrl: "http://127.0.0.1:8000/api"
+  // TODO: Change to use API_URL env variable by using function instead of constant
+  baseApiUrl: "https://publishgpt-api.svc.gbif.no/api"
 };
 
 export default config;

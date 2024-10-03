@@ -2,13 +2,19 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
 from api import agent_tools
-from api.helpers.openai_helpers import get_function, create_chat_completion
+from api.helpers.openai_helpers import create_chat_completion
 from picklefield.fields import PickledObjectField
 import pandas as pd
 from django.template.loader import render_to_string
-from os import path
+import os
 import json
-from pydantic_core._pydantic_core import ValidationError
+import ujson
+import logging
+import openpyxl
+import tempfile
+import re
+import numpy as np
+import io
 
 
 class Dataset(models.Model):
@@ -21,6 +27,7 @@ class Dataset(models.Model):
     published_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     dwca_url = models.CharField(max_length=2000, blank=True)
+    gbif_url = models.CharField(max_length=2000, blank=True)
     user_language = models.CharField(max_length=100, blank=True)
 
     class DWCCore(models.TextChoices):
@@ -37,7 +44,7 @@ class Dataset(models.Model):
 
     @property
     def filename(self):
-        return path.basename(self.file.name)
+        return os.path.basename(self.file.name)
     
     def next_agent(self):
         self.refresh_from_db()
@@ -62,6 +69,39 @@ class Dataset(models.Model):
         else:
             raise Exception('Agent set for this dataset appears to be empty')
 
+    @staticmethod
+    def get_dfs_from_user_file(file, file_name):
+        try:
+            file_content = file.read()
+            file_io = io.StringIO(file_content.decode('utf-8', errors='surrogateescape'))
+            df = pd.read_csv(file_io, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', header=0)
+            return {file_name: df}
+        except Exception as e:
+            try:
+                workbook = openpyxl.load_workbook(file)
+                for sheet in workbook.worksheets:
+                    for row in sheet.iter_rows():
+                        for cell in row:
+                            if cell.data_type == 'f':  # 'f' indicates a formula
+                                cell.value = '' # f'[FORMULA: {cell.value}]'
+                    for merged_cell in list(sheet.merged_cells.ranges):
+                        min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
+                        value = sheet.cell(row=min_row, column=min_col).value
+                        sheet.unmerge_cells(str(merged_cell))
+                        for row in range(min_row, max_row + 1):
+                            for col in range(min_col, max_col + 1):
+                                sheet.cell(row=row, column=col).value = f"{value} [UNMERGED CELL]"
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                    temp_file_name = tmp.name
+                    workbook.save(temp_file_name)
+                dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
+                os.remove(temp_file_name)
+                return dfs
+            except ValueError as ve:
+                return {"error": f"Unable to read workbook: {str(ve)}. The file may contain invalid XML or be corrupted."}
+            except Exception as e:
+                return {"error": f"An error occurred while processing the file: {str(e)}."}
+
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
@@ -72,7 +112,7 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     text = models.TextField()
     per_table = models.BooleanField()
     attempt_autonomous = models.BooleanField()
-    additional_function = models.CharField(max_length=300, null=True, blank=True)
+    additional_functions = ArrayField(models.CharField(max_length=300, null=True, blank=True), null=True, blank=True)
 
     class Meta:
         get_latest_by = 'id'
@@ -81,10 +121,9 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is 
     @property
     def functions(self):
         functions = [agent_tools.Python.__name__, agent_tools.SetAgentTaskToComplete.__name__]
-        if self.additional_function:
-            functions.append(self.additional_function)
-        if self.name == 'adhoc_processing_final_pass':
-            functions.append(agent_tools.SetBasicMetadata.__name__)
+        if self.additional_functions:
+            for func in self.additional_functions:
+                functions.append(func)
         return functions
 
     def create_agents_with_system_messages(self, dataset:Dataset):
@@ -112,7 +151,20 @@ class Table(models.Model):
     @property
     def df_json(self):
         df = self.make_columns_unique(self.df)
-        return df.to_json(orient='records', date_format='iso')
+        # return df.to_json(orient='records', date_format='iso')
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.where(pd.notnull(df), None)
+        def clean_strings_in_df(df):
+            for col in df.select_dtypes(include=['object']).columns:
+                df[col] = df[col].astype(str).apply(
+                    lambda x: x.encode('utf-8', 'replace').decode('utf-8')
+                )
+            return df
+        df = clean_strings_in_df(df)
+        try:
+            return df.to_json(orient='records', date_format='iso', force_ascii=False)
+        except Exception as e:
+            raise Exception(f"Serialization failed after cleaning data: {e}")
 
     def _snapshot_df(self, df_obj):
         max_rows, max_columns, max_str_len = 10, 10, 70
@@ -182,99 +234,78 @@ class Agent(models.Model):
     def create_with_system_message(cls, dataset, task, tables):
         agent = cls.objects.create(dataset=dataset, task=task)
         agent.tables.set([t.id for t in tables])
-        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'task_text': agent.task.text, 'agent_tables': tables, 'all_tasks_count': Task.objects.all().count(), 'task_autonomous': agent.task.attempt_autonomous })
-        print(system_message_text)
-        Message.objects.create(agent=agent, content=system_message_text, role=Message.Role.SYSTEM)
+        system_message_text = render_to_string('prompt.txt', context={ 'agent': agent, 'all_tasks_count': Task.objects.all().count() })
+        # print(system_message_text)
+        Message.objects.create(agent=agent, openai_obj={'content': system_message_text, 'role': Message.Role.SYSTEM})
 
     def next_message(self):
-        self.refresh_from_db()
         last_message = self.message_set.last()
-        print(f'Last message role: {last_message.role}')
-        print(f'Completed at value for this agent: {self.completed_at}')
+        print(f'Last message role: {last_message.role}, Completed at value for this agent: {self.completed_at}')
         if last_message.role == Message.Role.ASSISTANT or self.completed_at:
-            print('return (assistant or completed)')
             return None
         if self.busy_thinking:
-            print('busy thinking')
             return last_message
-        else: 
-            print('busy thinking')
-            self.busy_thinking = True
-            self.save()
         
-        # Otherwise last message was from the user, was the return from a function, or was the starting system message
-        # So we need to send it to GPT
+        # Otherwise we need to send it to GPT, last message was from the user, was the return from a function, or was the starting system message
+        self.busy_thinking = True
+        self.save()
         try:
-            response = create_chat_completion(self.message_set.all(), self.callable_functions, call_first_function=False)  # (current_call == max_calls)
-        except Exception as e:
+            response_message = create_chat_completion(self.message_set.all(), self.callable_functions)
+        except Exception as e:  
             error_message = f'Unfortunately there was a problem querying the OpenAI API. Try again later, and please report this error to the developers. Full error: {e}'
             self.busy_thinking = False
             self.save()
-            print('busy thinking set to false - return error with openai')
-            return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=error_message)
+            return [Message.objects.create(agent=self, openai_obj={'role': Message.Role.ASSISTANT, 'content': error_message})]
         
-        response_message = response.choices[0].message
-    
+        message = Message.objects.create(agent=self, openai_obj=response_message.dict())  # response_message.__dict__
         if not response_message.tool_calls:  # It's a simple assistant message
             self.busy_thinking = False
             self.save()
-            print('busy thinking set to false - returning assistant message')
-            return Message.objects.create(agent=self, role=Message.Role.ASSISTANT, content=response_message.content)
+            return [message]
 
-        fn = response_message.tool_calls[0].function
-        try:
-            function_call = get_function(fn)
-            function_result = self.run_function(function_call)
-        except (json.decoder.JSONDecodeError, Exception) as e:
-            error = f'ERROR WITH FUNCTION CALLING RESULT: Invalid JSON or code provided in your last response ({response_message.tool_calls[0].function.arguments}), please try again. \nError: {e}'
-            return self.create_function_message(response_message, error)
+        messages = [message]  # Store the API response which requests the tool calls
+        for tool_call in response_message.tool_calls:  # Occasionally a single API response requests multiple tool calls
+            try:
+                result = self.run_function(tool_call.function)
+            except Exception as e:
+                result = f'ERROR CALLING FUNCTION: Invalid JSON or code provided in your last response (Calling {tool_call.function.name} with the given arguments for {tool_call.id}), please try again. \nError: {e}'
+
+            messages.append(Message.create_function_message(agent=self, function_result=result, tool_call_id=tool_call.id))
         
-        return self.create_function_message(response_message, function_result)
-    
-    def run_function(self, function_call):
-        function_model_class = getattr(agent_tools, function_call.name[0].upper() + function_call.name[1:])
-        function_model_obj = function_model_class(**function_call.arguments)
-        return function_model_obj.run()
-
-    def create_function_message(self, response_message, function_message_content):
-        print(f'Function message result: {function_message_content}')
-        if response_message.content:
-            function_message_content = f"'''\nThoughts: {response_message.content}\n'''\n" + function_message_content
-        function_message = Message(agent=self,role=Message.Role.FUNCTION, function_name=response_message.tool_calls[0].function.name, content=function_message_content)
-        if response_message.tool_calls[0].id:
-            function_message.function_id = response_message.tool_calls[0].id
-        function_message.save()
         self.refresh_from_db()  # Necessary so that completed_at doesn't get overwritten
         self.busy_thinking = False
         self.save()
-        print('busy thinking set to false - returning function message or possibly error')
-        return function_message
-        
+        return messages
+    
+    def run_function(self, fn):
+        function_model_class = getattr(agent_tools, fn.name)
+        fnargs = fn.arguments
+        if fn.name == 'Python':
+            if not re.sub(r'[\s"\']', '', fn.arguments).startswith('{code'):
+                fnargs = json.dumps({'code': fn.arguments})
+        fn_args = json.loads(fnargs, strict=False)
+        function_model_obj = function_model_class(**fn_args)
+        return function_model_obj.run()
+
 
 class Message(models.Model):
-    agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
-    content = models.TextField(default='')
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE)
+    openai_obj = models.JSONField(null=True, blank=True)
 
     class Role(models.TextChoices):
         USER = 'user'
         SYSTEM = 'system'
         ASSISTANT = 'assistant'
-        FUNCTION = 'function'
-    role = models.CharField(max_length=10, choices=Role.choices)
-
-    # Only for 'function' role messages
-    function_name = models.CharField(max_length=200, blank=True)
-    function_id = models.CharField(max_length=200, blank=True)
-
+        TOOL = 'tool'
+        
+    @classmethod
+    def create_function_message(cls, agent, function_result, tool_call_id):
+        return cls.objects.create(agent=agent, openai_obj={'content': function_result, 'role': cls.Role.TOOL, 'tool_call_id': tool_call_id})
+    
     @property
-    def openai_schema(self):
-        schema = { 'content': self.content, 'role': self.role }
-        if self.role == Message.Role.FUNCTION:
-            schema.update({ 'name': self.function_name })
-            if self.function_id:
-                schema.update({ 'tool_call_id': self.function_id })
-        return schema
+    def role(self):
+        return self.Role(self.openai_obj['role'])
 
     class Meta:
         get_latest_by = 'created_at'

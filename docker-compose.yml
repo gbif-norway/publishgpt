@@ -7,9 +7,7 @@ services:
     platform: linux/amd64
   back-end:
     build: ./back-end
-    # entrypoint: "tail -f /dev/null"
-    entrypoint: "./manage.py runserver 0.0.0.0:8000"
-    image: gbifnorway/publishgpt-back-end:latest
+    entrypoint: "tail -f /dev/null"
     volumes:
       - ./back-end:/app
     depends_on:
@@ -20,7 +18,6 @@ services:
       - ./back-end/.env
   front-end:
     build: ./front-end
-    image: gbifnorway/publishgpt-front-end:latest
     volumes:
       - ./front-end:/app
     stdin_open: true
@@ -31,5 +28,5 @@ services:
       - ./front-end/.env
     depends_on:
         - back-end
-    # command: ["tail", "-f", "/dev/null"]
-    command: ["npm", "run", "dev"]
+    command: ["tail", "-f", "/dev/null"]
+    # command: ["npm", "run", "dev"]

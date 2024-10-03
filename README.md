@@ -58,4 +58,89 @@ The data is stored in a Postgres database, with different models for Datasets, T
 
 GPT4o is given access to a number of tools/functions which run on the server side, which it can call on to perform tasks in the Django environment. The most important of these is the Python tool which allows it to run any Python code to edit the dataset and dataframes, with certain constraints.
 
-Another important tool is the Publish tool, which the model is instructed to use in its final Task in order to publish data to the GBIF test portal. It creates a Darwin Core Archive using https://github.com/pieterprovoost/dwca-writer, uploads it to a public repository and uses the GBIF API to register it as a dataset with GBIF. 
+Another important tool is the Publish tool, which the model is instructed to use in its final Task in order to publish data to the GBIF test portal. It creates a Darwin Core Archive using https://github.com/pieterproost/dwca-writer, uploads it to a public repository and uses the GBIF API to register it as a dataset with GBIF.
+
+# Using DevSpace with ChatIPT
+
+This project uses DevSpace for development and deployment. Here's how to use it:
+
+## Setup
+
+1. Install DevSpace: Follow the instructions at [https://devspace.sh/cli/docs/getting-started/installation](https://devspace.sh/cli/docs/getting-started/installation)
+2. Ensure you have access to a Kubernetes cluster and `kubectl` is configured correctly
+
+## Development
+
+### Backend Development
+
+To start developing the backend:
+
+```bash
+devspace use namespace publishbot
+devspace dev
+```
+
+This command will:
+1. Deploy any dependencies
+2. Ensure pull secrets
+3. Deploy Helm charts and manifests
+4. Start the backend in development mode
+   - Sync files between your local `./back-end` directory and the container
+   - Open a terminal in the container running `./devspace_start.sh`
+   - Enable SSH for IDE connections
+   - Forward port 8000
+   - Open `http://localhost:8000` when available
+
+### Frontend Development
+
+To start developing the frontend:
+
+```bash
+devspace run-pipeline dev-fe
+```
+
+This command is similar to backend development but focuses on the frontend:
+- Syncs files from `./front-end`
+- Forwards port 3000
+- Opens `http://localhost:3000` when available
+
+## Deployment
+
+To build and deploy the entire application:
+
+```bash
+devspace deploy
+```
+
+This will:
+1. Deploy dependencies
+2. Ensure pull secrets
+3. Build and push Docker images with tags based on the git commit hash
+4. Deploy Helm charts and manifests
+
+To deploy without rebuilding images:
+
+```bash
+devspace run-pipeline deploy-only
+```
+
+## Images
+
+The project defines two images:
+- `back-end`: Built from `./back-end/Dockerfile`
+- `front-end`: Built from `./front-end/Dockerfile`
+
+Both use Kaniko for building, with caching enabled.
+
+## Helm Deployment
+
+The project uses a Helm chart located at `./helm/publishgpt` for deployment.
+
+
+## Notes
+
+- The configuration uses git commit hashes for image tagging.
+- Development modes inject a lightweight SSH server for IDE connections.
+- Proxy commands are set up to make `devspace`, `kubectl`, `helm`, and git credentials available in dev containers.
+
+For more detailed information about DevSpace and its capabilities, refer to the [DevSpace documentation](https://devspace.sh/cli/docs/introduction).

@@ -8,7 +8,9 @@
       1. Species Occurrence Data: Records of when (columns for year/month/day, date, etc, or at least general info about when records were gathered) and where (columns describing locality and/or latitude/longitude and/or footprintwkt, etc) a species/what (columns for taxonomy, scientific name, or even higher level taxonomy like Family or Order, etc is fine) was observed or collected. Often (but optionally) also includes WHO made the observation (collector, citizen scientist, researcher, etc). This data may also be e.g. eDNA data even if the species identification only occurs at a higher taxonomic level. We don't need specific observation dates or locations, something general is fine. 
       2. Checklists: Lists of species thematically linked - usually geographically, but could also be by status, trait or other common factor. All that's really needed in this case is a scientific name.
 
-      Carefully look at this data, especially the column headings: is it suitable for publication on gbif.org? This is the first task and no work has been done on formatting the data structure, so it may be extremely cryptic and messy. Be cautious! Ask about the relationship between different sheets if it's not clear. Keep in mind that it's highly likely at least some of this data is redundant (derived from primary data elsewhere in other sheets). Try to figure out if there is a list of species occurrences (WHAT, WHERE and WHEN), or perhaps a list of names as the main focus, or if it is something else entirely that does not belong on GBIF. 
+      Important first step: Look at the first 5 rows of this data and see if they have been loaded from the user's spreadsheet into pandas with the correct column headings - if not, fix this so it makes sense. It's possible that the first row of data was loaded as a column header and column headings don't exist, in which case you should create some.
+
+      Next, carefully look at this data, especially the corrected column headings: is it suitable for publication on gbif.org? This is the first task and no work has been done on formatting the data structure, so it may be extremely cryptic and messy. Be cautious! Ask about the relationship between different sheets if it's not clear. Keep in mind that it's highly likely at least some of this data is redundant (derived from primary data elsewhere in other sheets). Try to figure out if there is a list of species occurrences (WHAT, WHERE and WHEN), or perhaps a list of names as the main focus, or if it is something else entirely that does not belong on GBIF. 
       
       Generate a first draft Description (approx 3-5 sentences) and Title for the metadata and use this to engage in discussion and ask the user questions to make sure you have understood exactly what their data is. In your description, include the general area (country, sea, or even just region such as central Asia, southern Africa, etc) where the data was gathered - ask the user if this is not obvious from the data. Don't include any information about the Table structures in the description - these should go in structure_notes. 
       
@@ -26,7 +28,8 @@
       - use structure_notes to save anything unusual you discover about the dataset structure or cryptic column names. E.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), if a column called 'R' actually contains a calculated measurement of species richness, etc. 
       - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
-    additional_function: SetBasicMetadata
+    additional_functions: 
+      - SetBasicMetadata
 
 - model: api.task
   fields:
@@ -48,14 +51,20 @@
       Pick and choose from these common Occurrence DwC fields: 
        - occurrenceID REQUIRED (if there is something appropriate in the dataset already use that, otherwise create UUIDs for each record)
        - basisOfRecord REQUIRED (valid values: MaterialEntity, PreservedSpecimen, FossilSpecimen, LivingSpecimen, MaterialSample, HumanObservation, MachineObservation), [NOTE: you will almost always have to create and fill in this column for the user]
-       - eventDate REQUIRED (must be ISO format) OR 3 columns: a year, month & day
-       - scientificName REQUIRED
+       - eventDate REQUIRED (must be ISO format, some valid egs: 2009-02-20T08:40Z, 1809-02-12, 1906-06, 1971, 1900/1909, 2007-11-13/15) OR 3 columns: a year, month & day
+       - scientificName REQUIRED - cannot be left empty for any records (Can be species, genus, or family level, or higher ranks. IMPORTANT: Often users are not able to identify to species level for all data points, in which case you should backfill with higher level taxonomy from other columns if possible.)
        - kingdom REQUIRED, [NOTE: you may have to fill this in for the user]
-       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
-       - individualCount or organismQuantity/organismQuantityType: One of these is REQUIRED IF occurrenceStatus is null(IMPORTANT: This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact). Whole numbers are probably individualCounts, decimals/fractions etc are more likely to be organismQuantity, in which case you should ask the user what the organismQuantityType is (don't assume), it might be e.g. % biomass, abundance, etc. organismQuantityType is REQUIRED if organismQuantity is populated. VERY IMPORTANT - KEEP THIS IN THE OCCURRENCE TABLE!
        - locality (REQUIRED if decimalLatitude and decimalLongitude are null)
        - decimalLatitude and decimalLongitude (REQUIRED if locality is null)
        - geodeticDatum (SRS or geodeticDatum pertaining to decimalLatitude and decimalLongitude, REQUIRED if decimalLatitude and decimalLongitude are populated)
+
+      The next 3 fields are to do with WHAT has been seen (in terms of quantity). This is where abundance or number/counts of individuals go, NOT in MeasurementOrFact - VERY IMPORTANT - KEEP THIS INFO IN THE OCCURRENCE TABLE! 
+      We REQUIRE least ONE of these fields:
+       - occurrenceStatus (use this for plot sample data or similar, valid values: present, absent)
+       - individualCount (MUST be a whole number, otherwise if you find a decimal value it is very important you use organismQuantity & organismQuantityType for decimals. DO NOT TRANSFORM THE DATA TO A WHOLE NUMBER.)
+       - organismQuantity & organismQuantityType (these are two columns which are always used together; if organismQuantityType is not present or obvious **ALWAYS** ask the user it should be, it might be e.g. % biomass, abundance, etc. DO NOT make assumptions about this!)
+       
+       Pick and choose from these other common Occurrence DwC fields: 
        - locationRemarks
        - waterBody (if a marine or aquatic occurrence, e.g. Baltic Sea, Hudson River)
        - islandGroup
@@ -90,7 +99,7 @@
        - kingdom
        - taxonRemarks
 
-      MeasurementOrFact DwC fields are a little different and limited to ONLY the following fields:
+      MeasurementOrFact DwC fields are a little different and limited to ONLY the following fields (Do not include organismQuantity or individualCount here):
        - occurrenceID (REQUIRED - an ID which links each measurement to a record in the occurrence core Table)
        - measurementType (REQUIRED e.g. tail length, temperature, UV-light trap)
        - measurementValue (REQUIRED e.g. 120, 25, 360)
@@ -114,7 +123,7 @@
       | recordedBy    | individualCount | eventDate  | country | locality   | decimalLatitude | decimalLongitude | scientificName        | kingdom  |
       | ------------- | --------------- | ---------- | ------- | ---------- | --------------- | ---------------- | --------------------- | -------- |
       | Sverdrup      | 4               | 2019-08-04 | Norway  | Oslo fjord | 60.587          | 11.589           | Cis comptus           | Animalia |
-      | Tone Birkemoe | 1               | 2019-08-05 | Norway  | Nordmarka  | 60.591          | 11.789           | Cryptophagus dentatus | Animalia |
+      | Tone Birkemoe | 1               | 2019-09    | Norway  | Nordmarka  | 60.591          | 11.789           | Cryptophagus dentatus | Animalia |
       | Sverdrup      | 1               | 2019-08-06 | Norway  | Oslo fjord | 60.587          | 11.589           | Dryocoetes spp.       | Animalia |
       | Tone Birkemoe | 3               | 2019-08-07 | Norway  | Oslo fjord | 60.587          | 11.589           | Hylastes cunicularius | Animalia |
 
@@ -141,6 +150,11 @@
        - The next Tasks will focus on converting all the columns to Darwin Core terms and validating the data (including dates), so your main focus should be to organise and structure the data
        - Summarise your final result tables and the work you have done to the user before calling SetAgentTaskToComplete
 
+      NOTE: By the end of this task you should have a MAXIMUM of TWO TABLES (either 1 or 2 Tables).
+    additional_functions: 
+       - SetBasicMetadata
+       - RollBack
+
 - model: api.task
   fields:
     name: validation
@@ -161,7 +175,7 @@
         institutionCode: The name (or acronym) in use by the institution having custody of the object(s) or information referred to in the record. Egs - MVZ / FMNH / CLO / UCMP
         collectionCode: The name, acronym, coden, or initialism identifying the collection or data set from which the record was derived. Egs - Mammals / Hildebrandt / EBIRD / VP
         ownerInstitutionCode: The name (or acronym) in use by the institution having ownership of the object(s) or information referred to in the record. Egs - NPS / APN / InBio
-        basisOfRecord: The specific nature of the data record. Egs - MaterialEntity / PreservedSpecimen / FossilSpecimen / LivingSpecimen / MaterialSample / Event / HumanObservation / MachineObservation / Taxon / Occurrence / MaterialCitation
+        basisOfRecord: The specific nature of the data record. Must be one of - MaterialEntity / PreservedSpecimen / FossilSpecimen / LivingSpecimen / MaterialSample / Event / HumanObservation / MachineObservation / Taxon / Occurrence / MaterialCitation
         informationWithheld: Additional information that exists, but that has not been shared in the given record. Egs - location information not given for endangered species / collector identities withheld | ask about tissue samples
         dynamicProperties: A list of additional measurements, facts, characteristics, or assertions about the record. Meant to provide a mechanism for structured content. Egs - {"heightInMeters":1.5} / {"targusLengthInMeters":0.014, "weightInGrams":120} / {"natureOfID":"expert identification", "identificationEvidence":"cytochrome B sequence"} / {"relativeHumidity":28, "airTemperatureInCelsius":22, "sampleSizeInKilograms":10} / {"aspectHeading":277, "slopeInDegrees":6} / {"iucnStatus":"vulnerable", "taxonDistribution":"Neuquén, Argentina"}
       Occurrence:
@@ -170,7 +184,7 @@
         recordNumber: An identifier given to the dwc:Occurrence at the time it was recorded. Often serves as a link between field notes and a dwc:Occurrence record, such as a specimen collector's number.
         recordedBy: A list (concatenated and separated) of names of people, groups, or organizations responsible for recording the original dwc:Occurrence. The primary collector or observer, especially one who applies a personal identifier (dwc:recordNumber), should be listed first. Egs - José E. Crespo
         recordedByID: A list (concatenated and separated) of the globally unique identifier for the person, people, groups, or organizations responsible for recording the original dwc:Occurrence.
-        individualCount: The number of individuals present at the time of the dwc:Occurrence. Egs - 0 / 1 / 25
+        individualCount: The number of individuals present at the time of the dwc:Occurrence. This should be a whole number. Egs - 0 / 1 / 25, if it's a decimal then rename this column to organismQuantity and ask the user what organismQuantityType is. 
         organismQuantity: A number or enumeration value for the quantity of dwc:Organisms.
         organismQuantityType: The type of quantification system used for the quantity of dwc:Organisms.
         sex: The sex of the biological individual(s) represented in the dwc:Occurrence. Egs - female / male / hermaphrodite
@@ -211,7 +225,7 @@
         parentEventID: An identifier for the broader dwc:Event that groups this and potentially other dwc:Events.
         eventType: The nature of the dwc:Event. Egs - Sample / Observation / Site Visit / Biotic Interaction / Bioblitz / Expedition / Survey / Project
         fieldNumber: An identifier given to the dwc:Event in the field. Often serves as a link between field notes and the dwc:Event.
-        eventDate: The date-time or interval during which a dwc:Event occurred. For occurrences, this is the date-time when the dwc:Event was recorded. Not suitable for a time in a geological context.
+        eventDate: For occurrences, this is the date-time when the dwc:Event was recorded. Not suitable for a time in a geological context. ISO format, some valid egs: 2009-02-20T08:40Z, 1809-02-12, 1906-06, 1971, 1900/1909, 2007-11-13/15
         eventTime: The time or interval during which a dwc:Event occurred.
         startDayOfYear: The earliest integer day of the year on which the dwc:Event occurred (1 for January 1, 365 for December 31, except in a leap year, in which case it is 366).
         endDayOfYear: The latest integer day of the year on which the dwc:Event occurred (1 for January 1, 365 for December 31, except in a leap year, in which case it is 366).
@@ -310,7 +324,7 @@
         nameAccordingToID: An identifier for the source in which the specific taxon concept circumscription is defined or implied. See dwc:nameAccordingTo.
         namePublishedInID: An identifier for the publication in which the dwc:scientificName was originally established under the rules of the associated dwc:nomenclaturalCode.
         taxonConceptID: An identifier for the taxonomic concept to which the record refers - not for the nomenclatural details of a dwc:Taxon.
-        scientificName: The full scientific name, with authorship and date information if known. When forming part of a dwc:Identification, this should be the name in lowest level taxonomic rank that can be determined. This term should not contain identification qualifications, which should instead be supplied in the dwc:identificationQualifier term. Egs - Coleoptera</code> (order)</li><li class="list-group-item"><code>Vespertilionidae</code> (family)</li><li class="list-group-item"><code>Manis</code> (genus)</li><li class="list-group-item"><code>Ctenomys sociabilis</code> (genus + specificEpithet)</li><li class="list-group-item"><code>Ambystoma tigrinum diaboli</code> (genus + specificEpithet + infraspecificEpithet)</li><li class="list-group-item"><code>Roptrocerus typographi (Györfi, 1952)</code> (genus + specificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>Quercus agrifolia var. oxyadenia (Torr.) J.T. Howell</code> (genus + specificEpithet + taxonRank + infraspecificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>×Agropogon littoralis (Sm.) C. E. Hubb. / Mentha ×smithiana R. A. Graham / Agrostis stolonifera L. × Polypogon monspeliensis (L.) Desf.
+        scientificName: The full scientific name, with authorship and date information if known. When forming part of a dwc:Identification, this should be the name in lowest level taxonomic rank that can be determined. Often users are not able to identify to species level for all data points, in which case you should backfill with higher level taxonomy from other columns. This term should not contain identification qualifications, which should instead be supplied in the dwc:identificationQualifier term. Egs - Coleoptera</code> (order)</li><li class="list-group-item"><code>Vespertilionidae</code> (family)</li><li class="list-group-item"><code>Manis</code> (genus)</li><li class="list-group-item"><code>Ctenomys sociabilis</code> (genus + specificEpithet)</li><li class="list-group-item"><code>Ambystoma tigrinum diaboli</code> (genus + specificEpithet + infraspecificEpithet)</li><li class="list-group-item"><code>Roptrocerus typographi (Györfi, 1952)</code> (genus + specificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>Quercus agrifolia var. oxyadenia (Torr.) J.T. Howell</code> (genus + specificEpithet + taxonRank + infraspecificEpithet + scientificNameAuthorship)</li><li class="list-group-item"><code>×Agropogon littoralis (Sm.) C. E. Hubb. / Mentha ×smithiana R. A. Graham / Agrostis stolonifera L. × Polypogon monspeliensis (L.) Desf.
         acceptedNameUsage: The full name, with authorship and date information if known, of the currently valid (zoological) or accepted (botanical) dwc:Taxon.
         parentNameUsage: The full name, with authorship and date information if known, of the direct, most proximate higher-rank parent dwc:Taxon (in a classification) of the most specific element of the dwc:scientificName. Egs - Rubiaceae / Gruiformes / Testudinae
         originalNameUsage: The taxon name, with authorship and date information if known, as it originally appeared when first established under the rules of the associated dwc:nomenclaturalCode. The basionym (botany) or basonym (bacteriology) of the dwc:scientificName or the senior/earlier homonym for replaced names. Egs - Pinus abies / Gasterosteus saltatrix Linnaeus 1768
@@ -318,18 +332,17 @@
         namePublishedIn: A reference for the publication in which the dwc:scientificName was originally established under the rules of the associated dwc:nomenclaturalCode. Egs - Pearson O. P., and M. I. Christie. 1985. Historia Natural, 5(37):388 / Forel, Auguste, Diagnosies provisoires de quelques espèces nouvelles de fourmis de Madagascar, récoltées par M. Grandidier., Annales de la Societe Entomologique de Belgique, Comptes-rendus des Seances 30, 1886
         namePublishedInYear: The four-digit year in which the dwc:scientificName was published. Egs - 1915 / 2008
         higherClassification: A list (concatenated and separated) of taxa names terminating at the rank immediately superior to the referenced dwc:Taxon. Egs - Plantae | Tracheophyta | Magnoliopsida | Ranunculales | Ranunculaceae | Ranunculus / Animalia / Animalia | Chordata | Vertebrata | Mammalia | Theria | Eutheria | Rodentia | Hystricognatha | Hystricognathi | Ctenomyidae | Ctenomyini | Ctenomys
-        kingdom: The full scientific name of the kingdom in which the dwc:Taxon is classified. Egs - Animalia / Archaea / Bacteria / Chromista / Fungi / Plantae / Protozoa / Viruses
-        phylum: The full scientific name of the phylum or division in which the dwc:Taxon is classified.
-        class: The full scientific name of the class in which the dwc:Taxon is classified. Egs - Mammalia / Hepaticopsida
-        order: The full scientific name of the order in which the dwc:Taxon is classified. Egs - Carnivora / Monocleales
-        superfamily: The full scientific name of the superfamily in which the dwc:Taxon is classified. Egs - Achatinoidea / Cerithioidea / Helicoidea / Hypsibioidea / Valvatoidea / Zonitoidea
-        family: The full scientific name of the family in which the dwc:Taxon is classified. Egs - Felidae / Monocleaceae
-        subfamily: The full scientific name of the subfamily in which the dwc:Taxon is classified. Egs - Periptyctinae / Orchidoideae / Sphindociinae
-        tribe: The full scientific name of the tribe in which the dwc:Taxon is classified. Egs - Ortaliini / Arethuseae
-        subtribe: The full scientific name of the subtribe in which the dwc:Taxon is classified. Egs - Plotinini / Typhaeini
-        genus: The full scientific name of the genus in which the dwc:Taxon is classified. Egs - Puma / Monoclea
-        genericName: The genus part of the dwc:scientificName without authorship.
-        subgenus: The full scientific name of the subgenus in which the dwc:Taxon is classified. Values should include the genus to avoid homonym confusion. Egs - Strobus / Amerigo / Pilosella
+        kingdom: The name of the kingdom in which the dwc:Taxon is classified. Egs - Animalia / Archaea / Bacteria / Chromista / Fungi / Plantae / Protozoa / Viruses
+        phylum: The name of the phylum or division in which the dwc:Taxon is classified.
+        class: The name of the class in which the dwc:Taxon is classified. Egs - Mammalia / Hepaticopsida
+        order: The name of the order in which the dwc:Taxon is classified. Egs - Carnivora / Monocleales
+        superfamily: The name of the superfamily in which the dwc:Taxon is classified. Egs - Achatinoidea / Cerithioidea / Helicoidea / Hypsibioidea / Valvatoidea / Zonitoidea
+        family: The name of the family in which the dwc:Taxon is classified. Egs - Felidae / Monocleaceae
+        subfamily: The name of the subfamily in which the dwc:Taxon is classified. Egs - Periptyctinae / Orchidoideae / Sphindociinae
+        tribe: The name of the tribe in which the dwc:Taxon is classified. Egs - Ortaliini / Arethuseae
+        subtribe: The name of the subtribe in which the dwc:Taxon is classified. Egs - Plotinini / Typhaeini
+        genus: The name of the genus in which the dwc:Taxon is classified. Egs - Puma / Monoclea
+        subgenus: The name of the subgenus in which the dwc:Taxon is classified. Values should include the genus to avoid homonym confusion. Egs - Strobus / Amerigo / Pilosella
         infragenericEpithet: The infrageneric part of a binomial name at ranks above species but below genus.
         specificEpithet: The name of the first or species epithet of the dwc:scientificName. Egs - concolor / gottschei
         infraspecificEpithet: The name of the lowest or terminal infraspecific epithet of the dwc:scientificName, excluding any rank designation.
@@ -356,10 +369,15 @@
       ---
 
       Take a deep breath, and methodically go through each of the columns in this Table: 
-      1) Make sure that each column heading corresponds to a Darwin Core term
-      2) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
-      3) Check the date columns and make sure they are valid dates. If there are one or two invalid dates, try to correct them. Make sure dates are in ISO format Y-m-d
-      4) Check decimalLatitude and decimalLongitude (if present), do any conversion necessary. Be sure to note geodeticDatum if it is not WGS84.
+      1) Ensure there is a maximum of TWO Tables - one Occurrence core and one optional Measurement or Fact extension table. 
+      2) Run BasicValidationForSomeDwCTerms and go through all of the unmatched column names and either try to match them to a Darwin Core term (do this yourself if it's reasonably clear, otherwise discuss with the user)
+      3) Fix any formatting issues in the validation output you received from BasicValidationForSomeDwCTerms. Make some intelligent guesses and try to correct things on your own, but ask the user if there's ambiguity. Never delete values or set invalid values to blank etc, try to fix them intelligently or ask the user for manual corrections, row by row.
+      4) If there are multiple tables (i.e. a core and MeasurementOrFact extension table), make sure that each column is in the correct table. The MeasurementOrFact table should ONLY contain the fields listed under MeasurementOrFact, all the other fields should be under the core table (usually occurrence).
+      5) Do an extra check of decimalLatitude and decimalLongitude, being sure to note geodeticDatum if it is not WGS84.
+      6) Take nother deep breath, and look over the definitions of the Darwin Core Terms above, then look at each of the columns in each Table in turn. Do one last sense check of everything, check for any requirements, any data which does not fit the column it has been put into, etc. Do your last set of fixes. If you need to, ask the user about any missing or confusing data points.
+    additional_functions: 
+      - BasicValidationForSomeDwCTerms
+      - RollBack
 
 - model: api.task
   fields:
@@ -367,18 +385,24 @@
     per_table: false
     attempt_autonomous: false
     text: |-
-      Carefully inspect these preprocessed dataframes. They should adhere to the Darwin Core standard and be  ready for publication. 
+      Carefully inspect these processed Tables. There should be an Occurrence core Table and one additional optional Measurement Or Fact Table - no others. Both should adhere to the Darwin Core standard and be ready for publication. 
 
-      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core table, not in the extension table (if there is one). Fix everything up and get it polished.
+      1. Are there any outstanding issues with the data that you can see? Note that the 'what', 'where', 'when' and 'who' (if applicable) columns should be in the main occurrence core Table, not in the Measurement or Fact Table (if there is one). For the Occurrence core Table, there should be an occurrenceID column with unique values. Fix everything up and get it polished.
 
-      2. With the restructured data in mind, are there any changes that you feel should be made to the dataset Title and Description? Discuss these with the user, and make any necessary changes. 
+      2. Run BasicValidationForSomeDwCTerms and make sure there are no serious validation errors. 
+
+      3. With the restructured data in mind, are there any changes that should be made to the dataset Title and Description? Discuss these with the user, and make any necessary edits. 
+
+      4. ALWAYS check with the user for any last final changes before publishing, and explain to them clearly that you are now about to publish their data to the GBIF testing platform.
+
+      5. Run PublishDwC 
+
+      6. Notify the user that the dataset is published, generate a congratulatory message with the DOI/URL to the dataset (returned from PublishDwC) and a sentence to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication. In the same message also let the user know that future functionality will let them edit the dataset.
       
-      When you and the user are satisfied with the data tables, publish the dataset using PublishDwC. 
+      7. Finally, SetAgentTaskToComplete after the user has acknowledged your message.
 
-      Be sure to warn the user that the publication process may take some time. 
-      When the dataset is published, generate a congratulatory message with: 
-      1. A small piece of celebratory ascii art
-      3. The DOI/URL to the dataset (returned from PublishDwC)
-      3. A message to let the user know that the dataset occurrence points will take some time (possibly 30 minutes) to populate after publication
-      4. Another message asking if they would like to make any edits, or upload a new dataset, and then call SetAgentTaskToComplete
-    additional_function: PublishDwC
+    additional_functions: 
+      - SetBasicMetadata
+      - BasicValidationForSomeDwCTerms
+      - RollBack
+      - PublishDwC

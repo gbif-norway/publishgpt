@@ -41,5 +41,11 @@ spec:
             - name: http
               containerPort: {{ .Values.backEnd.service.targetPort }}
               protocol: TCP
+          env:
+            - name: ALLOWED_HOSTS
+              value: {{ range $index, $host := .Values.backEnd.ingress.hosts }}{{ if $index }},{{ end }}{{ $host.host }}{{ end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.backEnd.secretRef.name }}
           resources:
             {{- toYaml .Values.backEnd.resources | nindent 12 }}
