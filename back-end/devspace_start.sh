@@ -32,9 +32,11 @@ if [ -z "$BASH" ]; then export PS1="$ "; fi
 # Include project's bin/ folder in PATH
 export PATH="./bin:$PATH"
 
-# Start the application using Gunicorn with auto-reload and enhanced logging
-echo -e "${COLOR_GREEN}Starting the application with Gunicorn (auto-reload enabled)...${COLOR_RESET}"
-gunicorn --bind 0.0.0.0:8000 --reload --log-level debug --access-logfile - --error-logfile - app.wsgi:application
+# Start the application using Gunicorn with auto-reload and logging to file
+echo -e "${COLOR_GREEN}Starting the application with Gunicorn (auto-reload enabled, running in background)...${COLOR_RESET}"
+nohup gunicorn --bind 0.0.0.0:8000 --reload app.wsgi:application > gunicorn.log 2>&1 &
 
-# Open shell (this will only run if Gunicorn is stopped)
+echo -e "${COLOR_GREEN}Gunicorn is running in the background. Logs are available in the 'logs' directory.${COLOR_RESET}"
+
+# Open shell
 bash --norc
