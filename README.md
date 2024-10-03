@@ -69,6 +69,11 @@ This project uses DevSpace for development and deployment. Here's how to use it:
 1. Install DevSpace: Follow the instructions at [https://devspace.sh/cli/docs/getting-started/installation](https://devspace.sh/cli/docs/getting-started/installation)
 2. Ensure you have access to a Kubernetes cluster and `kubectl` is configured correctly
 
+Set up namespace with:
+```bash
+devspace use namespace publishbot
+```
+
 ## Development
 
 ### Backend Development
@@ -76,7 +81,6 @@ This project uses DevSpace for development and deployment. Here's how to use it:
 To start developing the backend:
 
 ```bash
-devspace use namespace publishbot
 devspace dev
 ```
 
