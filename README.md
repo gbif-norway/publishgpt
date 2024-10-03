@@ -76,6 +76,7 @@ This project uses DevSpace for development and deployment. Here's how to use it:
 To start developing the backend:
 
 ```bash
+devspace use namespace publishbot
 devspace dev
 ```
 
