@@ -80,7 +80,7 @@ dev:
     # devImage: ghcr.io/loft-sh/devspace-containers/python:3-alpine
     # Sync files between the local filesystem and the development container
     sync:
-      - path: ./back-end
+      - path: ./back-end:/app
     # Open a terminal and use the following command to start it
     terminal:
       command: ./devspace_start.sh
@@ -97,8 +97,8 @@ dev:
     ports:
       - port: 8000:8000
     # Open the following URLs once they return an HTTP status code other than 502 or 503
-    open:
-      - url: http://localhost:8000
+    # open:
+    #   - url: http://localhost:8000
 
   front-end:
     imageSelector: gbifnorway/publishgpt-front-end:latest
@@ -116,8 +116,8 @@ dev:
       - gitCredentials: true
     ports:
       - port: 3000:3000
-    open:
-      - url: http://localhost:3000
+    # open:
+    #   - url: http://localhost:3000
 
 # Use the `commands` section to define repeatable dev workflows for this project
 commands:
