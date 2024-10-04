@@ -80,7 +80,7 @@ dev:
     # devImage: ghcr.io/loft-sh/devspace-containers/python:3-alpine
     # Sync files between the local filesystem and the development container
     sync:
-      - path: ./back-end
+      - path: ./back-end:/app
     # Open a terminal and use the following command to start it
     terminal:
       command: ./devspace_start.sh
