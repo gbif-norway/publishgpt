@@ -116,8 +116,8 @@ dev:
       - gitCredentials: true
     ports:
       - port: 3000:3000
-    open:
-      - url: http://localhost:3000
+    # open:
+    #   - url: http://localhost:3000
 
 # Use the `commands` section to define repeatable dev workflows for this project
 commands:
