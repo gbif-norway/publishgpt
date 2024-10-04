@@ -104,7 +104,7 @@ dev:
     imageSelector: gbifnorway/publishgpt-front-end:latest
     # devImage: ghcr.io/loft-sh/devspace-containers/nodejs:18-alpine
     sync:
-      - path: ./front-end
+      - path: ./front-end:/app
     terminal:
       command: ./devspace_start.sh
     ssh:
