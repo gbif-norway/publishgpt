@@ -1,3 +1,4 @@
+import traceback
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
@@ -45,18 +46,18 @@ class Dataset(models.Model):
     @property
     def filename(self):
         return os.path.basename(self.file.name)
-    
+
     def next_agent(self):
         self.refresh_from_db()
         if self.rejected_at:
             print('rejected')
             return None
-        
+
         next_agent = self.agent_set.filter(completed_at=None).first()
         if next_agent:
             return next_agent
-    
-        last_completed_agent = self.agent_set.last()  # self.agent_set.exclude(completed_at=None).last() 
+
+        last_completed_agent = self.agent_set.last()  # self.agent_set.exclude(completed_at=None).last()
         print(f'No next agent found, making new agent for new task based on {last_completed_agent}')
         if last_completed_agent:
             next_task = Task.objects.filter(id__gt=last_completed_agent.task.id).first()
@@ -178,7 +179,7 @@ class Table(models.Model):
             right = df.iloc[:, -max_columns//2:]
             middle = pd.DataFrame({ '...': ['...']*len(df) }, index=df.index)
             df = pd.concat([left, middle, right], axis=1)
-        
+
         df.fillna('', inplace=True)
 
         # Truncate rows
@@ -209,12 +210,12 @@ class Table(models.Model):
                 for j, idx in enumerate(dup_indices, start=1):
                     if j > 1:
                         cols[idx] = f"{col} ({j})"
-        
+
         df.columns = cols
         return df
 
 
-class Agent(models.Model):  
+class Agent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
@@ -245,18 +246,21 @@ class Agent(models.Model):
             return None
         if self.busy_thinking:
             return last_message
-        
+
         # Otherwise we need to send it to GPT, last message was from the user, was the return from a function, or was the starting system message
         self.busy_thinking = True
         self.save()
         try:
             response_message = create_chat_completion(self.message_set.all(), self.callable_functions)
-        except Exception as e:  
+        except Exception as e:
             error_message = f'Unfortunately there was a problem querying the OpenAI API. Try again later, and please report this error to the developers. Full error: {e}'
+            print(e)
+            print("Error in next_message:")
+            traceback.print_exc()
             self.busy_thinking = False
             self.save()
             return [Message.objects.create(agent=self, openai_obj={'role': Message.Role.ASSISTANT, 'content': error_message})]
-        
+
         message = Message.objects.create(agent=self, openai_obj=response_message.dict())  # response_message.__dict__
         if not response_message.tool_calls:  # It's a simple assistant message
             self.busy_thinking = False
@@ -271,12 +275,12 @@ class Agent(models.Model):
                 result = f'ERROR CALLING FUNCTION: Invalid JSON or code provided in your last response (Calling {tool_call.function.name} with the given arguments for {tool_call.id}), please try again. \nError: {e}'
 
             messages.append(Message.create_function_message(agent=self, function_result=result, tool_call_id=tool_call.id))
-        
+
         self.refresh_from_db()  # Necessary so that completed_at doesn't get overwritten
         self.busy_thinking = False
         self.save()
         return messages
-    
+
     def run_function(self, fn):
         function_model_class = getattr(agent_tools, fn.name)
         fnargs = fn.arguments
@@ -298,11 +302,11 @@ class Message(models.Model):
         SYSTEM = 'system'
         ASSISTANT = 'assistant'
         TOOL = 'tool'
-        
+
     @classmethod
     def create_function_message(cls, agent, function_result, tool_call_id):
         return cls.objects.create(agent=agent, openai_obj={'content': function_result, 'role': cls.Role.TOOL, 'tool_call_id': tool_call_id})
-    
+
     @property
     def role(self):
         return self.Role(self.openai_obj['role'])
