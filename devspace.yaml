@@ -40,7 +40,7 @@ images:
     dockerfile: ./back-end/Dockerfile
     context: back-end/
     kaniko:
-      cache: true
+      cache: false
       snapshotMode: redo
       insecure: false
     tags:
@@ -51,7 +51,7 @@ images:
     dockerfile: ./front-end/Dockerfile
     context: front-end/
     kaniko:
-      cache: true
+      cache: false
       snapshotMode: redo
       insecure: false
     tags:
