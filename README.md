@@ -71,7 +71,8 @@ This project uses DevSpace for development and deployment. Here's how to use it:
 
 Set up namespace with:
 ```bash
-devspace use namespace publishbot
+kubectl create namespace [chatipt-rukaya]
+devspace use namespace chatipt-rukaya
 ```
 
 ## Development

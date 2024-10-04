@@ -252,6 +252,8 @@ class Agent(models.Model):
         try:
             response_message = create_chat_completion(self.message_set.all(), self.callable_functions)
         except Exception as e:  
+            print('hello?')
+            import pdb; pdb.set_trace()
             error_message = f'Unfortunately there was a problem querying the OpenAI API. Try again later, and please report this error to the developers. Full error: {e}'
             self.busy_thinking = False
             self.save()

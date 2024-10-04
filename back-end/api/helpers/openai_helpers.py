@@ -14,6 +14,7 @@ def query_api(args):
 def create_chat_completion(messages, functions=None, temperature=0.7, model='gpt-4o-2024-05-13'): # gpt-4o-2024-05-13 gpt-4o-2024-08-06
     print('---')
     print(f'---Calling GPT {model}---')
+
     openai_args = { 'model': model, 'temperature': temperature, 'messages': [m.openai_obj for m in messages] }
     if functions:
         # Look into openai.pydantic_function_tool https://platform.openai.com/docs/guides/function-calling/function-calling-with-structured-outputs

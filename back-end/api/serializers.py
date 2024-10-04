@@ -59,6 +59,7 @@ class DatasetSerializer(serializers.ModelSerializer):
         return AgentSerializer(agents, many=True).data
 
     def create(self, data):
+        print('hi', flush=True)
         discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT. User file: {data['file'].name}.")
         dataset = Dataset.objects.create(**data)
 

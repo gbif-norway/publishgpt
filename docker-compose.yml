@@ -15,7 +15,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./back-end/.env
+      - ./back-end/.env.dev
   front-end:
     build: ./front-end
     volumes:
