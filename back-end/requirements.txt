@@ -56,3 +56,4 @@ utm==0.7.0
 uv==0.4.18
 xlrd==2.0.1
 xmltodict==0.13.0
+setuptools==75.1.0
