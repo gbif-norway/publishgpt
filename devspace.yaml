@@ -97,8 +97,8 @@ dev:
     ports:
       - port: 8000:8000
     # Open the following URLs once they return an HTTP status code other than 502 or 503
-    open:
-      - url: http://localhost:8000
+    # open:
+    #   - url: http://localhost:8000
 
   front-end:
     imageSelector: gbifnorway/publishgpt-front-end:latest

@@ -32,11 +32,16 @@ if [ -z "$BASH" ]; then export PS1="$ "; fi
 # Include project's bin/ folder in PATH
 export PATH="./bin:$PATH"
 
-# Define an alias to start the application using Gunicorn with auto-reload
-echo -e "${COLOR_GREEN}Defining alias 'start_app' to run Gunicorn...${COLOR_RESET}"
-alias start_app="gunicorn --bind 0.0.0.0:8000 --reload app.wsgi:application"
+# Define a function to start the application using Gunicorn with auto-reload
+start_app() {
+    gunicorn --bind 0.0.0.0:8000 --reload app.wsgi:application
+}
 
+echo -e "${COLOR_GREEN}Defining function 'start_app' to run Gunicorn...${COLOR_RESET}"
 echo -e "${COLOR_GREEN}You can now start the application by running 'start_app'${COLOR_RESET}"
+
+# Export the function so it's available in child shells
+export -f start_app
 
 # Open shell
 bash --norc
