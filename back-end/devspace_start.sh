@@ -32,9 +32,35 @@ if [ -z "$BASH" ]; then export PS1="$ "; fi
 # Include project's bin/ folder in PATH
 export PATH="./bin:$PATH"
 
-# Start the application using Gunicorn with auto-reload and enhanced logging
-echo -e "${COLOR_GREEN}Starting the application with Gunicorn (auto-reload enabled)...${COLOR_RESET}"
-gunicorn --bind 0.0.0.0:8000 --reload --log-level debug --access-logfile - --error-logfile - app.wsgi:application
+# Install PostgreSQL client quietly if not already installed
+if ! command -v psql &> /dev/null
+then
+    echo -e "${COLOR_GREEN}Installing PostgreSQL client...${COLOR_RESET}"
+    sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql-client > /dev/null 2>&1
+    echo -e "${COLOR_GREEN}PostgreSQL client installed successfully.${COLOR_RESET}"
+else
+    echo -e "${COLOR_GREEN}PostgreSQL client is already installed.${COLOR_RESET}"
+fi
 
-# Open shell (this will only run if Gunicorn is stopped)
+# Define a function to start the application using Django's development server
+start_app() {
+    python manage.py runserver 0.0.0.0:8000
+}
+
+echo -e "${COLOR_GREEN}Defining function 'start_app' to run Django development server...${COLOR_RESET}"
+echo -e "${COLOR_GREEN}You can now start the application by running 'start_app'${COLOR_RESET}"
+
+# Define an alias function to connect to the database using psql
+connect_db() {
+    PGPASSWORD=$SQL_PASSWORD psql -h $SQL_HOST -p $SQL_PORT -U $SQL_USER -d $SQL_DATABASE
+}
+
+echo -e "${COLOR_GREEN}Defining function 'connect_db' to connect to the database using psql...${COLOR_RESET}"
+echo -e "${COLOR_GREEN}You can now connect to the database by running 'connect_db'${COLOR_RESET}"
+
+# Export the functions so they're available in child shells
+export -f start_app
+export -f connect_db
+
+# Open shell
 bash --norc
