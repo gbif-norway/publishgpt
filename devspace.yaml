@@ -105,6 +105,7 @@ dev:
     # devImage: ghcr.io/loft-sh/devspace-containers/nodejs:18-alpine
     sync:
       - path: ./front-end:/app
+        excludeFile: .dockerignore
     terminal:
       enabled: false
     ssh:
