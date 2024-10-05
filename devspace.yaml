@@ -9,7 +9,7 @@ pipelines:
       run_dependencies --all       # 1. Deploy any projects this project needs (see "dependencies")
       ensure_pull_secrets --all    # 2. Ensure pull secrets
       create_deployments --all     # 3. Deploy Helm charts and manifests specfied as "deployments"
-      start_dev back-end                # 4. Start dev mode "back-end" (see "dev" section)
+      start_dev --all            # 4. Start dev mode "back-end" (see "dev" section)
 
   dev-fe:
     run: |-
@@ -40,7 +40,7 @@ images:
     dockerfile: ./back-end/Dockerfile
     context: back-end/
     kaniko:
-      cache: false
+      cache: true
       snapshotMode: redo
       insecure: false
     tags:
@@ -51,7 +51,7 @@ images:
     dockerfile: ./front-end/Dockerfile
     context: front-end/
     kaniko:
-      cache: false
+      cache: true
       snapshotMode: redo
       insecure: false
     tags:
@@ -106,7 +106,7 @@ dev:
     sync:
       - path: ./front-end:/app
     terminal:
-      command: ./devspace_start.sh
+      enabled: false
     ssh:
       enabled: true
     proxyCommands:
