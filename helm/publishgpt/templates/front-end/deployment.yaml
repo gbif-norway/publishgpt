@@ -41,5 +41,8 @@ spec:
             - name: http
               containerPort: {{ .Values.frontEnd.service.targetPort }}
               protocol: TCP
+          env:
+            - name: BASE_API_URL
+              value: "https://{{ (index .Values.backEnd.ingress.hosts 0).host }}"
           resources:
             {{- toYaml .Values.frontEnd.resources | nindent 12 }}
