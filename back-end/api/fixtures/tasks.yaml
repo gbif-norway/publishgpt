@@ -26,7 +26,7 @@
       - save the Title and Description
       - save the user_language (the language the user speaks to you in), use the default "English" for English
       - use structure_notes to save anything unusual you discover about the dataset structure or cryptic column names. E.g. if there are two tables rolled into one, if one sheet should be discarded/ignored), if a column called 'R' actually contains a calculated measurement of species richness, etc. 
-      - (IMPORTANT) if the data is not suitable for publication, set suitable_for_publication_on_gbif to False. 
+      - (IMPORTANT) if the data is not suitable for publication, check with the user to verify the data is missing from the spreadsheet, and if it is then set suitable_for_publication_on_gbif to False. 
       Then call SetAgentTaskToComplete. 
     additional_functions: 
       - SetBasicMetadata
