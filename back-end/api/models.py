@@ -72,36 +72,45 @@ class Dataset(models.Model):
 
     @staticmethod
     def get_dfs_from_user_file(file, file_name):
-        try:
-            file_content = file.read()
-            file_io = io.StringIO(file_content.decode('utf-8', errors='surrogateescape'))
-            df = pd.read_csv(file_io, dtype='str', encoding='utf-8', encoding_errors='surrogateescape', sep=None, engine='python', header=0)
-            return {file_name: df}
-        except Exception as e:
+        file_content = file.read()
+        file_text = file_content.decode('utf-8', errors='surrogateescape')
+        possible_delimiters = [',', '\t', ';']
+        for delimiter in possible_delimiters:
             try:
-                workbook = openpyxl.load_workbook(file)
-                for sheet in workbook.worksheets:
-                    for row in sheet.iter_rows():
-                        for cell in row:
-                            if cell.data_type == 'f':  # 'f' indicates a formula
-                                cell.value = '' # f'[FORMULA: {cell.value}]'
-                    for merged_cell in list(sheet.merged_cells.ranges):
-                        min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
-                        value = sheet.cell(row=min_row, column=min_col).value
-                        sheet.unmerge_cells(str(merged_cell))
-                        for row in range(min_row, max_row + 1):
-                            for col in range(min_col, max_col + 1):
-                                sheet.cell(row=row, column=col).value = f"{value} [UNMERGED CELL]"
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-                    temp_file_name = tmp.name
-                    workbook.save(temp_file_name)
-                dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
-                os.remove(temp_file_name)
-                return dfs
-            except ValueError as ve:
-                return {"error": f"Unable to read workbook: {str(ve)}. The file may contain invalid XML or be corrupted."}
+                file_io = io.StringIO(file_text)
+                df = pd.read_csv(file_io, dtype='str', sep=delimiter, engine='python', header=0)
+                if not df.empty and len(df.columns) > 1:
+                    print(f"Successfully read file with delimiter '{delimiter}'")
+                    return {file_name: df}
             except Exception as e:
-                return {"error": f"An error occurred while processing the file: {str(e)}."}
+                print(f"Could not load file as CSV with delimiter '{delimiter}' - {str(e)}")
+                continue 
+
+        file.seek(0)
+        try:
+            workbook = openpyxl.load_workbook(file)
+            for sheet in workbook.worksheets:
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        if cell.data_type == 'f':  # 'f' indicates a formula
+                            cell.value = '' # f'[FORMULA: {cell.value}]'
+                for merged_cell in list(sheet.merged_cells.ranges):
+                    min_col, min_row, max_col, max_row = merged_cell.min_col, merged_cell.min_row, merged_cell.max_col, merged_cell.max_row
+                    value = sheet.cell(row=min_row, column=min_col).value
+                    sheet.unmerge_cells(str(merged_cell))
+                    for row in range(min_row, max_row + 1):
+                        for col in range(min_col, max_col + 1):
+                            sheet.cell(row=row, column=col).value = f"{value} [UNMERGED CELL]"
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                temp_file_name = tmp.name
+                workbook.save(temp_file_name)
+            dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
+            os.remove(temp_file_name)
+            return dfs
+        except ValueError as ve:
+            return {"error": f"Unable to read workbook: {str(ve)}. The file may contain invalid XML or be corrupted."}
+        except Exception as e:
+            return {"error": f"An error occurred while processing the file: {str(e)}."}
 
     class Meta:
         get_latest_by = 'created_at'

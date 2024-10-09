@@ -59,11 +59,10 @@ class DatasetSerializer(serializers.ModelSerializer):
         return AgentSerializer(agents, many=True).data
 
     def create(self, data):
-        discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT. User file: {data['file'].name}.")
+        discord_bot.send_discord_message(f"New dataset publication starting on ChatIPT . User file: {data['file'].name}.")
         dataset = Dataset.objects.create(**data)
-
         try:
-            dfs = Dataset.get_dfs_from_user_file(data['file'].file, data['file'].name)
+            dfs = Dataset.get_dfs_from_user_file(dataset.file, dataset.file.name.split('/')[1])
         except Exception as e:
             raise serializers.ValidationError(f"An error was encountered when loading your data. Error details: {e}.")
 
