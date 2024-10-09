@@ -190,6 +190,7 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
         </div>
       )}
+      <div className="footer"><hr />Something not working? Please send me an email with feedback: <a href="mailto:rukayasj@uio.no" target="_blank">rukayasj@uio.no</a></div>
     </div>
   );
 };
