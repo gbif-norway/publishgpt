@@ -63,7 +63,7 @@ class DatasetSerializer(serializers.ModelSerializer):
         dataset = Dataset.objects.create(**data)
 
         try:
-            dfs = Dataset.get_dfs_from_user_file(data['file'].file, data['file'].name)
+            dfs = Dataset.get_dfs_from_user_file(dataset.file, dataset.file.name.split('/')[1])
         except Exception as e:
             raise serializers.ValidationError(f"An error was encountered when loading your data. Error details: {e}.")
 
