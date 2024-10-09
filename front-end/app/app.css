@@ -77,6 +77,7 @@ svg .s1 { fill: rgb(127, 198, 136) }
 svg { margin-right: 10px; }
 
 /* .assistant-message { display: flex; align-items: flex-start;} */
+.assistant-message-error { color: #ffadad}
 .accordion-body { padding: 20px 15px; }
 .user-input-loading { 
     border-radius: 10px;

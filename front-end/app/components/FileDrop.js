@@ -48,8 +48,13 @@ const FileDrop = ({ onFileAccepted, onError }) => {
       onFileAccepted(data.id);
       setLoading(false);
     } catch (err) {
+      console.log(err);
       setLoading(false);
-      onError(err.message);
+      if(err.message == "Failed to fetch") { 
+        onError("The app is undergoing maintenance, please try again later. If you'd like to be informed when it's back up, send an email to rukayasj@uio.no.");
+      } else { 
+        onError(err.message);
+      }
     }
   };
 
