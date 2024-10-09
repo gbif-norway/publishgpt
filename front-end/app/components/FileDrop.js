@@ -1,10 +1,14 @@
 import React from 'react';
+import { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import config from '../config.js';
 
-const FileDrop = ({ onFileAccepted, onError, loading }) => {
+const FileDrop = ({ onFileAccepted, onError }) => {
+  const [loading, setLoading] = useState(false);  
 
   const onDrop = async (acceptedFiles) => {
+    console.log('file dropped');
+    setLoading(true);
     const formData = new FormData();
     formData.append('file', acceptedFiles[0]);
 
@@ -35,11 +39,16 @@ const FileDrop = ({ onFileAccepted, onError, loading }) => {
         }
     
         // Throw an error with the detailed message
+        setLoading(false);
         throw new Error(errorMessage);
       }
       const data = await response.json();
+      console.log('file accepted');
+      console.log(data)
       onFileAccepted(data.id);
+      setLoading(false);
     } catch (err) {
+      setLoading(false);
       onError(err.message);
     }
   };
@@ -50,14 +59,18 @@ const FileDrop = ({ onFileAccepted, onError, loading }) => {
   });
 
   return (
-    <div {...getRootProps()} className="file-drop">
-      <input {...getInputProps()} />
+    <div>
       {loading ? (
         <div className="spinner"></div>
-      ) : isDragActive ? (
-        <p>Drop the file here ...</p>
       ) : (
-        <p>Drag and drop a file here, or click to select a file</p>
+      <div {...getRootProps()} className="file-drop">
+        <input {...getInputProps()} />
+        {isDragActive ? (
+          <p>Drop the file here ...</p>
+        ) : (
+          <p>Drag and drop a file here, or click to select a file</p>
+        )}
+      </div>
       )}
     </div>
   );

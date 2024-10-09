@@ -82,10 +82,17 @@ const Dataset = ({ initialDatasetId }) => {
   useEffect(() => {if (initialDatasetId) { initialLoadDataset(initialDatasetId); }}, [initialDatasetId]);
 
   const initialLoadDataset = async (datasetId) => {
-    console.log(`loading dataset with ${config.baseApiUrl}/datasets/${datasetId}/refresh`);
-    const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${datasetId}/refresh`);
-    setActiveDatasetID(datasetId); 
-    setDataset(refreshedDataset);
+    try {
+      setLoading(true);
+      console.log(`loading dataset with ${config.baseApiUrl}/datasets/${datasetId}/refresh`);
+      const refreshedDataset = await fetchData(`${config.baseApiUrl}/datasets/${datasetId}/refresh`);
+      setActiveDatasetID(datasetId); 
+      setDataset(refreshedDataset);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
   const CustomTabTitle = ({ children }) => <span dangerouslySetInnerHTML={{ __html: children }} />;
 
@@ -106,15 +113,16 @@ const Dataset = ({ initialDatasetId }) => {
                   </div>
                 </div>
               </div>
-              <FileDrop
-                onFileAccepted={(data) => { 
-                  setLoading(true);  // Start loading when file is accepted
-                  // initializeDatasetFromFileDrop(data); 
-                  initialLoadDataset(data);
-                }}
-                onError={(errorMessage) => setError(errorMessage)}
-                loading={loading}  // Pass loading state to FileDrop
-              />
+              {loading ? (
+                <div className="spinner"></div>
+              ) : (
+                <FileDrop
+                  onFileAccepted={(data) => { 
+                    initialLoadDataset(data);
+                  }}
+                  onError={(errorMessage) => setError(errorMessage)}
+                />
+              )}
               {error && <div className="message assistant-message assistant-message-error">{error}</div>}
             </div>
           </div>
@@ -190,7 +198,12 @@ const Dataset = ({ initialDatasetId }) => {
           </div>
         </div>
       )}
-      <div className="footer"><hr />Something not working? Please send me an email with feedback: <a href="mailto:rukayasj@uio.no" target="_blank">rukayasj@uio.no</a></div>
+
+      <div className="row">
+        <div className="col-lg-9 mx-auto">
+          <div className="footer"><hr />Something not working? Please send me an email with feedback: <a href="mailto:rukayasj@uio.no" target="_blank">rukayasj@uio.no</a></div>
+        </div>
+      </div>
     </div>
   );
 };

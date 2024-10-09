@@ -61,9 +61,10 @@ h1.title { text-align: center; margin-top: 20px; color: #c5ffc0; margin-bottom: 
     border: 4px solid rgba(0, 0, 0, 0.1);
     border-left-color: #4caf50;
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    width: 54px;
+    height: 54px;
     animation: spin 1s linear infinite;
+    margin: 30px auto;
 }
 
 @keyframes spin {
@@ -87,4 +88,4 @@ svg { margin-right: 10px; }
 .modal-content li li {padding-bottom: 0; }
 code { margin-bottom: 10px;}
 
-.footer { margin: 20px; }
+.footer { margin: 0 20px; }
