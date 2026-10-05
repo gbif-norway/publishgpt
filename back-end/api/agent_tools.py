@@ -27,6 +27,7 @@ import datetime
 import utm
 from dateutil.parser import parse, ParserError
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from api.helpers import discord_bot
@@ -3153,8 +3154,35 @@ class PublishToGBIF(OpenAIBaseModel):
                 completed_at__isnull=False,
             ).exists()
             if not quality_gate_complete:
+                gate_agent = dataset.agent_set.filter(
+                    task__name=Task.PREPUBLICATION_QUALITY_TASK,
+                    completed_at__isnull=True,
+                ).first()
+                if gate_agent is None and dataset.has_current_dwca_validation:
+                    with transaction.atomic():
+                        Dataset.objects.select_for_update().get(pk=dataset.pk)
+                        gate_agent = dataset.agent_set.filter(
+                            task__name=Task.PREPUBLICATION_QUALITY_TASK,
+                        ).first()
+                        if gate_agent is None:
+                            gate_task = Task.objects.filter(
+                                name=Task.PREPUBLICATION_QUALITY_TASK,
+                            ).first()
+                            if gate_task is not None:
+                                gate_agent = gate_task.create_agent_with_system_messages(dataset)
+                        if gate_agent is not None and gate_agent.completed_at is None:
+                            from api.agent_turns import queue_agent_turn
+
+                            transaction.on_commit(lambda: queue_agent_turn(gate_agent))
+                if gate_agent is not None and gate_agent.completed_at is None:
+                    return (
+                        "Error: The pre-publication quality gate is now running. "
+                        "Follow its review in this dataset's chat and answer any questions it raises. "
+                        "Once it completes, publication can be retried without rebuilding the unchanged archive."
+                    )
                 return (
-                    "Error: Cannot publish until the pre-publication quality gate has completed."
+                    "Error: Cannot publish until the pre-publication quality gate has completed. "
+                    "Please contact support if no quality review appears in this dataset's chat."
                 )
             if not dataset.has_complete_source_coverage:
                 return (

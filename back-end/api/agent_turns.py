@@ -55,7 +55,7 @@ def ensure_dataset_work(dataset_id, delay_seconds=0):
         dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
         if dataset.workflow_type == Dataset.WorkflowType.DWCA_CONVERSION:
             return None  # Conversion jobs have their own state and never enter publication tasks.
-        agent = dataset.agent_set.filter(completed_at__isnull=True).first()
+        agent = dataset.active_agent()
         if not agent:
             if dataset.published_at or (
                 not dataset.user_files.exists() and not dataset.table_set.exists()

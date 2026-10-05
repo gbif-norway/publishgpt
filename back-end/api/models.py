@@ -272,7 +272,9 @@ class Dataset(models.Model):
         if self.workflow_type == self.WorkflowType.DWCA_CONVERSION:
             return None
 
-        next_agent = self.agent_set.filter(completed_at=None).first()
+        # Tasks can be added to an existing workflow. A newly created earlier
+        # stage must take precedence over an older maintenance agent.
+        next_agent = self.active_agent()
         if next_agent:
             return next_agent
 
@@ -315,6 +317,13 @@ class Dataset(models.Model):
             
             first_task.create_agent_with_system_messages(dataset=self)
             return self.next_agent()
+
+    def active_agent(self):
+        return (
+            self.agent_set.filter(completed_at__isnull=True)
+            .order_by('task__order', 'task_id', 'created_at', 'id')
+            .first()
+        )
 
     def _should_skip_task(self, task):
         if task.name == "Phylogenetic tree linking" and not self.has_tree_files():

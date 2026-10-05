@@ -289,7 +289,7 @@ class DatasetSerializer(serializers.ModelSerializer):
     
     def get_visible_agent_set(self, dataset):
         agents = list(dataset.agent_set.filter(completed_at__isnull=False))
-        next_active_agent = dataset.agent_set.filter(completed_at__isnull=True).first()
+        next_active_agent = dataset.active_agent()
         if next_active_agent:
             agents.append(next_active_agent)
         return AgentSerializer(agents, many=True).data
@@ -503,7 +503,7 @@ class DatasetListSerializer(serializers.ModelSerializer):
             return {'complete': 'ready', 'review': 'needs_input', 'failed': 'failed'}.get(state.status if state else '', 'preparing')
         if obj.published_at: 
             return 'published'
-        active_agent = obj.agent_set.filter(completed_at__isnull=True).order_by('created_at').first()
+        active_agent = obj.active_agent()
         if not active_agent:
             return 'ready' if obj.package_ready else 'preparing'
 
@@ -541,7 +541,7 @@ class DatasetListSerializer(serializers.ModelSerializer):
         return {'done': done, 'total': total}
 
     def get_last_message_preview(self, obj):
-        a = obj.agent_set.order_by('-created_at').first()
+        a = obj.active_agent() or obj.agent_set.order_by('-created_at').first()
         if not a: 
             return ''
         m = a.message_set.order_by('-created_at').first()
