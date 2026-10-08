@@ -574,7 +574,8 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
         description: Dataset description (abstract)
         user: Primary user (creator/metadataProvider)
         eml_extra: Optional dict from `dataset.eml` with keys like
-                   geographic_scope, temporal_scope, taxonomic_scope, methodology, users, project_title
+                   geographic_scope, temporal_scope, taxonomic_scope, methodology, users, contacts,
+                   metadata_providers, project_title
         dataset_id: ChatIPT dataset id, used to derive the EML packageId
     """
     eml_path = _TEMPLATES_ROOT / "eml.xml"
@@ -911,6 +912,15 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
             dataset_node.insert(insert_index, creator)
             insert_index += 1
 
+    # Source roles are independent of authorship and the account profile.
+    # An absent/empty list retains the historical account-holder default.
+    for key, tag in (('contacts', 'contact'), ('metadata_providers', 'metadataProvider')):
+        people = eml_extra.get(key)
+        if people:
+            remove_children(dataset_node, tag)
+            for person in people:
+                set_person(ET.SubElement(dataset_node, tag), person)
+
     project_title = eml_extra.get('project_title')
     if isinstance(project_title, str):
         project_title = project_title.strip()
@@ -1106,7 +1116,8 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
             "EML people are missing a verified surname (GBIF requires surName): "
             + ", ".join(incomplete_agents)
             + ". Ask the account holder for their name and save it once with SetUserName; "
-            "record other creators' names with SetEML. Put a single-name person's name "
+            "record source people with SetEML users, contacts, or metadata_providers. "
+            "Put a single-name person's name "
             "in last_name. Leave ORCID blank unless a real ORCID iD was supplied."
         )
 

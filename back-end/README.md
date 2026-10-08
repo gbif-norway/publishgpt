@@ -15,3 +15,18 @@ Check http://localhost:8000/api
 `docker exec -it chatipt-front-end-1 /bin/bash`
 `npm run dev`
 Check http://localhost:3000
+
+## Dataset metadata roles
+
+`SetEML(users=[...])` sets dataset creators. Use `contacts=[...]` and
+`metadata_providers=[...]` to assign source contacts and people who supplied the
+metadata separately. Each person has `first_name`, `last_name`, `email`, and an
+optional `orcid`. The same people can be supplied in all three lists when the
+source identifies them in all three roles.
+
+A nonempty contact or metadata provider list replaces the account holder in that
+EML role without editing their account. Omitting the list or passing `null`
+preserves the saved value; `[]` clears that override and restores the account
+holder default. These settings also work with `creators_unknown=true`. Save them
+before rebuilding the publication artifacts; metadata edits invalidate earlier
+exports.

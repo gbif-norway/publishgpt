@@ -1471,7 +1471,7 @@ class EMLGeographicBounds(BaseModel):
 class SetEML(OpenAIBaseModel):
     """Sets the EML (Metdata) for a Dataset via an Agent, returns a success or error message. Note that SetBasicMetadata should be used to set the dataset Title and Description.
 
-    Creators default to the account holder's profile. If the account holder did not create the data and the source's creators are unknown, pass creators_unknown=true and no users: the EML then names an unknown creator and keeps the account holder as metadataProvider and contact. Passing users or creators_unknown=false clears it."""
+    Creators default to the account holder's profile. If the account holder did not create the data and the source's creators are unknown, pass creators_unknown=true and no users: the EML then names an unknown creator and uses the account holder as metadataProvider and contact by default. Set contacts and metadata_providers to use source people in those roles without changing the account. Passing users or creators_unknown=false clears it."""
     agent_id: PositiveInt = Field(...)
     license: Optional[Literal["CC0 1.0", "CC BY 4.0", "CC BY-NC 4.0"]] = Field(
         None,
@@ -1514,13 +1514,32 @@ class SetEML(OpenAIBaseModel):
         description=(
             "Set true when the source's creators are unknown and the account holder did not "
             "create the data. The EML then names an unknown creator instead of the account "
-            "holder, who stays metadataProvider and contact. Clears the saved creator list; "
+            "holder. Contact and metadata provider overrides are independent. "
+            "Clears the saved creator list; "
             "cannot be combined with users. Pass false to clear."
         ),
     )
     users: Optional[List[EMLUser]] = Field(
         None,
-        description="Optional list of people involved in the dataset. Each entry should be an object with first_name, last_name, email, and orcid keys."
+        description="Optional list of dataset creators. Contact and metadata provider roles are set separately. Each entry has first_name, last_name, email, and optional orcid."
+    )
+    contacts: Optional[List[EMLUser]] = Field(
+        None,
+        description=(
+            "Dataset source contacts, independent of creators and the owner account. "
+            "Each entry has first_name, last_name, email, and optional orcid. "
+            "Omit or pass null to preserve saved contacts; pass [] to restore the "
+            "account holder default. A nonempty list replaces the default contacts."
+        ),
+    )
+    metadata_providers: Optional[List[EMLUser]] = Field(
+        None,
+        description=(
+            "People who supplied the dataset metadata, independent of creators and the "
+            "owner account. Each entry has first_name, last_name, email, and optional orcid. "
+            "Omit or pass null to preserve saved providers; pass [] to restore the "
+            "account holder default. A nonempty list replaces the default providers."
+        ),
     )
     TEXT_PLACEHOLDER_VALUES: ClassVar[set[str]] = {
         "", "unknown", "not known", "not provided", "n/a", "na", "none", "null", "tbd", "pending"
@@ -2127,7 +2146,7 @@ class SetEML(OpenAIBaseModel):
                     eml["creators_source"] = "unknown"
                 creators_unknown_note = (
                     "Creators are marked unknown: the EML creator is 'Unknown creator' and the "
-                    "account holder stays metadataProvider and contact."
+                    "contact and metadata provider settings are unchanged."
                 )
             elif self.creators_unknown is False or self.users:
                 if eml.pop("creators_unknown", None) and creators_source is None:
@@ -2154,9 +2173,20 @@ class SetEML(OpenAIBaseModel):
                     }]
                     if creators_source is None:
                         eml["creators_source"] = "user_profile"
-            creators_missing_surname = [
-                person.get("first_name") or "(no name)"
-                for person in eml.get("users") or []
+            for role in ("contacts", "metadata_providers"):
+                people = getattr(self, role)
+                if people is not None:
+                    if people:
+                        eml[role] = [
+                            {**person.model_dump(), "orcid": normalize_orcid(person.orcid)}
+                            for person in people
+                        ]
+                    else:
+                        eml.pop(role, None)
+            people_missing_surname = [
+                f"{role}: {person.get('first_name') or '(no name)'}"
+                for role in ("users", "contacts", "metadata_providers")
+                for person in eml.get(role) or []
                 if not clean_person_name(person.get("last_name"))
             ]
             dataset.eml = eml
@@ -2193,9 +2223,9 @@ class SetEML(OpenAIBaseModel):
                     creators_unknown_note,
                     profile_name_note,
                     (
-                        "These creators have no verified surname and will block export until "
-                        f"one is supplied: {', '.join(creators_missing_surname)}."
-                        if creators_missing_surname else None
+                        "These people have no verified surname and will block export until "
+                        f"one is supplied: {', '.join(people_missing_surname)}."
+                        if people_missing_surname else None
                     ),
                 )
                 if note
@@ -2301,7 +2331,7 @@ class SetUserLanguage(OpenAIBaseModel):
 class SetUserName(OpenAIBaseModel):
     """
     Saves the dataset owner's own name on their ChatIPT account profile. The profile name is
-    used as the EML metadataProvider and contact. Use this when the profile name is missing,
+    used as the default EML metadataProvider and contact. Use this when the profile name is missing,
     incomplete or a placeholder (e.g. '[unknown]') and the user has told you their name.
     Only record a name the user gave for themselves; never another person's name. For a
     person with a single name, put it in last_name. Returns a success or error message.
