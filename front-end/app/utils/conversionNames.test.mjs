@@ -19,8 +19,10 @@ test('group copy has the requested choices and plain explanations', () => {
     assert.ok(groupExplanation({ kind: 'check', signature: { code, yours: 'A', col: 'B', text: 'Mixed kingdoms.' } }))
   }
   assert.equal(groupExplanation({ kind: 'check', signature: { code: 'mixed', reason: 'Rows list two kingdoms.' } }), 'Rows list two kingdoms.')
-  assert.equal(selectedGroupChoice({ kind: 'auto' }), 'col')
-  assert.equal(selectedGroupChoice({ kind: 'uncertain' }), 'stem')
+  // The server reports the choice, the automatic one included; "Review all manually" is a choice too.
+  assert.equal(selectedGroupChoice({ kind: 'auto', choice: 'col' }), 'col')
+  assert.equal(selectedGroupChoice({ kind: 'auto', choice: 'manual' }), 'manual')
+  assert.equal(selectedGroupChoice({ kind: 'check' }), '')
   assert.equal(selectedGroupChoice({ kind: 'check', choice: 'mine' }), 'mine')
   assert.equal(ariaPressed('col', 'col'), true)
   assert.equal(ariaPressed('col', 'mine'), false)

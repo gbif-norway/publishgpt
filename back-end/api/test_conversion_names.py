@@ -2105,6 +2105,43 @@ class NamesV2ContractTests(SimpleTestCase):
         self.assertEqual((col['spelling'], col['different']), (2, 0))
         self.assertEqual((mine['spelling'], mine['different']), (0, 0))
 
+    def test_review_findings_v2(self):
+        # A "sp." stem with homonyms names no COL usage (only the name is published).
+        sterna = copy.deepcopy(FIXTURE_RECORDS['Sterna sp.'])
+        self.assertIsNone(names.stem_usage(sterna)['usageId'])
+        # An explicitly chosen broader stem records the replacement.
+        anura = copy.deepcopy(FIXTURE_RECORDS['Anura indet.'])
+        anura.update(label='Anura sp.', qualifier='sp.')
+        snapshot = names.build_decision(anura, {'decision': 'stem'}, {'col_release': RELEASE}, by='bulk:unconfirmed', group_kind='unconfirmed')
+        self.assertEqual((snapshot['changeKind'], snapshot['confirmedCoarser']), ('coarser', True))
+        self.assertTrue(snapshot['replaces'])
+        # "Review all manually" is reported as the group's choice; the automatic group's COL counts change nothing.
+        auto = self.record(label='Aus bus', usage_name='Aus bus')
+        conversion = SimpleNamespace(plan={'id': 'plan'}, name_review={'plan_id': 'plan', 'labels': [auto], 'decisions': {}, 'col_release': RELEASE},
+                                     save=lambda **kwargs: None)
+        names.auto_accept(conversion.name_review)
+        group = next(item for item in names.groups(conversion.name_review) if item['id'] == 'auto')
+        col = next(item for item in group['options'] if item['decision'] == 'col')
+        self.assertEqual((group['choice'], col['broader'], col['different'], col['authorship']), ('col', 0, 0, 0))
+        names.group_choice(conversion, 'auto', 'manual')
+        self.assertEqual(next(item for item in names.groups(conversion.name_review) if item['id'] == 'auto')['choice'], 'manual')
+        # "Use COL names" is refused where no member has a COL name.
+        lost = self.record(label='Nus nus', usage_name='Nus nus')
+        lost['match'] = {'matchType': 'NONE', 'hintOnly': False, 'usage': None, 'alternatives': []}
+        conversion.name_review = {'plan_id': 'plan', 'labels': [lost], 'decisions': {}, 'col_release': RELEASE}
+        with self.assertRaises(names.NameDecisionError):
+            names.group_choice(conversion, 'unconfirmed', 'col')
+        # A row's own "cf." qualifier gives that row "A cf.".
+        state = {'labels': [{'label': 'Aus bus', 'qualifier': None, 'source_qualifiers': ['cf.'], 'source_qualifier_rows': 1, 'rows': 2}],
+                 'decisions': {'Aus bus': {'decision': 'col', 'source': 'col', 'scientificName': 'Aus bus', 'taxonRank': 'species',
+                                           'taxonFormula': 'A cf.', 'changeKind': None, 'nameRules': names.NAME_RULES_VERSION, 'by': 'bulk:unconfirmed'}}}
+        frame = pd.DataFrame([{'identification_pk': 'i1', 'scientificName': 'Aus bus', 'taxonFormula': ''},
+                              {'identification_pk': 'i2', 'scientificName': 'Aus bus', 'taxonFormula': ''}])
+        result, _ = names.apply_name_decisions({'identification': frame}, state, {'identification': [
+            {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': 'cf.'},
+            {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': None}]})
+        self.assertEqual(result['identification']['taxonFormula'].tolist()[0], 'A cf.')
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

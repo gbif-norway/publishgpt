@@ -652,10 +652,13 @@ def stem_usage(record):
     if candidates[0][1]:
         usage = candidates[0][0]
         authorship = usage.get('scientificNameAuthorship')
-        if not authorship_agrees(record, usage) or any(not _same_taxon(usage, other) for other in _same_name_others(record, usage)):
+        homonyms = any(not _same_taxon(usage, other) for other in _same_name_others(record, usage))
+        if not authorship_agrees(record, usage) or homonyms:
             authorship = None
+        # With homonyms only the name is published: no COL usage is named for it ("Sterna" the bird or the mollusc).
         return {'scientificName': usage.get('scientificName'), 'scientificNameAuthorship': authorship,
-                'taxonRank': usage.get('taxonRank'), 'usageId': str(usage['id']) if usage.get('id') is not None else None,
+                'taxonRank': usage.get('taxonRank'),
+                'usageId': str(usage['id']) if usage.get('id') is not None and not homonyms else None,
                 'candidates': len(candidates)}
     if len(ranks) != 1 or not ranks <= set(RANK_ORDER):
         return None
@@ -1058,6 +1061,8 @@ def groups(state, classified=None):
             if counts is None:
                 continue
             counts.update(eligible=1)
+            if kind == 'auto':
+                continue  # the automatic group's "Use COL names" is the automatic acceptance: it changes nothing
             # A "sp." name decided by COL's name publishes its stem, in any group.
             is_stem = (kind == 'uncertain' or qualifier_kind(record) == 'uncertain') and bool(stem_usage(record))
             found = change(record, target, 'EXACT' if is_stem else (record.get('match') or {}).get('matchType'))
@@ -1105,7 +1110,7 @@ def groups(state, classified=None):
                    ('col' if metrics.get('col', {}).get('eligible') else 'mine') if kind == 'spelling' else
                    'mine' if kind == 'unconfirmed' else None)
         saved_choice = (state.get('group_choices') or {}).get(bucket['id'])
-        choice = saved_choice if saved_choice in opts else (('col' if kind == 'auto' else 'stem') if kind in {'auto', 'uncertain'} and auto else None)
+        choice = saved_choice if saved_choice in {*opts, 'manual'} else (('col' if kind == 'auto' else 'stem') if kind in {'auto', 'uncertain'} and auto else None)
         options = []
         for option in opts:
             counts = metrics[option]
@@ -1159,11 +1164,13 @@ def build_decision(record, spec, state, by='user', group_kind=None):
             confirmation = _stem_confirmation(record, usage)
             if confirmation and not bulk and spec.get('confirm_coarser') is not True:
                 raise NameDecisionError(f'"{usage["scientificName"]}" {confirmation}. Confirm it explicitly, or keep your name.')
-            if confirmation:
-                snapshot['rankChange'] = confirmation
             snapshot.update(source='col', scientificName=usage['scientificName'], scientificNameAuthorship=usage.get('scientificNameAuthorship'),
                             taxonRank=usage.get('taxonRank'), usageId=usage.get('usageId'), candidates=usage['candidates'],
                             checklist=_checklist(state), changeKind=None, nameRules=NAME_RULES_VERSION)
+            if confirmation:
+                # An explicitly confirmed stem at another or a higher rank ("Anura sp." as COL's order).
+                snapshot.update(rankChange=confirmation, changeKind='coarser' if _stem_rank_too_high(record, usage) else 'rank',
+                                replaces=confirmation, confirmedCoarser=True)
         else:
             if not parsed.get('usable'):
                 raise NameDecisionError(f'The name parser could not split "{record["label"]}".')
@@ -1346,6 +1353,9 @@ def group_choice(conversion, group, choice):
     summary = next((item for item in groups(state, classified) if item['id'] == group), None)
     if summary is None:
         raise NameDecisionError('That name group is no longer available.')
+    option = next((item for item in summary['options'] if item['decision'] == choice), None)
+    if choice in {'col', 'stem'} and option is not None and not option['eligible']:
+        raise NameDecisionError('No name in this group has a Catalogue of Life name to use.')
     if choice == 'manual':
         declined = set(state.get('auto_declined') or [])
         for record in state.get('labels', []):
@@ -1598,6 +1608,11 @@ def apply_name_decisions(frames, name_review, source_names):
                         qualifier = normal(records.get(label, {}).get('qualifier'))
                         qualifier = _normal_qualifier(qualifier) if qualifier else None
                     row_formula = 'A ' + qualifier if qualifier else None
+                elif formula and normal(row_qualifier):
+                    # A row's own doubtful qualifier ("cf.") is what that row asserts.
+                    own = _normal_qualifier(normal(row_qualifier))
+                    row_formula = f'A {own}' if own in {'cf.', 'aff.', 'nr.', '?.'} else formula
+                    row_formula = 'A ?' if own == '?.' else row_formula
                 if row_formula and taxon_formula is not None and _blank_cell(taxon_formula[position]):
                     taxon_formula[position] = row_formula
                     formula_written += 1

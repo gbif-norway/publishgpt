@@ -87,7 +87,7 @@ export const groupExplanation = group => {
 }
 
 export const groupChoiceBody = (planId, group, choice) => ({ action: 'names', plan_id: planId, group_choice: { group: group.id, choice } })
-export const selectedGroupChoice = group => group?.choice || (group?.kind === 'auto' ? 'col' : group?.kind === 'uncertain' ? 'stem' : '')
+export const selectedGroupChoice = group => group?.choice || ''
 export const ariaPressed = (selected, choice) => selected === choice
 
 export const optionNote = option => {
