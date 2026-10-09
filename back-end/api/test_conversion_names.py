@@ -2142,6 +2142,26 @@ class NamesV2ContractTests(SimpleTestCase):
             {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': None}]})
         self.assertEqual(result['identification']['taxonFormula'].tolist()[0], 'A cf.')
 
+    def test_review_findings_v2_round2(self):
+        # An explicit COL choice for "Aus cf. bus" exports "A cf." on its identification row.
+        state = {'labels': [{'label': 'Aus cf. bus', 'qualifier': 'cf. bus'}],
+                 'decisions': {'Aus cf. bus': {'decision': 'col', 'source': 'col', 'scientificName': 'Aus bus', 'taxonRank': 'species',
+                                               'taxonFormula': 'A cf.', 'stemFormula': True, 'changeKind': None,
+                                               'nameRules': names.NAME_RULES_VERSION, 'by': 'bulk:unconfirmed'}}}
+        frame = pd.DataFrame([{'identification_pk': 'i1', 'scientificName': 'Aus cf. bus', 'taxonFormula': ''}])
+        result, _ = names.apply_name_decisions({'identification': frame}, state, {'identification': [
+            {'name': 'Aus cf. bus', 'authorship': None, 'rank': None, 'qualifier': None}]})
+        self.assertEqual(result['identification'].loc[0, ['scientificName', 'taxonFormula']].tolist(), ['Aus bus', 'A cf.'])
+        # "Review all manually" after "Keep my names" in the automatic group: the names are not accepted again.
+        record = self.record(label='Aus bus', usage_name='Aus bus')
+        conversion = SimpleNamespace(plan={'id': 'plan'}, name_review={'plan_id': 'plan', 'labels': [record], 'decisions': {}, 'col_release': RELEASE},
+                                     save=lambda **kwargs: None)
+        names.auto_accept(conversion.name_review)
+        names.group_choice(conversion, 'auto', 'mine')
+        names.group_choice(conversion, 'auto', 'manual')
+        self.assertEqual(names.auto_accept(conversion.name_review), 0)
+        self.assertNotIn('Aus bus', conversion.name_review['decisions'])
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

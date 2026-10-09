@@ -72,7 +72,7 @@ export const groupTitle = group => {
 export const groupExplanation = group => {
   const signature = group?.signature || {}
   if (group?.kind !== 'check') return ({
-    auto: 'Catalogue of Life matched these names to accepted names.',
+    auto: 'Your names are written exactly as in Catalogue of Life.',
     uncertain: 'Choose whether to publish the genus or family without the uncertain ending.',
     spelling: 'Catalogue of Life suggests a different spelling for these names.',
     unconfirmed: 'Catalogue of Life could not confirm these names.',
@@ -82,7 +82,7 @@ export const groupExplanation = group => {
   if (signature.code === 'lineage') return signature.text || signature.reason || 'Catalogue of Life has another use of this name in the group your file uses.'
   if (signature.code === 'rank') return `Your file gives this name the rank ${signature.yours}; Catalogue of Life has it as ${signature.col}.`
   if (signature.code === 'id') return 'Your scientificNameID or taxonID points to another name in Catalogue of Life.'
-  if (signature.code === 'name') return 'Catalogue of Life has a different name here. Keep yours unless you are sure.'
+  if (signature.code === 'name') return 'Open Review to see each name. Keep yours unless you are sure.'
   return ''
 }
 
@@ -101,6 +101,7 @@ export const optionNote = option => {
   add(option.spelling || 0, "would get COL's spelling", "would get COL's spelling")
   add(option.kept || 0, 'has no COL name and keeps yours', 'have no COL name and keep yours')
   add(option.authorship || 0, 'would replace your authorship', 'would replace your authorship')
+  add(option.rank || 0, 'would change rank', 'would change rank')
   return counts.join(' · ')
 }
 

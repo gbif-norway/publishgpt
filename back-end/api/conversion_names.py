@@ -1363,8 +1363,8 @@ def group_choice(conversion, group, choice):
                 continue
             saved = state.get('decisions', {}).get(record['label'])
             if saved and (saved.get('by') or 'user') != 'user':
-                if str(saved.get('by') or '').startswith('auto:'):
-                    declined.add(record['label'])
+                # Whatever made it, a manually reviewed name is never accepted automatically again.
+                declined.add(record['label'])
                 state['decisions'].pop(record['label'], None)
         state['auto_declined'] = sorted(declined)
     elif choice in {item['decision'] for item in summary['options']}:
@@ -1607,7 +1607,9 @@ def apply_name_decisions(frames, name_review, source_names):
                     if qualifier not in UNCERTAIN_QUALIFIERS:
                         qualifier = normal(records.get(label, {}).get('qualifier'))
                         qualifier = _normal_qualifier(qualifier) if qualifier else None
-                    row_formula = 'A ' + qualifier if qualifier else None
+                    # A doubtful label ("Aus cf. bus") keeps the formula its decision saved ("A cf.").
+                    doubtful = formula if formula and formula[2:] not in UNCERTAIN_QUALIFIERS else None
+                    row_formula = 'A ' + qualifier if qualifier in UNCERTAIN_QUALIFIERS else doubtful
                 elif formula and normal(row_qualifier):
                     # A row's own doubtful qualifier ("cf.") is what that row asserts.
                     own = _normal_qualifier(normal(row_qualifier))

@@ -144,3 +144,7 @@ test('progress, statuses, check state, and review messages handle empty and popu
 test('no group copy uses the removed all/apply wording', () => {
   assert.doesNotMatch(JSON.stringify(GROUPS), /for all|Accept all|Apply to/i)
 })
+
+test('a rank change is part of the option note', () => {
+  assert.equal(optionNote({ eligible: 2, broader: 2, rank: 2 }), '2 of these would become a broader group · 2 would change rank')
+})
