@@ -2199,6 +2199,17 @@ class NamesV2ContractTests(SimpleTestCase):
         col = next(item for item in group['options'] if item['decision'] == 'col')
         self.assertEqual((col['broader'], col['authorship'], col['rank']), (1, 1, 1))
 
+    def test_review_findings_v2_round5(self):
+        # Rows giving two ranks, and an overlong supplied authorship cleared by a broader name, are counted.
+        calanus = self.record(label='Calanus', usage_name='Arthropoda', rank='phylum', match_type='HIGHERRANK')
+        calanus.update(source_authorships=[], authorships_truncated=True, source_rank=None, row_ranks=['genus', 'species'])
+        group = next(item for item in names.groups({'labels': [calanus], 'decisions': {}}) if item['kind'] != 'auto')
+        col = next(item for item in group['options'] if item['decision'] == 'col')
+        self.assertEqual((col['authorship'], col['rank']), (1, 1))
+        content = b'occurrenceID,scientificName,taxonRank\na,Aus bus,species\nb,Aus bus,Species\nc,Aus bus,subspecies\n'
+        record = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels'][0]
+        self.assertEqual(record['row_ranks'], ['species', 'subspecies'])
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

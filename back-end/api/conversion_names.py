@@ -209,6 +209,9 @@ def collect_state(archive, plan):
                 'mixed_hints': mixed_hints,
                 'hint_values': hint_values,
                 'rank_values': [[value, count] for value, count in rank_counts.most_common(3)] if 'rank' in mixed_hints else [],
+                # Every rank the label's rows give, when they give more than one (for the counts a group choice shows).
+                'row_ranks': sorted({key.casefold() for key in record['context_counts'].get('taxonRank', {})})[:5]
+                             if len(record['context_counts'].get('taxonRank', {})) > 1 else [],
                 'source_rank': context.get('taxonRank', '').lower() or None, 'qualifier': qualifier,
                 'source_authorships': authorships[:MAX_AUTHORSHIPS],
                 'authorships_truncated': len(authorships) > MAX_AUTHORSHIPS or bool(record.get('authorship_overlong')),
@@ -1084,12 +1087,15 @@ def groups(state, classified=None):
             parsed = record.get('parsed') or {}
             supplied = [*record.get('source_authorships', ()), *([parsed['authorship']] if parsed.get('usable') and parsed.get('authorship') else [])]
             # COL's authorship replaces a different one, or another name clears the user's ("Calanus Smith" -> Arthropoda).
+            has_supplied = bool(supplied) or bool(record.get('authorships_truncated'))
             if (normal(usage_authorship) and not authorship_agrees(record, target)) or (found and found.get('kind') != 'spelling'
-                                                                                         and supplied and not normal(usage_authorship)):
+                                                                                         and has_supplied and not normal(usage_authorship)):
                 counts.update(authorship=1)
             # The rank written differs from the supplied one (a "species" beside a "sp." stem says nothing about it).
             sp_noise = is_stem and source_rank in RANK_ORDER and RANK_ORDER.index(source_rank) > RANK_ORDER.index('genus')
-            if rank_change or (source_rank and target_rank and source_rank != target_rank and not sp_noise):
+            # Rows of one label may give several ranks (no single source_rank): any that differs counts.
+            row_ranks = set(record.get('row_ranks') or []) or ({source_rank} if source_rank else set())
+            if rank_change or (target_rank and any(rank != target_rank for rank in row_ranks) and not sp_noise):
                 counts.update(rank=1)
         signature = None
         if kind == 'check':
