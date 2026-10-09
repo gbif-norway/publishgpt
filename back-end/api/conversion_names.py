@@ -6,8 +6,8 @@ through the publication workflow's matcher (api.taxon_matching). Results and the
 `DwcConversion.name_review`. Nothing here is required for conversion: network failures only record a status,
 and `convert()` itself never calls a service.
 
-Policy: exact same-name matches and resolvable uncertain stems may be accepted automatically. Bulk and automatic decisions
-never write a coarser or different taxon. `verbatimIdentification` is unchanged; COL usage ids are report provenance, not taxonID.
+Policy: exact same-name matches and resolvable uncertain stems may be accepted automatically. Automatic decisions never write
+a coarser or different taxon; an explicit group choice can. `verbatimIdentification` is unchanged; COL usage ids are report provenance, not taxonID.
 Reviewed decisions are applied to the converted frames by `apply_name_decisions`, a pure function.
 """
 import copy
@@ -46,7 +46,7 @@ REVIEW_STATUSES = {'review', 'reviewing'}
 # GBIF's parser reports a rank marker rather than a rank; only these are mapped to a DwC taxonRank.
 RANK_MARKERS = {'sp.': 'species', 'subsp.': 'subspecies', 'var.': 'variety', 'f.': 'form',
                 'subvar.': 'subvariety', 'subf.': 'subform', 'agg.': 'species aggregate'}
-CONTEXT_RANKS = ('kingdom', 'phylum', 'class', 'family')
+CONTEXT_RANKS = ('kingdom', 'phylum', 'class', 'order', 'family')
 MAX_AUTHORSHIPS = 5  # distinct supplied authorships kept per label; more is "too many to agree"
 MAX_SOURCE_QUALIFIERS = 5
 MAX_BATCHES = 5  # bulk decisions that can still be undone; each keeps the snapshots it replaced
@@ -60,10 +60,10 @@ RANK_MARKER_WORDS = {'subsp.', 'ssp.', 'var.', 'subvar.', 'f.', 'fo.', 'forma', 
 _NEW_SPECIES = re.compile(r'\s+sp(?:ec)?\.?\s*n(?:ov)?\.?(?:\s|$)', re.IGNORECASE)
 _DOUBT_MARKER = re.compile(r'\?|(?:^|\s)(?:cf|aff|nr)(?:\.|(?=\s|$))', re.IGNORECASE)
 GROUP_OPTIONS = {
-    'auto': ['col', 'parsed', 'keep'],
-    'uncertain': ['stem', 'keep'],
+    'auto': ['col', 'mine'],
+    'uncertain': ['stem', 'mine'],
     'spelling': ['col', 'mine'],
-    'unconfirmed': ['mine'],
+    'unconfirmed': ['col', 'mine'],
     'check': ['col', 'mine'],
 }
 
@@ -110,6 +110,7 @@ def collect_state(archive, plan):
             if not label:
                 continue
             record = found.setdefault(label, {'label': label, 'rows': 0, 'tables': {}, 'context': defaultdict(set),
+                                              'context_counts': defaultdict(Counter), 'context_first': {},
                                               'source_ids': defaultdict(set), 'source_qualifiers': set(),
                                               'source_qualifier_rows': 0, 'source_qualifier_counts': Counter(),
                                               'source_qualifiers_truncated': False,
@@ -119,7 +120,19 @@ def collect_state(archive, plan):
             for rank, index in context_at.items():
                 hint = normal(row[index], MAX_CONTEXT_CHARS)
                 if hint and len(hint) <= MAX_CONTEXT_CHARS:
-                    record['context'][rank].add(hint)
+                    if rank in HINT_RANKS:
+                        key = _hint_normal(hint)
+                        if key and key not in _PLACEHOLDER_HINTS:
+                            record['context_counts'][rank][key] += 1
+                            record['context_first'].setdefault((rank, key), hint)
+                            record['context'][rank].add(hint)
+                    elif rank == 'taxonRank':
+                        key = hint.casefold()
+                        record['context_counts'][rank][key] += 1
+                        record['context_first'].setdefault((rank, key), hint)
+                        record['context'][rank].add(key)
+                    else:
+                        record['context'][rank].add(hint)
                 elif rank == 'scientificNameAuthorship' and str(row[index] or '').strip():
                     # Too long to keep, but supplied: it must never count as "no authorship" when COL's is compared.
                     record['authorship_overlong'] = True
@@ -167,16 +180,23 @@ def collect_state(archive, plan):
             # "Genus" and "genus" are one supplied rank.
             context['taxonRank'] = ranks.pop()
         qualifier = split_qualifier(record['label'])[1]
-        # The supplied authorships, so that accepting COL's in bulk never silently rewrites a different one.
+        # Supplied authorships are kept for automatic defaults and explicit replacement counts.
         authorships = sorted(record['context'].get('scientificNameAuthorship', ()))
-        mixed_hints = sorted(rank for rank in ('kingdom', 'phylum', 'class', 'family')
-                             if len({_hint_normal(value) for value in record['context'].get(rank, ()) if _hint_normal(value)}) > 1)
+        hint_values = {}
+        for rank in ('kingdom', 'phylum', 'class', 'order', 'family'):
+            counts = record['context_counts'].get(rank, {})
+            if len(counts) > 1:
+                hint_values[rank] = [[record['context_first'][(rank, key)], count]
+                                     for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:3]]
+        mixed_hints = ['kingdom'] if 'kingdom' in hint_values else []
         # A uninomial's rows giving two ranks at genus or above ("Anura" order and genus) may be two taxa; a "species"
         # beside "Larus sp." says nothing about the uninomial and is ignored.
         high_ranks = {value.casefold() for value in record['context'].get('taxonRank', ())
                       if value.casefold() in RANK_ORDER and RANK_ORDER.index(value.casefold()) <= RANK_ORDER.index('genus')}
         if len(high_ranks) > 1 and len(name_parts(split_qualifier(record['label'])[0])) == 1:
-            mixed_hints = sorted([*mixed_hints, 'rank'])
+            mixed_hints.append('rank')
+        rank_counts = Counter({key: count for key, count in record['context_counts'].get('taxonRank', {}).items()
+                               if key in high_ranks})
         source_ids = {}
         for field, values in record['source_ids'].items():
             if len(values) == 1:
@@ -187,6 +207,8 @@ def collect_state(archive, plan):
                 'hints': {rank: value for rank, value in context.items() if rank in HINT_RANKS},
                 # Rows of one label that disagree on these ranks may be different taxa with the same name.
                 'mixed_hints': mixed_hints,
+                'hint_values': hint_values,
+                'rank_values': [[value, count] for value, count in rank_counts.most_common(3)] if 'rank' in mixed_hints else [],
                 'source_rank': context.get('taxonRank', '').lower() or None, 'qualifier': qualifier,
                 'source_authorships': authorships[:MAX_AUTHORSHIPS],
                 'authorships_truncated': len(authorships) > MAX_AUTHORSHIPS or bool(record.get('authorship_overlong')),
@@ -471,7 +493,13 @@ def change(record, usage, match_type):
             and name_parts(split_qualifier(record.get('label'))[0]):
         label_markers = taxon_matching.explicit_markers(split_qualifier(record.get('label'))[0])
         their_markers = taxon_matching.explicit_markers(usage['scientificName'])
-        if label_markers != their_markers:
+        explicit_ranks = {'subsp.', 'var.', 'subvar.', 'f.', 'subf.', 'nothosubsp.', 'nothovar.'}
+        mine_rank = next((marker for marker in label_markers if marker in explicit_ranks), None)
+        their_rank = next((marker for marker in their_markers if marker in explicit_ranks), None)
+        special_differs = (('×' in label_markers) != ('×' in their_markers)
+                           or ('agg.' in label_markers) != ('agg.' in their_markers))
+        rank_differs = bool(mine_rank and their_rank and mine_rank != their_rank) or bool(mine_rank and not their_rank)
+        if special_differs or rank_differs:
             return {'from': asserted_rank(record), 'to': usage.get('taxonRank'), 'confirm': True, 'kind': 'marker',
                     'text': f"writes your {' '.join(label_markers) or 'name without a marker'} as {' '.join(their_markers) or 'a name without one'}"}
     return found
@@ -578,6 +606,19 @@ def formula_qualifier(record):
     return None
 
 
+def doubt_formula(record):
+    """Return a publishable cf./aff./nr./? formula from the label or source qualifier column."""
+    for value in record.get('source_qualifiers') or []:
+        qualifier = _normal_qualifier(value)
+        if qualifier in {'cf.', 'aff.', 'nr.'}:
+            return qualifier
+        if '?' in str(value):
+            return '?'
+    label = str(record.get('label') or '')
+    formula_match = re.search(r'(?i)(?:^|\s)(cf|aff|nr)\.?', label)
+    return formula_match.group(1).lower() + '.' if formula_match else ('?' if '?' in label else None)
+
+
 def _stem_candidates(record):
     """Return exact COL candidates whose names equal the asserted stem."""
     match = record.get('match') or {}
@@ -629,6 +670,10 @@ def _hint_normal(value):
     return {'metazoa': 'animalia', 'viridiplantae': 'plantae'}.get(value, value)
 
 
+_PLACEHOLDER_HINTS = {'na', 'n/a', 'none', 'null', 'unknown', '-', '?', 'not assigned',
+                      'incertae sedis', 'unassigned'}
+
+
 def _same_name_match(record):
     """COL's pick when it is the user's own name: an EXACT match, or a variant (authorship, case) of the same name parts."""
     match = record.get('match') or {}
@@ -673,21 +718,9 @@ def _same_taxon(left, right):
                 and authorships_agree(left.get('scientificNameAuthorship'), right.get('scientificNameAuthorship')))
 
 
-def _family_differs(record):
-    """The source's family (one value, or several across rows) is not the family of COL's pick for the same name."""
-    if 'family' in (record.get('mixed_hints') or []):
-        return True
-    hint = _hint_normal((record.get('hints') or {}).get('family'))
-    theirs = _hint_normal(((_same_name_match(record) or {}).get('classification') or {}).get('family'))
-    return bool(hint and theirs and hint != theirs)
-
-
 def _usage_doubtful(record):
-    """COL's pick may not be the user's taxon (homonyms, or another family than the source's): keep the user's authorship.
-
-    A family difference is usually a taxonomic change, so it does not stop the automatic acceptance of the name itself.
-    """
-    return bool(_homonyms(record)) or _family_differs(record)
+    """COL has another usage of this name, so keep the supplied authorship on automatic acceptance."""
+    return bool(_homonyms(record))
 
 
 def _rank_change(record, usage):
@@ -751,7 +784,7 @@ def _lineage(record):
         return {}
     candidates = [usage for usage, _ in _stem_candidates(record)]
     shared = {}
-    for rank in ('kingdom', 'phylum', 'class'):
+    for rank in ('kingdom', 'phylum', 'class', 'order', 'family'):
         values = {(usage.get('classification') or {}).get(rank) for usage in candidates}
         if len(values) == 1 and None not in values:
             shared[rank] = values.pop()
@@ -766,26 +799,58 @@ def _conflicts(record):
         # The matched usage is compared, not its accepted name: a synonym the user wrote is still the user's name.
         found = change(record, usage, 'EXACT')
         if found:
-            out.append(('name', 'check:name', f"COL returned a different name: {usage.get('scientificName')} ({usage.get('taxonRank') or 'unknown rank'})"))
+            name = usage.get('scientificName') or 'another name'
+            rank = usage.get('taxonRank') or 'unknown rank'
+            suffix = ' — a broader group' if found.get('kind') == 'coarser' else ''
+            out.append(('name', 'check:name', f'Catalogue of Life has {name} ({rank}) instead{suffix}'))
     col_rank = _rank_conflict(record)
     if col_rank:
-        out.append(('rank', f"check:rank:{record['source_rank']}:{col_rank}", f"Your rank is {record['source_rank']}; COL has this name as {col_rank}"))
+        out.append(('rank', f"check:rank:{record['source_rank']}:{col_rank}",
+                    f"Your file says {record['source_rank']}; Catalogue of Life has this name as {_article(col_rank)} {col_rank}"))
     idcheck = match.get('idCheck') or {}
     if idcheck.get('outcome') == 'elsewhere' or 'SCIENTIFIC_NAME_AND_ID_INCONSISTENT' in (match.get('issues') or []):
         fields = ', '.join((idcheck.get('fields') or record.get('source_ids') or {}).keys()) or 'identifier'
         target = (match.get('matchedId') or {}).get('scientificName') or (idcheck.get('usage') or {}).get('scientificName') or 'another name'
-        out.append(('id', 'check:id', f'Your {fields} points to {target}'))
+        out.append(('id', 'check:id', f'Your {fields} points to {target} in Catalogue of Life'))
     mixed = record.get('mixed_hints') or []
     if mixed:
-        out.append(('mixed', f"check:mixed:{','.join(mixed)}", f"Your rows give this name different {', '.join(mixed)}"))
+        if 'kingdom' in mixed:
+            values = record.get('hint_values', {}).get('kingdom', [])
+            rendered = ' and '.join(f'{value} ({rows} rows)' for value, rows in values[:2])
+            text = f'Your file lists this name under two kingdoms: {rendered}.'
+            out.append(('mixed', 'check:mixed:kingdom', text))
+        if 'rank' in mixed:
+            values = record.get('rank_values') or []
+            rendered = ' and '.join(f'{value} ({rows} rows)' for value, rows in values[:2])
+            out.append(('mixed', 'check:mixed:rank', f'Your file gives this name two ranks: {rendered}.'))
     # The source's lineage is compared with COL's pick whenever that pick is the same name, whatever the match type, or
     # for a "sp." stem with the lineage all its same-name candidates share.
     lineage = _lineage(record)
-    for rank in ('kingdom', 'phylum', 'class'):
+    for rank in ('kingdom',):
         hint = (record.get('hints') or {}).get(rank)
         theirs = lineage.get(rank)
         if hint and theirs and _hint_normal(hint) != _hint_normal(theirs):
-            out.append((rank, f'check:{rank}:{hint}:{theirs}', f'Your {rank} says {hint}; COL places this name in {theirs}'))
+            out.append((rank, f'check:kingdom:{hint}:{theirs}',
+                        f'Your file says kingdom {hint}; Catalogue of Life has this name in {theirs}.'))
+    if lineage:
+        for rank in ('phylum', 'class', 'order', 'family'):
+            pick_value = _hint_normal(lineage.get(rank))
+            if not pick_value:
+                continue
+            values = list(record.get('hint_values', {}).get(rank) or [])
+            if (record.get('hints') or {}).get(rank):
+                values.insert(0, [record['hints'][rank], record.get('rows', 1)])
+            pick = _same_name_match(record)
+            candidates = [usage for usage in (match.get('alternatives') or []) if pick
+                          and name_parts(usage.get('scientificName')) == name_parts(pick.get('scientificName'))]
+            for candidate in candidates:
+                classification = candidate.get('classification') or {}
+                candidate_value = _hint_normal(classification.get(rank))
+                if candidate_value and candidate_value != pick_value and any(_hint_normal(value) == candidate_value for value, _ in values):
+                    display = next(value for value, _ in values if _hint_normal(value) == candidate_value)
+                    name = candidate.get('scientificName') or asserted_name(record)
+                    out.append(('lineage', 'check:lineage', f'Catalogue of Life also has a {name} in {display}, the group your file uses.'))
+                    break
     return out
 
 
@@ -861,26 +926,20 @@ def eligible(record, option, classification, decisions=None):
     qkind = qualifier_kind(record)
     match = record.get('match') or {}
     usage = match.get('usage') or {}
-    if qkind == 'doubt':
-        return False
     if option == 'mine' or option == 'keep':
         return True
+    if qkind == 'doubt' and not (option == 'col' and classification.get('kind') in {'check', 'unconfirmed'}):
+        return False
     if option == 'parsed':
         parsed = record.get('parsed') or {}
         return qkind is None and parsed.get('usable') and parsed.get('lossless')
     if option == 'stem':
         return kind == 'uncertain' and stem_usage(record) is not None and not _stem_rank_too_high(record, stem_usage(record))
     if option == 'col':
-        # Rows that may be two taxa, or a rank that says another taxon: COL's usage is taken one name at a time only.
-        if kind == 'check' and (record.get('mixed_hints') or _rank_conflict(record)):
-            return False
         if kind == 'check' and qkind == 'uncertain':
             stem = stem_usage(record)
-            return bool(stem and change(record, stem, 'EXACT') is None and not _stem_rank_too_high(record, stem))
-        found = change(record, usage, match.get('matchType')) if usage else None
-        return (kind in {'auto', 'spelling', 'check'} and qkind is None and bool(usage) and not match.get('hintOnly')
-                and (found is None or (kind == 'spelling' and found.get('kind') == 'spelling'))
-                and authorship_agrees(record, usage) and not _homonyms(record) and (kind == 'check' or not _family_differs(record)))
+            return bool(stem or usage.get('scientificName'))
+        return bool(kind in {'auto', 'spelling', 'check', 'unconfirmed'} and usage and usage.get('scientificName'))
     return False
 
 
@@ -917,8 +976,10 @@ def classify(record):
             homonyms = _homonyms(record)
             if homonyms:
                 reasons.append({'code': 'homonym', 'text': f"COL has {len(homonyms) + 1} taxa written this way; your name is kept without choosing one"})
-            elif _family_differs(record):
-                reasons.append({'code': 'family', 'text': "COL places this name in another family than your data; your authorship is kept"})
+            marker_only_added = (not taxon_matching.explicit_markers(split_qualifier(record['label'])[0])
+                                 and taxon_matching.explicit_markers(usage.get('scientificName')))
+            if marker_only_added:
+                reasons.append({'code': 'marker_added', 'text': f"Catalogue of Life writes it {usage.get('scientificName')}"})
         elif (match.get('matchType') in {'VARIANT', 'FUZZY', 'CANONICAL'} and usage
               and not match.get('hintOnly')):
             group, kind = 'spelling', 'spelling'
@@ -946,7 +1007,7 @@ def classify(record):
 
 
 def groups(state, classified=None):
-    """Summarize the checked labels into groups and count current bulk eligibility."""
+    """Summarize review groups and the effect of each explicit group choice."""
     decisions = state.get('decisions') or {}
     held_labels = set(unconfirmed(state))
     buckets = {}
@@ -967,7 +1028,7 @@ def groups(state, classified=None):
         members = bucket['members']
         kind = bucket['kind']
         opts = GROUP_OPTIONS[kind]
-        counts = Counter()
+        metrics = {option: Counter() for option in opts}
         auto = by_user = bulk = held = authorship_kept = undecided = 0
         rows = 0
         for record, classification in members:
@@ -983,9 +1044,42 @@ def groups(state, classified=None):
             elif decision.get('by', 'user') == 'user':
                 by_user += 1
             held += int(record['label'] in held_labels)
-            for option in opts:
-                if eligible(record, option, classification, decisions):
-                    counts[option] += 1
+            user_decided = bool(decision and (decision.get('by') or 'user') == 'user')
+            if user_decided:
+                continue
+            metrics['mine'].update(eligible=1)
+            target = (stem_usage(record) or (record.get('match') or {}).get('usage')) \
+                if (kind == 'uncertain' or qualifier_kind(record) == 'uncertain') else (record.get('match') or {}).get('usage')
+            if not target or not target.get('scientificName'):
+                metrics.get('col', metrics.get('stem', Counter())).update(kept=1)
+                continue
+            option = 'stem' if kind == 'uncertain' else 'col'
+            counts = metrics.get(option)
+            if counts is None:
+                continue
+            counts.update(eligible=1)
+            # A "sp." name decided by COL's name publishes its stem, in any group.
+            is_stem = (kind == 'uncertain' or qualifier_kind(record) == 'uncertain') and bool(stem_usage(record))
+            found = change(record, target, 'EXACT' if is_stem else (record.get('match') or {}).get('matchType'))
+            source_rank, target_rank = record.get('source_rank'), target.get('taxonRank')
+            rank_broader = source_rank in RANK_ORDER and target_rank in RANK_ORDER and taxon_matching.rank_above(target_rank, source_rank)
+            rank_change = _rank_change(record, target)
+            if is_stem:
+                source_is_genus_or_above = source_rank in RANK_ORDER and RANK_ORDER.index(source_rank) <= RANK_ORDER.index('genus')
+                stem_rank_differs = source_is_genus_or_above and target_rank in RANK_ORDER and source_rank != target_rank
+                if _stem_rank_too_high(record, target) or stem_rank_differs:
+                    counts.update(broader=1)
+            elif (found and found.get('kind') == 'coarser') or rank_broader:
+                counts.update(broader=1)
+            elif found and found.get('kind') == 'spelling':
+                counts.update(spelling=1)
+            elif found or rank_change:
+                counts.update(different=1)
+            usage_authorship = target.get('scientificNameAuthorship')
+            if normal(usage_authorship) and not authorship_agrees(record, target):
+                counts.update(authorship=1)
+            if rank_change:
+                counts.update(rank=1)
         signature = None
         if kind == 'check':
             # The signature is the conflict that named the group (a label may have several).
@@ -1008,11 +1102,22 @@ def groups(state, classified=None):
                     signature = {'code': code, 'yours': asserted_name(record),
                                  'col': ((record.get('match') or {}).get('usage') or {}).get('scientificName')}
         default = ('col' if kind == 'auto' else 'stem' if kind == 'uncertain' else
-                   ('col' if counts.get('col') else 'mine') if kind == 'spelling' else
+                   ('col' if metrics.get('col', {}).get('eligible') else 'mine') if kind == 'spelling' else
                    'mine' if kind == 'unconfirmed' else None)
+        saved_choice = (state.get('group_choices') or {}).get(bucket['id'])
+        choice = saved_choice if saved_choice in opts else (('col' if kind == 'auto' else 'stem') if kind in {'auto', 'uncertain'} and auto else None)
+        options = []
+        for option in opts:
+            counts = metrics[option]
+            if option == 'mine':
+                options.append({'decision': option, 'eligible': counts.get('eligible', 0), 'kept': 0,
+                                'broader': 0, 'different': 0, 'spelling': 0, 'authorship': 0, 'rank': 0})
+            else:
+                options.append({'decision': option, **{key: counts.get(key, 0) for key in
+                                ('eligible', 'kept', 'broader', 'different', 'spelling', 'authorship', 'rank')}})
         output.append({'id': bucket['id'], 'kind': kind, 'labels': len(members), 'rows': rows, 'undecided': undecided,
-                       'auto': auto, 'by_user': by_user, 'bulk': bulk, 'default': default,
-                       'options': [{'decision': option, 'eligible': counts.get(option, 0)} for option in opts],
+                       'auto': auto, 'by_user': by_user, 'bulk': bulk, 'default': default, 'choice': choice,
+                       'options': options,
                        'signature': signature, 'authorship_kept': authorship_kept, 'held': held})
     return output
 
@@ -1029,15 +1134,15 @@ def build_decision(record, spec, state, by='user', group_kind=None):
     if requested not in DECISIONS:
         raise NameDecisionError(f'Choose one of: {", ".join(DECISIONS)}.')
     kind = requested
-    if by != 'user' and qualifier_kind(record) == 'doubt':
+    automatic = str(by).startswith('auto:')
+    bulk = str(by).startswith('bulk:')
+    if automatic and qualifier_kind(record) == 'doubt':
         raise NameDecisionError('An uncertain identification can only be decided one at a time.')
-    if by != 'user' and kind in {'col', 'alternative', 'stem'} and (record.get('mixed_hints') or _rank_conflict(record)):
+    if automatic and kind in {'col', 'alternative', 'stem'} and (set(record.get('mixed_hints') or []) & {'kingdom', 'rank'} or _rank_conflict(record)):
         raise NameDecisionError('A name whose rows or rank may mean another taxon takes a COL name only one at a time.')
-    if by != 'user' and kind in {'col', 'alternative'} and _homonyms(record):
+    if automatic and kind in {'col', 'alternative'} and _homonyms(record):
         raise NameDecisionError('COL has more than one taxon with this name; choose one name at a time.')
-    if by != 'user' and kind in {'col', 'alternative'} and _family_differs(record) and group_kind != 'check':
-        raise NameDecisionError('COL places this name in another family than your data; take its name one at a time.')
-    if by != 'user' and kind == 'stem' and _stem_rank_too_high(record, stem_usage(record)):
+    if automatic and kind == 'stem' and _stem_rank_too_high(record, stem_usage(record)):
         raise NameDecisionError('"sp." follows a genus or family; this stem is decided one name at a time.')
     snapshot = {'decision': kind, 'by': by, 'at': timezone.now().isoformat(), 'scientificName': None,
                 'scientificNameAuthorship': None, 'taxonRank': None, 'source': 'verbatim' if kind == 'keep' else 'none'}
@@ -1049,10 +1154,10 @@ def build_decision(record, spec, state, by='user', group_kind=None):
             usage = stem_usage(record)
             if not usage:
                 raise NameDecisionError(f'There is no exact stem name in Catalogue of Life for "{record["label"]}".')
-            if by != 'user' and change(record, usage, 'EXACT') is not None:
+            if automatic and change(record, usage, 'EXACT') is not None:
                 raise NameDecisionError('A non-user decision cannot change the asserted name or decide a doubtful identification.')
             confirmation = _stem_confirmation(record, usage)
-            if confirmation and spec.get('confirm_coarser') is not True:
+            if confirmation and not bulk and spec.get('confirm_coarser') is not True:
                 raise NameDecisionError(f'"{usage["scientificName"]}" {confirmation}. Confirm it explicitly, or keep your name.')
             if confirmation:
                 snapshot['rankChange'] = confirmation
@@ -1077,36 +1182,40 @@ def build_decision(record, spec, state, by='user', group_kind=None):
         match_type = match.get('matchType') if kind == 'col' else usage.get('matchType')
         found = change(record, usage, match_type)
         replaces = found if found and found['confirm'] else None
-        if by != 'user' and replaces:
+        if automatic and replaces:
             raise NameDecisionError(f'"{usage["scientificName"]}" {replaces["text"]} for "{record["label"]}"; it is never accepted in bulk.')
-        if by != 'user':
-            allowed_spelling = group_kind == 'spelling' and str(by).startswith('bulk:') and found and found.get('kind') == 'spelling'
+        if automatic:
+            allowed_spelling = group_kind == 'spelling' and found and found.get('kind') == 'spelling'
             if found and not allowed_spelling:
                 raise NameDecisionError('A non-user decision cannot change the asserted name.')
             if not authorship_agrees(record, usage):
                 raise NameDecisionError('A non-user decision cannot replace a different authorship.')
-        if replaces and spec.get('confirm_coarser') is not True:
+        if replaces and not bulk and spec.get('confirm_coarser') is not True:
             raise NameDecisionError(f'"{usage["scientificName"]}" {replaces["text"]} for "{record["label"]}". Confirm that replacement explicitly, or keep your name.')
-        if _rank_change(record, usage) and spec.get('confirm_coarser') is not True:
+        if _rank_change(record, usage) and not bulk and spec.get('confirm_coarser') is not True:
             raise NameDecisionError(f'"{usage["scientificName"]}" {_rank_change(record, usage)}. Confirm that explicitly, or keep your name.')
         if _rank_change(record, usage):
             snapshot['rankChange'] = _rank_change(record, usage)
         if (normal(usage.get('scientificNameAuthorship')) and not authorship_agrees(record, usage)
-                and spec.get('confirm_coarser') is not True):
+                and not bulk and spec.get('confirm_coarser') is not True):
             raise NameDecisionError(f'Catalogue of Life writes the authorship of "{usage["scientificName"]}" as '
                                     f'"{usage["scientificNameAuthorship"]}", not as in your data. Confirm that replacement explicitly, or keep your name.')
         snapshot.update(source='col', scientificName=usage['scientificName'], scientificNameAuthorship=usage.get('scientificNameAuthorship'),
                         taxonRank=usage.get('taxonRank'), usageId=str(usage['id']) if usage.get('id') is not None else None,
                         taxonomicStatus=usage.get('status'), matchType=match_type, checklist=_checklist(state),
                         changeKind=found['kind'] if found else None, nameRules=NAME_RULES_VERSION)
+        if normal(usage.get('scientificNameAuthorship')) and not authorship_agrees(record, usage):
+            snapshot['authorshipReplaced'] = True
         if replaces:
             snapshot.update(replaces=replaces['text'], confirmedCoarser=True)
         elif found:
             snapshot['corrects'] = found['text']
-    if kind in {'stem', 'col', 'alternative'} and qualifier_kind(record) == 'uncertain' and same_name(record, {'scientificName': snapshot.get('scientificName')}):
+    if kind in {'stem', 'col', 'alternative'} and qualifier_kind(record) in {'uncertain', 'doubt'} and same_name(record, {'scientificName': snapshot.get('scientificName')}):
         # A valid row qualifier wins, then the label qualifier; a blank column-only row stays blank.
         snapshot['stemFormula'] = True
         formula = formula_qualifier(record)
+        if qualifier_kind(record) == 'doubt':
+            formula = doubt_formula(record)
         if formula:
             snapshot['taxonFormula'] = 'A ' + formula
     if str(by).startswith('bulk:'):
@@ -1177,7 +1286,8 @@ def bulk_decide(conversion, group, decision):
     summary = current_groups.get(group)
     if not summary:
         raise NameDecisionError('That name group is no longer available.')
-    if decision not in {option['decision'] for option in summary['options']}:
+    legacy_choice = decision in {'parsed', 'keep'}
+    if decision not in {option['decision'] for option in summary['options']} and not legacy_choice:
         raise NameDecisionError('That decision is not an option for this group.')
     batch_id = secrets.token_hex(6)
     kind = summary['kind']
@@ -1190,16 +1300,26 @@ def bulk_decide(conversion, group, decision):
         previous = state['decisions'].get(record['label'])
         if previous and previous.get('by', 'user') == 'user':
             continue
-        if not eligible(record, decision, classification, state['decisions']):
+        if legacy_choice and not eligible(record, decision, classification, state['decisions']):
             continue
         resolved = decision
         if decision == 'mine':
             parsed = record.get('parsed') or {}
             resolved = 'parsed' if qualifier_kind(record) is None and parsed.get('usable') and parsed.get('lossless') else 'keep'
-        if decision == 'col' and qualifier_kind(record) == 'uncertain':
-            resolved = 'stem'
+        if decision == 'col' and kind == 'auto':
+            resolved = row_default(record, classification)
+        if decision in {'col', 'stem'} and qualifier_kind(record) == 'uncertain':
+            if stem_usage(record):
+                resolved = 'stem'
+            elif decision == 'col' and (record.get('match') or {}).get('usage'):
+                resolved = 'col'
+        if decision in {'col', 'stem'} and not (stem_usage(record) if resolved == 'stem' else (record.get('match') or {}).get('usage')):
+            # No COL name to use: the user's own name, as "Keep my names" would write it.
+            parsed = record.get('parsed') or {}
+            resolved = 'parsed' if qualifier_kind(record) is None and parsed.get('usable') and parsed.get('lossless') else 'keep'
         changes[record['label']] = copy.deepcopy(previous)
-        state['decisions'][record['label']] = build_decision(record, {'decision': resolved, 'batch': batch_id}, state,
+        state['decisions'][record['label']] = build_decision(record, {'decision': resolved, 'batch': batch_id,
+                                                                      'confirm_coarser': True}, state,
                                                               by=f'bulk:{kind}', group_kind=kind)
         count += 1
     if not count:
@@ -1208,9 +1328,43 @@ def bulk_decide(conversion, group, decision):
              'at': timezone.now().isoformat(), 'changes': changes}
     state.setdefault('batches', []).append(batch)
     state['batches'] = state['batches'][-MAX_BATCHES:]
+    if not legacy_choice:
+        state.setdefault('group_choices', {})[group] = decision
     conversion.name_review = state
     conversion.save(update_fields=['name_review', 'updated_at'])
     return {'batch': batch_id, 'count': count}
+
+
+def group_choice(conversion, group, choice):
+    """Apply a group toggle, or remove non-user choices for a manual review."""
+    state = current(conversion)
+    if not state.get('labels'):
+        raise NameDecisionError('There are no names to review for this plan.')
+    if not isinstance(group, str) or not isinstance(choice, str):
+        raise NameDecisionError('Choose a name group and group decision.')
+    classified = {record['label']: classify(record) for record in state.get('labels', [])}
+    summary = next((item for item in groups(state, classified) if item['id'] == group), None)
+    if summary is None:
+        raise NameDecisionError('That name group is no longer available.')
+    if choice == 'manual':
+        declined = set(state.get('auto_declined') or [])
+        for record in state.get('labels', []):
+            if classified[record['label']]['group'] != group:
+                continue
+            saved = state.get('decisions', {}).get(record['label'])
+            if saved and (saved.get('by') or 'user') != 'user':
+                if str(saved.get('by') or '').startswith('auto:'):
+                    declined.add(record['label'])
+                state['decisions'].pop(record['label'], None)
+        state['auto_declined'] = sorted(declined)
+    elif choice in {item['decision'] for item in summary['options']}:
+        return bulk_decide(conversion, group, choice)
+    else:
+        raise NameDecisionError('That decision is not an option for this group.')
+    state.setdefault('group_choices', {})[group] = choice
+    conversion.name_review = state
+    conversion.save(update_fields=['name_review', 'updated_at'])
+    return {'count': 0}
 
 
 def undo_batch(conversion, batch_id):
@@ -1598,6 +1752,7 @@ def state_section(conversion, offset=0, limit=PAGE_SIZE, view='all', group=None,
                'last_batch': ({key: value for key, value in state['batches'][-1].items() if key != 'changes'} if state.get('batches') else None),
                # Every bulk decision that can still be undone, oldest first.
                'batches': [{key: value for key, value in batch.items() if key != 'changes'} for batch in state.get('batches') or []]}
+    summary['classification_notice'] = classification_notice(labels)
     shown = [record for record in labels if (view != 'pending' or record['label'] not in decisions or record['label'] in held)
              and (view != 'group' or classified[record['label']]['group'] == group)
              and (not q or q.casefold() in record['label'].casefold())]
@@ -1613,6 +1768,45 @@ def state_section(conversion, offset=0, limit=PAGE_SIZE, view='all', group=None,
             'question_ids': name_question_ids(conversion),
             'page': {'offset': offset, 'limit': limit, 'total': len(shown), 'view': view, 'group': group},
             'labels': [_entry(record, decisions, held, classified[record['label']]) for record in shown[offset:offset + limit]]}
+
+
+def classification_notice(labels):
+    """Summarize labels using a different or mixed phylum/class classification."""
+    examples, count = [], 0
+    for record in labels:
+        lineage = _lineage(record)
+        hints = record.get('hints') or {}
+        values_by_rank = record.get('hint_values') or {}
+        mixed = any(len(values_by_rank.get(rank) or []) > 1 for rank in ('phylum', 'class'))
+        differs = any(hints.get(rank) and lineage.get(rank)
+                      and _hint_normal(hints[rank]) != _hint_normal(lineage[rank])
+                      for rank in ('phylum', 'class'))
+        if not (mixed or differs):
+            continue
+        source_kingdom = hints.get('kingdom')
+        col_kingdom = (lineage or {}).get('kingdom')
+        kingdom_differs = bool(source_kingdom and col_kingdom and _hint_normal(source_kingdom) != _hint_normal(col_kingdom))
+        if kingdom_differs and not mixed:
+            continue
+        count += 1
+        yours_parts, col_parts = [], []
+        for rank in ('phylum', 'class'):
+            source = hints.get(rank)
+            if values_by_rank.get(rank):
+                alternatives = values_by_rank[rank]
+                source = next((value for value, _ in alternatives
+                               if lineage.get(rank) and _hint_normal(value) != _hint_normal(lineage[rank])), alternatives[0][0])
+            if source:
+                yours_parts.append(source)
+            if lineage.get(rank):
+                col_parts.append(lineage[rank])
+        if yours_parts and col_parts:
+            example = {'yours': ' / '.join(yours_parts), 'col': ' / '.join(col_parts)}
+            if example not in examples and len(examples) < 2:
+                examples.append(example)
+    return {'names': count, 'mixed': any(any(len((record.get('hint_values') or {}).get(rank) or []) > 1
+                                               for rank in ('phylum', 'class')) for record in labels),
+            'examples': examples} if count else None
 
 
 # Job ---------------------------------------------------------------------------------------------

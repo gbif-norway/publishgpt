@@ -595,6 +595,12 @@ class DatasetViewSet(viewsets.ModelViewSet):
                             if not isinstance(bulk, dict) or set(bulk) != {'group', 'decision'} or not all(isinstance(bulk[key], str) for key in ('group', 'decision')):
                                 raise conversion_names.NameDecisionError('Bulk decisions need a group and decision.')
                             conversion_names.bulk_decide(conversion, bulk['group'], bulk['decision'])
+                        if 'group_choice' in request.data:
+                            choice = request.data['group_choice']
+                            if (not isinstance(choice, dict) or set(choice) != {'group', 'choice'}
+                                    or not all(isinstance(choice[key], str) for key in ('group', 'choice'))):
+                                raise conversion_names.NameDecisionError('Group choices need a group and choice.')
+                            conversion_names.group_choice(conversion, choice['group'], choice['choice'])
                         if 'undo_batch' in request.data:
                             batch_id = request.data['undo_batch']
                             if not isinstance(batch_id, str):

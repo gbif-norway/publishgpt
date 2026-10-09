@@ -152,8 +152,9 @@ class CollectTests(SimpleTestCase):
         self.assertEqual((state['plan_id'], state['status']), ('plan', 'pending'))
         aus, cus = state['labels']
         self.assertEqual((aus['label'], aus['rows'], aus['tables']), ('Aus bus L.', 2, {'occurrence': 2}))
-        # The rows agree on kingdom but not family, so only kingdom is a matching hint.
+        # Conflicting higher-group names are retained for review context, not used as a single hint.
         self.assertEqual(aus['hints'], {'kingdom': 'Animalia'})
+        self.assertEqual(aus['hint_values']['family'], [['Fam', 1], ['Other', 1]])
         self.assertEqual(aus['source_rank'], 'species')
         self.assertEqual((cus['hints'], cus['source_rank'], cus['rows']), ({}, None, 1))
 
@@ -496,11 +497,11 @@ class NameJobTests(NamesCase):
         public = self.state()['name_review']
         self.assertEqual((public['summary']['checked'], public['checking']), (3, False))
         aus, cus, eus = public['labels']
-        self.assertEqual((aus['match']['status'], aus['parsed']['canonical'], aus['kind'], aus['eligible']), ('exact', 'Aus bus', 'auto', ['col', 'parsed', 'keep']))
+        self.assertEqual((aus['match']['status'], aus['parsed']['canonical'], aus['kind'], aus['eligible']), ('exact', 'Aus bus', 'auto', ['col', 'mine']))
         # A variant match and a parse that rewrites the supplied text are offered, but never in bulk.
         self.assertEqual((cus['match']['status'], cus['kind'], cus['offers']), ('variant', 'spelling', {'parsed': True, 'col': True}))
         self.assertEqual((eus['qualifier'], eus['parsed']['usable'], eus['parsed']['reason'], eus['kind'], eus['eligible']),
-                         ('sp.', False, 'qualifier', 'uncertain', ['stem', 'keep']))
+                         ('sp.', False, 'qualifier', 'uncertain', ['stem', 'mine']))
         self.assertEqual(next(group for group in public['summary']['groups'] if group['id'] == 'auto')['options'][0]['eligible'], 1)
         self.assertEqual(next(group for group in public['summary']['groups'] if group['id'] == 'uncertain')['options'][0]['eligible'], 1)
         self.assertEqual(public['checklist'], 'COL26.6 XR')
@@ -639,6 +640,18 @@ class NameJobTests(NamesCase):
 
 
 class NameDecisionAPITests(NamesCase):
+    def test_group_choice_endpoint_and_validation(self):
+        self.reviewed()
+        accepted = self.post('names', group_choice={'group': 'auto', 'choice': 'mine'})
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        self.assertEqual(self.conversion.name_review['group_choices']['auto'], 'mine')
+        self.assertTrue(all(decision['by'] == 'bulk:auto' for decision in self.conversion.name_review['decisions'].values()
+                            if decision['decision'] in {'parsed', 'keep'}))
+        bad_group = self.post('names', group_choice={'group': 'not-a-group', 'choice': 'col'})
+        self.assertEqual(bad_group.status_code, 400)
+        bad_choice = self.post('names', group_choice={'group': 'auto', 'choice': 'stem'})
+        self.assertEqual(bad_choice.status_code, 400)
+
     def test_decisions_are_saved_as_snapshots_and_can_be_withdrawn(self):
         self.reviewed()
         response = self.post('names', name_decisions={
@@ -982,7 +995,10 @@ class LabelLengthTests(SimpleTestCase):
                    b'd,Squamata,Animalia,Chordata,Squamata\n')
         state = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})
         records = {record['label']: record for record in state['labels']}
-        self.assertEqual(records['Anura']['mixed_hints'], ['class', 'phylum'])
+        self.assertEqual(records['Anura']['mixed_hints'], [])
+        # Equal row counts are listed alphabetically.
+        self.assertEqual(records['Anura']['hint_values']['phylum'], [['Arthropoda', 1], ['Chordata', 1]])
+        self.assertEqual(records['Anura']['hint_values']['class'], [['Amphibia', 1], ['Insecta', 1]])
         self.assertEqual(records['Squamata']['mixed_hints'], [])
 
     def test_source_qualifier_counts_are_bounded_to_kept_values(self):
@@ -1294,7 +1310,7 @@ class GroupDecisionTests(SimpleTestCase):
             without_id = id_fixture_record(label, {})
             classification = names.classify(without_id)
             self.assertEqual(classification['kind'], 'unconfirmed')
-            self.assertNotIn('col', classification['eligible'])
+            self.assertIn('col', classification['eligible'])
             with_id = id_fixture_record(label)
             self.assertEqual(names.classify(with_id)['kind'], 'auto')
         oncaea = id_fixture_record('Oncaea')
@@ -1322,12 +1338,11 @@ class GroupDecisionTests(SimpleTestCase):
                     self.assertEqual((classification['kind'], classification['group']), ('unconfirmed', 'unconfirmed'))
                     self.assertEqual(names.qualifier_kind(record), 'doubt')
                     self.assertIn('“?”', classification['reasons'][0]['text'])
-                    self.assertEqual(classification['eligible'], [])
+                    self.assertEqual(classification['eligible'], ['col', 'mine'])
                     state = {'labels': [record], 'decisions': {}, 'col_release': RELEASE}
                     self.assertEqual(names.auto_accept(state), 0)
                     conversion = self.conversion([record])
-                    with self.assertRaises(names.NameDecisionError):
-                        names.bulk_decide(conversion, 'unconfirmed', 'mine')
+                    names.bulk_decide(conversion, 'unconfirmed', 'mine')
 
     def test_a_group_signature_is_the_conflict_that_named_the_group(self):
         # AmphibiaReptilia sp. (568) whose source also said Plantae: the name conflict names the group, not the kingdom.
@@ -1346,7 +1361,7 @@ class GroupDecisionTests(SimpleTestCase):
                                 'usage': {'scientificName': 'Calanus', 'taxonRank': 'genus', 'scientificNameAuthorship': None}}}
             with self.subTest(label=label):
                 self.assertEqual(names.qualifier_kind(record), 'doubt')
-                self.assertEqual(names.classify(record)['eligible'], [])
+                self.assertEqual(names.classify(record)['eligible'], ['col', 'mine'])
                 self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
         # A genus that merely starts with those letters is not a marker.
         plain = {'label': 'Nrella sp.', 'qualifier': 'sp.', 'parsed': real_parse()}
@@ -1362,7 +1377,7 @@ class GroupDecisionTests(SimpleTestCase):
         state = {'labels': [record], 'decisions': {}, 'col_release': RELEASE}
         names.auto_accept(state)
         self.assertEqual(state['decisions']['Aus bus']['decision'], 'parsed')
-        self.assertNotIn('col', names.classify(record)['eligible'])
+        self.assertIn('col', names.classify(record)['eligible'])
 
     def test_rows_giving_a_uninomial_two_high_ranks_are_mixed(self):
         content = (b'occurrenceID,scientificName,taxonRank\n'
@@ -1378,7 +1393,7 @@ class GroupDecisionTests(SimpleTestCase):
                   'match': {'matchType': 'EXACT', 'hintOnly': False, 'alternatives': [],
                             'usage': {'scientificName': 'Anura', 'taxonRank': 'genus', 'scientificNameAuthorship': None}}}
         classification = names.classify(record)
-        self.assertEqual((classification['group'], classification['eligible']), ('check:rank:order:genus', ['mine']))
+        self.assertEqual((classification['group'], classification['eligible']), ('check:rank:order:genus', ['col', 'mine']))
         self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
         record['source_rank'] = 'species'
         self.assertEqual(names.classify(record)['kind'], 'uncertain')
@@ -1390,11 +1405,11 @@ class GroupDecisionTests(SimpleTestCase):
                         'scientificName': 'Anura', 'taxonRank': 'order', 'scientificNameAuthorship': None,
                         'classification': {'kingdom': 'Animalia', 'class': 'Amphibia'}}}}
         ranked = names.classify(record(source_rank='genus'))
-        self.assertEqual((ranked['group'], ranked['eligible']), ('check:rank:genus:order', ['mine']))
-        with self.assertRaises(names.NameDecisionError):
-            names.build_decision(record(source_rank='genus'), {'decision': 'col'}, {'col_release': RELEASE},
-                                 by='bulk:spelling', group_kind='spelling')
-        self.assertEqual(names.classify(record(hints={'class': 'Insecta'}))['group'], 'check:class:Insecta:Amphibia')
+        self.assertEqual((ranked['group'], ranked['eligible']), ('check:rank:genus:order', ['col', 'mine']))
+        accepted = names.build_decision(record(source_rank='genus'), {'decision': 'col'}, {'col_release': RELEASE},
+                                        by='bulk:check', group_kind='check')
+        self.assertEqual(accepted['taxonRank'], 'order')
+        self.assertEqual(names.classify(record(hints={'class': 'Insecta'}))['kind'], 'spelling')
         self.assertEqual(names.classify(record())['kind'], 'spelling')
 
     def test_a_row_choice_says_when_cols_authorship_is_not_the_users(self):
@@ -1417,7 +1432,7 @@ class GroupDecisionTests(SimpleTestCase):
         state = {'labels': [record], 'decisions': {}, 'col_release': RELEASE}
         names.auto_accept(state)
         self.assertEqual(state['decisions']['Aus bus Smith, 1900']['decision'], 'keep')
-        self.assertNotIn('col', names.classify(record)['eligible'])
+        self.assertIn('col', names.classify(record)['eligible'])
         # A bare name with nothing after it still agrees.
         self.assertTrue(names.authorship_agrees({**record, 'label': 'Aus bus'}, record['match']['usage']))
         # Nor does a COL usage without any authorship drop the unread one.
@@ -1435,12 +1450,14 @@ class GroupDecisionTests(SimpleTestCase):
         classification = names.classify(record)
         self.assertEqual(classification['kind'], 'auto')
         self.assertIn('homonym', [reason['code'] for reason in classification['reasons']])
-        self.assertNotIn('col', classification['eligible'])
+        self.assertIn('col', classification['eligible'])
         state = {'labels': [record], 'decisions': {}, 'col_release': RELEASE}
         names.auto_accept(state)
         self.assertEqual((state['decisions']['Sterna']['decision'], state['decisions']['Sterna']['scientificNameAuthorship']), ('parsed', None))
+        # Never automatically; the group's explicit "Use COL names" may write it.
         with self.assertRaises(names.NameDecisionError):
-            names.build_decision(record, {'decision': 'col'}, state, by='bulk:auto', group_kind='auto')
+            names.build_decision(record, {'decision': 'col'}, state, by='auto:exact', group_kind='auto')
+        self.assertEqual(names.build_decision(record, {'decision': 'col'}, state, by='bulk:auto', group_kind='auto')['decision'], 'col')
 
     def test_sp_after_a_name_cols_has_above_family_is_decided_one_at_a_time(self):
         record = copy.deepcopy(FIXTURE_RECORDS['Anura indet.'])
@@ -1448,7 +1465,7 @@ class GroupDecisionTests(SimpleTestCase):
         record.update(label='Anura sp.', qualifier='sp.')
         classification = names.classify(record)
         self.assertEqual((classification['kind'], classification['reasons'][0]['code'], classification['eligible']),
-                         ('unconfirmed', 'rank', ['mine']))
+                         ('unconfirmed', 'rank', ['col', 'mine']))
         self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
 
     def test_any_unread_word_in_an_unparsed_label_keeps_the_users_authorship(self):
@@ -1551,7 +1568,7 @@ class GroupDecisionTests(SimpleTestCase):
         record.update(label='Anura sp.', qualifier='sp.', hints={**record['hints'], 'kingdom': 'Plantae'})
         classification = names.classify(record)
         self.assertEqual(classification['kind'], 'check')
-        self.assertNotIn('col', classification['eligible'])
+        self.assertIn('col', classification['eligible'])
 
     def test_a_supplied_rank_in_two_cases_is_one_rank(self):
         content = b'occurrenceID,scientificName,taxonRank\na,Anura,Genus\nb,Anura,genus\n'
@@ -1574,23 +1591,27 @@ class GroupDecisionTests(SimpleTestCase):
         same = {**record['match']['usage'], 'scientificName': 'Carex nigra ssp. juncea', 'taxonRank': 'subspecies'}
         self.assertIsNone(names.change(record, same, 'EXACT'))
         for asserted, theirs in (('Carex nigra nothosubsp. juncea', 'Carex nigra subsp. juncea'),
-                                 ('Carex nigra juncea', 'Carex nigra var. juncea'), ('Carex nigra var. juncea', 'Carex nigra juncea')):
+                                 ('Carex nigra var. juncea', 'Carex nigra juncea')):
             with self.subTest(asserted=asserted):
                 found = names.change({**record, 'label': asserted, 'parsed': real_parse(asserted)}, {**record['match']['usage'], 'scientificName': theirs}, 'EXACT')
                 self.assertEqual(found['kind'], 'marker')
+        missing = names.change({**record, 'label': 'Carex nigra juncea', 'parsed': real_parse('Carex nigra juncea')},
+                               {**record['match']['usage'], 'scientificName': 'Carex nigra var. juncea'}, 'EXACT')
+        self.assertIsNone(missing)
 
-    def test_another_family_keeps_the_users_authorship_and_mixed_families_are_a_check(self):
+    def test_another_family_does_not_block_acceptance_and_mixed_families_are_hints(self):
         record = {'label': 'Aus bus', 'rows': 1, 'qualifier': None, 'parsed': real_parse('Aus bus'), 'hints': {'family': 'Bidae'},
                   'match': {'matchType': 'EXACT', 'hintOnly': False, 'usage': {
                       'id': '1', 'scientificName': 'Aus bus', 'scientificNameAuthorship': 'Smith', 'taxonRank': 'species',
                       'classification': {'family': 'Aidae'}}}}
         classification = names.classify(record)
         self.assertEqual(classification['kind'], 'auto')
-        self.assertEqual(names.row_default(record, classification), 'parsed')
-        self.assertNotIn('col', classification['eligible'])
+        self.assertEqual(names.row_default(record, classification), 'col')
+        self.assertIn('col', classification['eligible'])
         content = b'occurrenceID,scientificName,family\na,Aus,Aidae\nb,Aus,Bidae\n'
         mixed = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels'][0]
-        self.assertEqual(mixed['mixed_hints'], ['family'])
+        self.assertEqual(mixed['mixed_hints'], [])
+        self.assertEqual(mixed['hint_values']['family'], [['Aidae', 1], ['Bidae', 1]])
 
     def test_an_unmarked_trinomial_supplied_as_a_variety_is_not_cols_subspecies(self):
         record = {'label': 'Aus bus cus', 'rows': 1, 'qualifier': None, 'source_rank': 'variety', 'parsed': real_parse('Aus bus cus'),
@@ -1648,7 +1669,7 @@ class GroupDecisionTests(SimpleTestCase):
                   'match': {'matchType': 'VARIANT', 'hintOnly': False, 'usage': {
                       'scientificName': 'Rosa canina', 'taxonRank': 'species', 'classification': {'kingdom': 'Plantae', 'family': 'Rosaceae'}}}}
         self.assertEqual(names.change(record, record['match']['usage'], 'VARIANT')['kind'], 'marker')
-        self.assertNotIn('col', names.classify(record)['eligible'])
+        self.assertIn('col', names.classify(record)['eligible'])
 
     def test_variant_and_other_rank_same_name_usages_are_homonyms(self):
         def record(other):
@@ -1700,11 +1721,10 @@ class GroupDecisionTests(SimpleTestCase):
         classification = names.classify(record)
         self.assertEqual((classification['group'], classification['kind'], classification['reasons'][0]['code']),
                          ('check:rank:genus:order', 'check', 'rank'))
-        self.assertEqual(classification['reasons'][0]['text'], 'Your rank is genus; COL has this name as order')
-        # COL's order is never applied to the group; it stays a per-name choice.
-        self.assertEqual(classification['eligible'], ['mine'])
-        with self.assertRaises(names.NameDecisionError):
-            names.build_decision(record, {'decision': 'col'}, {'col_release': RELEASE}, by='bulk:check', group_kind='check')
+        self.assertEqual(classification['reasons'][0]['text'], 'Your file says genus; Catalogue of Life has this name as an order')
+        self.assertEqual(classification['eligible'], ['col', 'mine'])
+        bulk = names.build_decision(record, {'decision': 'col'}, {'col_release': RELEASE}, by='bulk:check', group_kind='check')
+        self.assertEqual(bulk['taxonRank'], 'order')
         self.assertEqual(names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE})['taxonRank'], 'order')
         self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
         self.assertEqual(names.groups({'labels': [record], 'decisions': {}})[0]['signature'],
@@ -1731,12 +1751,7 @@ class GroupDecisionTests(SimpleTestCase):
                 self.assertEqual(set(classification), {'group', 'kind', 'reasons', 'default', 'eligible'})
                 self.assertEqual(classification['group'], 'spelling')
                 self.assertEqual(classification['kind'], 'spelling')
-                expected_col = names.change(record, record['match'].get('usage') or {},
-                                            record['match'].get('matchType'))
-                may_take_col = (expected_col is None or expected_col.get('kind') == 'spelling')
-                may_take_col = may_take_col and names.authorship_agrees(record, record['match'].get('usage') or {})
-                self.assertEqual('col' in classification['eligible'],
-                                 may_take_col)
+                self.assertIn('col', classification['eligible'])
                 state = {'labels': [record], 'decisions': {label: {'by': 'user'}}}
                 names.groups(state, {label: classification})
                 self.assertNotIn('decisions', classification)
@@ -1808,10 +1823,8 @@ class GroupDecisionTests(SimpleTestCase):
         self.assertEqual(reason, '2 of 10 rows say “cf.”; decide this one yourself')
         state = {'labels': [record], 'decisions': {}, 'col_release': RELEASE}
         self.assertEqual(names.auto_accept(state), 0)
-        self.assertFalse(names.eligible(record, 'keep', names.classify(record)))
-        conversion = self.conversion([record])
-        with self.assertRaises(names.NameDecisionError):
-            names.bulk_decide(conversion, 'unconfirmed', 'mine')
+        # An explicit group decision may keep the user's names.
+        self.assertTrue(names.eligible(record, 'mine', names.classify(record)))
 
     def test_one_question_mark_source_row_makes_draco_sp_doubtful(self):
         record = {'label': 'Draco sp.', 'rows': 10, 'qualifier': 'sp.', 'source_qualifiers': ['?'],
@@ -1848,21 +1861,19 @@ class GroupDecisionTests(SimpleTestCase):
             'matchType': 'EXACT', 'hintOnly': False, 'usage': {'scientificName': 'Anura', 'taxonRank': 'order',
                 'scientificNameAuthorship': None, 'classification': {'kingdom': 'Animalia', 'phylum': 'Chordata', 'class': 'Amphibia'}}})
         classified = names.classify(mixed)
-        self.assertEqual((classified['group'], classified['reasons'][0]['code']), ('check:mixed:class,phylum', 'mixed'))
-        self.assertNotIn('col', classified['eligible'])
+        self.assertEqual(classified['kind'], 'auto')
+        self.assertIn('col', classified['eligible'])
         self.assertIn('mine', classified['eligible'])
-        self.assertEqual(names.groups({'labels': [mixed], 'decisions': {}})[0]['signature'],
-                         {'code': 'mixed', 'yours': 'class, phylum', 'col': None})
 
         copepod = {'label': 'Calanus', 'parsed': real_parse('Calanus', 'genus'), 'hints': {'class': 'Copepoda'},
                    'mixed_hints': [], 'qualifier': None, 'match': {'matchType': 'EXACT', 'hintOnly': False,
                    'usage': {'scientificName': 'Calanus', 'taxonRank': 'genus', 'scientificNameAuthorship': None,
                              'classification': {'class': 'Insecta'}}}}
         classified = names.classify(copepod)
-        self.assertEqual((classified['group'], classified['reasons'][0]['code']), ('check:class:Copepoda:Insecta', 'class'))
-        # Never accepted automatically; COL's name is only the user's explicit group choice, as for 558's kingdom.
+        self.assertEqual(classified['kind'], 'auto')
+        # Higher-group differences never block automatic acceptance.
         state = {'labels': [copepod], 'decisions': {}, 'col_release': RELEASE}
-        self.assertEqual(names.auto_accept(state), 0)
+        self.assertEqual(names.auto_accept(state), 1)
         self.assertEqual(classified['eligible'], ['col', 'mine'])
 
     def test_spelling_group_reasons_explain_trema_and_albizzia(self):
@@ -1904,14 +1915,14 @@ class GroupDecisionTests(SimpleTestCase):
                     except names.NameDecisionError:
                         continue
                     snapshot = conversion.name_review['decisions'][candidate['label']]
-                    self.assertNotEqual(names.qualifier_kind(candidate), 'doubt')
                     if snapshot['decision'] in {'col', 'stem', 'alternative'}:
                         asserted = names.asserted_name(candidate)
-                        # Only a spelling group may write COL's spelling, and only one checked as a spelling change.
-                        if not (classification['kind'] == 'spelling' and snapshot.get('changeKind') == 'spelling'):
+                        # Explicit group choices may replace names and authorships (the counts say so); only the
+                        # automatic group's "Use COL names" keeps to the automatic rules.
+                        if classification['kind'] == 'auto':
                             self.assertEqual(taxon_matching.name_parts(snapshot['scientificName']), taxon_matching.name_parts(asserted))
-                        if snapshot.get('scientificNameAuthorship'):
-                            self.assertTrue(names.authorship_agrees(candidate, snapshot))
+                            if snapshot.get('scientificNameAuthorship'):
+                                self.assertTrue(names.authorship_agrees(candidate, snapshot))
 
     def test_auto_undo_declines_and_group_mine_resolves_lossless_parse(self):
         record = copy.deepcopy(FIXTURE_RECORDS['Sterna sp.'])
@@ -1924,6 +1935,198 @@ class GroupDecisionTests(SimpleTestCase):
         mine_record = copy.deepcopy(FIXTURE_RECORDS['Trientalis europaea'])
         decision = names.build_decision(mine_record, {'decision': 'mine'}, {'col_release': RELEASE})
         self.assertEqual(decision['decision'], 'parsed')
+
+
+class NamesV2ContractTests(SimpleTestCase):
+    def record(self, label='Aus bus', usage_name='Aus bus', rank='species', match_type='EXACT', hints=None,
+               classification=None, alternatives=None, **extra):
+        usage = {'id': 'COL-1', 'scientificName': usage_name, 'taxonRank': rank,
+                 'scientificNameAuthorship': None, 'classification': classification or {'kingdom': 'Plantae'}}
+        return {'label': label, 'rows': 1, 'parsed': real_parse(label), 'qualifier': None,
+                'hints': hints or {}, 'match': {'matchType': match_type, 'hintOnly': False, 'usage': usage,
+                                                'alternatives': alternatives or []}, **extra}
+
+    def test_collection_ignores_placeholders_and_counts_mixed_hints(self):
+        content = (b'occurrenceID,scientificName,kingdom,phylum,class,family\n'
+                   b'a,Solidago canadensis,Plantae,Tracheophyta,Magnoliopsida,Asteraceae\n'
+                   b'b,Solidago canadensis,Plantae,Tracheophyta,Magnoliopsida,Asteraceae\n'
+                   b'c,Solidago canadensis,Plantae,Magnoliophyta,Eudicots,Asteraceae\n'
+                   b'd,Aus bus,NA,Not assigned,?,NA\n')
+        records = {item['label']: item for item in names.collect_state(
+            read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels']}
+        mixed = records['Solidago canadensis']
+        self.assertEqual(mixed['hint_values']['phylum'], [['Tracheophyta', 2], ['Magnoliophyta', 1]])
+        self.assertEqual(mixed['hint_values']['class'], [['Magnoliopsida', 2], ['Eudicots', 1]])
+        self.assertEqual(mixed['mixed_hints'], [])
+        self.assertEqual(records['Aus bus']['hints'], {})
+        self.assertEqual(records['Aus bus']['hint_values'], {})
+
+    def test_classification_changes_are_not_checks_but_kingdom_and_lineage_are(self):
+        solidago = self.record(label='Solidago canadensis', hints={'kingdom': 'Plantae'}, classification={
+            'kingdom': 'Plantae', 'phylum': 'Tracheophyta', 'class': 'Magnoliopsida'},
+            hint_values={'phylum': [['Tracheophyta', 174], ['Magnoliophyta', 101]],
+                         'class': [['Magnoliopsida', 174], ['Eudicots', 101]]})
+        solidago['match']['usage']['scientificName'] = 'Solidago canadensis'
+        self.assertEqual(names.classify(solidago)['kind'], 'auto')
+        auto = {'labels': [solidago], 'decisions': {}, 'col_release': RELEASE}
+        self.assertEqual(names.auto_accept(auto), 1)
+        self.assertEqual(auto['decisions'][solidago['label']]['decision'], 'col')
+        mismatch = self.record(hints={'kingdom': 'Plantae', 'phylum': 'Magnoliophyta'})
+        self.assertEqual(names.classify(mismatch)['kind'], 'auto')
+        placeholder = self.record(hints={}, hint_values={})
+        self.assertEqual(names.classify(placeholder)['kind'], 'auto')
+        from_collection = names.collect_state(read_inputs([('occurrence.csv',
+            b'occurrenceID,scientificName,kingdom,phylum,family\na,Aus bus,NA,Not assigned,NA\nb,Aus bus,Plantae,Tracheophyta,Not assigned\n')]),
+            {'id': 'plan'})['labels'][0]
+        from_collection.update(parsed=real_parse('Aus bus'), match=self.record()['match'])
+        self.assertEqual(from_collection['hints']['kingdom'], 'Plantae')
+        self.assertEqual(from_collection['hints'].get('family'), None)
+        self.assertEqual(names.classify(from_collection)['kind'], 'auto')
+        wrong_kingdom = self.record(hints={'kingdom': 'Animalia'}, classification={'kingdom': 'Plantae'})
+        self.assertEqual(names.classify(wrong_kingdom)['group'], 'check:kingdom:Animalia:Plantae')
+        mixed_kingdom = self.record(hints={}, mixed_hints=['kingdom'], hint_values={
+            'kingdom': [['Animalia', 12], ['Plantae', 3]]})
+        classified = names.classify(mixed_kingdom)
+        self.assertEqual(classified['group'], 'check:mixed:kingdom')
+        self.assertEqual(classified['reasons'][0]['text'],
+                         'Your file lists this name under two kingdoms: Animalia (12 rows) and Plantae (3 rows).')
+        pick = {'scientificName': 'Aus bus', 'taxonRank': 'species', 'classification': {'phylum': 'Tracheophyta'}}
+        other = {'scientificName': 'Aus bus', 'taxonRank': 'species', 'matchType': 'VARIANT',
+                 'classification': {'phylum': 'Bryophyta'}}
+        lineage = self.record(hints={'phylum': 'Bryophyta'}, classification={'phylum': 'Tracheophyta'}, alternatives=[other])
+        lineage['match']['usage'] = pick
+        self.assertEqual(names.classify(lineage)['group'], 'check:lineage')
+
+    def test_marker_added_is_same_name_but_explicit_marker_changes_remain(self):
+        record = self.record(label='Empetrum nigrum hermaphroditum', usage_name='Empetrum nigrum subsp. hermaphroditum',
+                             rank='subspecies')
+        self.assertIsNone(names.change(record, record['match']['usage'], 'EXACT'))
+        self.assertEqual(names.classify(record)['kind'], 'auto')
+        self.assertEqual(names.classify(record)['reasons'][0]['code'], 'marker_added')
+        carex = self.record(label='Carex nigra subsp. juncea', usage_name='Carex nigra var. juncea', rank='variety')
+        self.assertEqual(names.change(carex, carex['match']['usage'], 'EXACT')['kind'], 'marker')
+        rosa = self.record(label='Rosa × canina', usage_name='Rosa canina')
+        self.assertEqual(names.change(rosa, rosa['match']['usage'], 'EXACT')['kind'], 'marker')
+        self.assertEqual(taxon_matching.NAME_RULES_VERSION, 3)
+
+    def test_group_choice_adds_a_doubtful_formula_to_identifications(self):
+        for record in (self.record(label='Aus cf. bus', usage_name='Aus bus'),
+                       {**self.record(label='Aus bus', usage_name='Aus bus'), 'source_qualifiers': ['cf.']}):
+            record['parsed'] = real_parse('Aus bus')
+            state = {'col_release': RELEASE}
+            decision = names.build_decision(record, {'decision': 'col'}, state, by='bulk:unconfirmed', group_kind='unconfirmed')
+            self.assertEqual(decision['taxonFormula'], 'A cf.')
+
+    def test_notice_counts_and_caps_examples(self):
+        one = self.record(label='Solidago canadensis', hints={'kingdom': 'Plantae', 'phylum': 'Magnoliophyta', 'class': 'Eudicots'},
+                          classification={'kingdom': 'Plantae', 'phylum': 'Tracheophyta', 'class': 'Magnoliopsida'})
+        mixed = self.record(label='Aus bus', hints={'kingdom': 'Animalia'}, hint_values={'phylum': [['A', 2], ['B', 1]]},
+                            classification={'kingdom': 'Animalia', 'phylum': 'A'})
+        other = self.record(label='Other name', hints={'kingdom': 'Plantae', 'phylum': 'Bryophyta', 'class': 'Mosses'},
+                            classification={'kingdom': 'Plantae', 'phylum': 'Tracheophyta', 'class': 'Magnoliopsida'})
+        notice = names.classification_notice([one, mixed, {**one, 'label': 'Duplicate name'}, other])
+        self.assertEqual(notice['names'], 4)
+        self.assertTrue(notice['mixed'])
+        self.assertEqual(len(notice['examples']), 2)
+        self.assertEqual(len({(item['yours'], item['col']) for item in notice['examples']}), 2)
+
+    def test_state_summary_exposes_the_classification_notice(self):
+        record = self.record(label='Solidago canadensis', hints={'kingdom': 'Plantae', 'phylum': 'Magnoliophyta', 'class': 'Eudicots'},
+                             classification={'kingdom': 'Plantae', 'phylum': 'Tracheophyta', 'class': 'Magnoliopsida'})
+        conversion = SimpleNamespace(plan={'id': 'plan', 'issues': []}, name_review={
+            'plan_id': 'plan', 'labels': [record], 'decisions': {}, 'status': 'complete'})
+        with patch('api.models.DwcConversionJob.objects.filter') as jobs:
+            jobs.return_value.exists.return_value = False
+            section = names.state_section(conversion)
+        self.assertEqual(section['summary']['classification_notice']['names'], 1)
+        self.assertEqual(section['summary']['classification_notice']['examples'],
+                         [{'yours': 'Magnoliophyta / Eudicots', 'col': 'Tracheophyta / Magnoliopsida'}])
+
+    def test_group_options_count_changes_and_bulk_choice_replaces_automatic_decisions(self):
+        coarse = self.record(label='Calanus', usage_name='Arthropoda', rank='phylum', match_type='HIGHERRANK',
+                             source_rank='genus', source_authorships=['Smith'])
+        coarse['parsed'] = real_parse('Calanus', 'genus')
+        coarse['match']['usage']['scientificNameAuthorship'] = 'Jones'
+        different = self.record(label='Aus bus', usage_name='Aus dus', rank='species')
+        no_usage = self.record(label='Cus dus', usage_name=None)
+        no_usage['match']['usage'] = None
+        check = {'group': 'check:name', 'kind': 'check', 'reasons': [], 'default': None, 'eligible': ['col', 'mine']}
+        with patch.object(names, 'classify', side_effect=lambda item: check if item['label'] in {'Calanus', 'Aus bus', 'Cus dus'} else check):
+            conversion = SimpleNamespace(plan={'id': 'plan'}, name_review={'plan_id': 'plan', 'labels': [coarse, different, no_usage],
+                                                                           'decisions': {}, 'col_release': RELEASE},
+                                        save=lambda **kwargs: None)
+            summary = names.groups(conversion.name_review)[0]
+            col = next(item for item in summary['options'] if item['decision'] == 'col')
+            self.assertEqual((col['eligible'], col['kept'], col['broader'], col['different'], col['authorship'], col['rank']),
+                             (2, 1, 1, 1, 1, 1))
+            self.assertEqual(col['spelling'], 0)
+            result = names.group_choice(conversion, 'check:name', 'col')
+            self.assertEqual(result['count'], 3)
+            self.assertEqual(next(item for item in names.groups(conversion.name_review) if item['id'] == 'check:name')['choice'], 'col')
+            decisions = conversion.name_review['decisions']
+            self.assertEqual(decisions['Calanus']['by'], 'bulk:check')
+            self.assertTrue(decisions['Calanus']['authorshipReplaced'])
+            self.assertEqual((decisions['Calanus']['replaces'], decisions['Calanus']['confirmedCoarser']),
+                             ('replaces your genus with a phylum', True))
+            # No COL name: the user's own name, split from its authorship when that is lossless ("Keep my names").
+            self.assertEqual(decisions['Cus dus']['decision'], 'parsed')
+            names.group_choice(conversion, 'check:name', 'mine')
+            self.assertEqual(decisions['Calanus']['decision'], 'parsed')
+            names.group_choice(conversion, 'check:name', 'manual')
+            self.assertNotIn('Calanus', conversion.name_review['decisions'])
+            self.assertEqual(conversion.name_review['group_choices']['check:name'], 'manual')
+
+    def test_uncertain_group_choice_and_stem_option_counts(self):
+        larus = self.record(label='Larus sp.', usage_name='Larus', rank='genus')
+        larus['qualifier'] = 'sp.'
+        anura = self.record(label='Anura sp.', usage_name='Anura', rank='order')
+        anura['qualifier'] = 'sp.'
+        state = {'labels': [larus, anura], 'decisions': {}, 'group_choices': {'uncertain': 'col'}, 'col_release': RELEASE}
+        # "Anura sp." (COL's order) is above family: never automatic, it waits under "Not found exactly".
+        self.assertEqual(names.auto_accept(state), 1)
+        groups = {item['id']: item for item in names.groups(state)}
+        stem = next(item for item in groups['uncertain']['options'] if item['decision'] == 'stem')
+        self.assertEqual(groups['uncertain']['choice'], 'stem')
+        self.assertEqual((stem['broader'], stem['different'], stem['spelling']), (0, 0, 0))
+        col = next(item for item in groups['unconfirmed']['options'] if item['decision'] == 'col')
+        self.assertEqual(col['broader'], 1)
+
+    def test_spelling_group_counts_spelling_separately(self):
+        plants = {'kingdom': 'Plantae'}
+        records = [
+            self.record(label='Circium heterophyllum', usage_name='Cirsium heterophyllum', match_type='VARIANT', hints=plants),
+            self.record(label='Trema orientalis', usage_name='Trema orientale', match_type='VARIANT', hints=plants),
+        ]
+        records[1]['match']['usage']['classification'] = {'kingdom': 'Plantae'}
+        state = {'labels': records, 'decisions': {}, 'col_release': RELEASE}
+        group = next(item for item in names.groups(state) if item['id'] == 'spelling')
+        col = next(item for item in group['options'] if item['decision'] == 'col')
+        mine = next(item for item in group['options'] if item['decision'] == 'mine')
+        self.assertEqual((col['spelling'], col['different']), (2, 0))
+        self.assertEqual((mine['spelling'], mine['different']), (0, 0))
+
+    def test_group_choices_never_replace_a_single_user_decision(self):
+        first = self.record(label='Aus bus', usage_name='Aus dus')
+        second = self.record(label='Cus bus', usage_name='Cus dus')
+        group = {'group': 'check:name', 'kind': 'check', 'reasons': [], 'default': None, 'eligible': ['col', 'mine']}
+        state = {'plan_id': 'plan', 'labels': [first, second], 'decisions': {
+            'Aus bus': {'decision': 'keep', 'by': 'user', 'source': 'verbatim'}}}
+        conversion = SimpleNamespace(plan={'id': 'plan'}, name_review=state, save=lambda **kwargs: None)
+        with patch.object(names, 'classify', return_value=group):
+            for choice in ('col', 'mine', 'manual'):
+                names.group_choice(conversion, 'check:name', choice)
+                self.assertEqual(conversion.name_review['decisions']['Aus bus']['by'], 'user')
+
+    def test_manual_group_choice_declines_removed_automatic_decisions(self):
+        record = self.record(label='Aus bus')
+        group = {'group': 'check:name', 'kind': 'check', 'reasons': [], 'default': None, 'eligible': ['col', 'mine']}
+        state = {'plan_id': 'plan', 'labels': [record], 'decisions': {
+            'Aus bus': {'decision': 'keep', 'by': 'auto:exact'}}}
+        conversion = SimpleNamespace(plan={'id': 'plan'}, name_review=state, save=lambda **kwargs: None)
+        with patch.object(names, 'classify', return_value=group):
+            names.group_choice(conversion, 'check:name', 'manual')
+        self.assertEqual(conversion.name_review['decisions'], {})
+        self.assertEqual(conversion.name_review['auto_declined'], ['Aus bus'])
 
 
 class RealCoarserMatchTests(SimpleTestCase):
@@ -1939,7 +2142,7 @@ class RealCoarserMatchTests(SimpleTestCase):
         'AmphibiaReptilia sp.': ('Amphibia', 'replaces your genus with a class'),  # 568: an EXACT match steered by the class hint
     }
 
-    def test_coarser_col_names_are_never_bulk_or_default_and_need_explicit_confirmation(self):
+    def test_coarser_col_names_are_never_automatic_but_group_choice_can_confirm(self):
         for label, (col_name, text) in self.COARSER.items():
             with self.subTest(label):
                 record = real_record(label)
@@ -1948,18 +2151,20 @@ class RealCoarserMatchTests(SimpleTestCase):
                 main = entry['col_choices'][0]
                 self.assertEqual((main['decision'], main['same_name'], main['replaces']['text']), ('col', False, text))
                 self.assertEqual(entry['suggested'], 'keep')
-                self.assertFalse(names.eligible(record, 'col', names.classify(record)))
+                self.assertTrue(names.eligible(record, 'col', names.classify(record)))
+                self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
                 with self.assertRaisesRegex(names.NameDecisionError, 'Confirm'):
                     names.build_decision(record, {'decision': 'col'}, {'col_release': RELEASE})
                 with self.assertRaisesRegex(names.NameDecisionError, 'never accepted in bulk'):
-                    names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE}, by='bulk:auto')
-                confirmed = names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE})
+                    names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE}, by='auto:exact')
+                confirmed = names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE},
+                                                  by='bulk:' + names.classify(record)['kind'], group_kind=names.classify(record)['kind'])
                 self.assertEqual((confirmed['scientificName'], confirmed['confirmedCoarser'], confirmed['replaces']), (col_name, True, text))
 
     def test_bulk_acceptance_skips_a_coarser_exact_match_even_without_a_qualifier(self):
         record = {**real_record('AmphibiaReptilia sp.'), 'label': 'AmphibiaReptilia', 'qualifier': None}
         self.assertEqual(record['match']['matchType'], 'EXACT')
-        self.assertFalse(names.eligible(record, 'col', names.classify(record)))
+        self.assertTrue(names.eligible(record, 'col', names.classify(record)))
 
     def test_same_name_alternatives_are_offered_with_context_and_need_no_confirmation(self):
         calanus = real_record('Calanus')
@@ -2255,7 +2460,8 @@ class NamePartTests(SimpleTestCase):
             with self.subTest(label):
                 record = {'label': label, 'parsed': {}, 'match': {'matchType': match_type, 'usage': usage}}
                 self.assertEqual(names.replacement(record, usage, match_type)['kind'], 'coarser')
-                self.assertFalse(names.eligible(record, 'col', names.classify(record)))
+                # Never automatic; an explicit group "Use COL names" may write it (and says it is broader).
+                self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
         calanus = {'label': 'Calanus', 'parsed': real_parse('Calanus'), 'match': {}}
         self.assertFalse(names.same_name(calanus, {'scientificName': 'Calanus (Carinocalanus)', 'taxonRank': 'subgenus'}))
 
@@ -2289,12 +2495,13 @@ class SupplyAuthorshipTests(SimpleTestCase):
         for supplied in ([], ['Linnaeus 1758'], ['(Linnaeus, 1758)'], ['Linnaeus'], ['L.'], ['L., 1758']):
             with self.subTest(supplied):
                 self.assertTrue(names.eligible(self.record(supplied), 'col', names.classify(self.record(supplied))))
+        # A different supplied authorship is kept by the automatic acceptance (the explicit group choice may replace it).
         for supplied in (['Smith'], ['Linnaeus, 1766'], ['Linnaeus 1758', 'Smith']):
             with self.subTest(supplied):
-                self.assertFalse(names.eligible(self.record(supplied), 'col', names.classify(self.record(supplied))))
+                self.assertNotEqual(names.row_default(self.record(supplied), names.classify(self.record(supplied))), 'col')
         # The label's own authorship counts too.
         labelled = {**self.record([]), 'label': 'Larus canus Smith', 'parsed': real_parse('Larus canus', 'species', 'Smith')}
-        self.assertFalse(names.eligible(labelled, 'col', names.classify(labelled)))
+        self.assertNotEqual(names.row_default(labelled, names.classify(labelled)), 'col')
 
     def test_collect_records_the_distinct_supplied_authorships(self):
         state = names.collect_state(read_inputs([('occurrence.csv', b'occurrenceID,scientificName,scientificNameAuthorship\n'
@@ -2304,7 +2511,7 @@ class SupplyAuthorshipTests(SimpleTestCase):
 
 
 class SpellingCorrectionTests(SimpleTestCase):
-    """A VARIANT match that only corrects spelling in the same place is offered in bulk; any other change needs confirming."""
+    """Spelling groups offer explicit COL choices, while individual changes need confirmation."""
 
     def record(self, label, name, rank='species', hints=None, classification=None, match_type='VARIANT', authorship=''):
         usage = {'id': 'U', 'scientificName': name, 'scientificNameAuthorship': authorship, 'taxonRank': rank,
@@ -2346,7 +2553,7 @@ class SpellingCorrectionTests(SimpleTestCase):
             with self.subTest(record['label'], kind=kind):
                 found = names.change(record, record['match']['usage'], record['match']['matchType'])
                 self.assertEqual((found['kind'], found['confirm']), (kind, True))
-                self.assertFalse(names.eligible(record, 'col', names.classify(record)))
+                self.assertTrue(names.eligible(record, 'col', names.classify(record)))
                 with self.assertRaisesRegex(names.NameDecisionError, 'Confirm'):
                     names.build_decision(record, {'decision': 'col'}, {'col_release': RELEASE})
 
@@ -2357,9 +2564,10 @@ class SpellingCorrectionTests(SimpleTestCase):
                                    classification={'kingdom': 'Plantae'}),
                        self.record('Parus major', 'Parus minor', hints={'kingdom': 'Animalia'}, classification={'kingdom': 'Animalia'})]},
             save=lambda **kwargs: None)
-        self.assertEqual(names.bulk_decide(conversion, 'spelling', 'col')['count'], 1)
-        self.assertEqual(list(conversion.name_review['decisions']), ['Circium heterophyllum'])
+        self.assertEqual(names.bulk_decide(conversion, 'spelling', 'col')['count'], 2)
+        self.assertEqual(sorted(conversion.name_review['decisions']), ['Circium heterophyllum', 'Parus major'])
         self.assertEqual(conversion.name_review['decisions']['Circium heterophyllum']['by'], 'bulk:spelling')
+        self.assertEqual(conversion.name_review['decisions']['Parus major']['scientificName'], 'Parus minor')
         # The accepted correction is applied, not held as an unconfirmed change (it was checked with its classification).
         state = conversion.name_review
         self.assertEqual(names.unconfirmed(state), {})

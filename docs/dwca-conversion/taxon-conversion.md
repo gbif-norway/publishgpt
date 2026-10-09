@@ -115,9 +115,12 @@ epithets. Rank markers, hybrid signs, authorship and case are ignored.
   "Calanus (Calanus)" is the subgenus.
 - "f. sp." is one marker.
 
-The same name is never a change, whatever ranks the source supplies: "Larus sp."
-accepted as the genus Larus keeps the user's assertion. Otherwise the change has
-one of these kinds (`taxon_matching.name_change`):
+The same name is never a change just because COL adds a missing rank marker:
+"Empetrum nigrum hermaphroditum" accepted as "Empetrum nigrum subsp.
+hermaphroditum" records `marker_added`. An explicit marker the source wrote is
+meaningful, so subsp. to var., a removed marker, or a changed hybrid sign or
+"agg." is a `marker` change. Otherwise the change has one of these kinds
+(`taxon_matching.name_change`):
 
 | Kind | When | Example |
 | --- | --- | --- |
@@ -141,31 +144,43 @@ A change is a **spelling** correction only when all of these hold:
 A uninomial also needs a class or family hint to qualify.
 
 **Confirming a change.** Every kind except spelling needs the user's explicit
-confirmation: a single choice needs `confirm_coarser: true`, and no automatic
-or bulk path ever writes such a usage. For those names the suggested action is
-**Keep my name**.
+confirmation for a single-name choice (`confirm_coarser: true`). Automatic
+decisions never write a coarser or different usage; a group choice is an
+explicit confirmation for every member in that group.
 
 ### Groups and automatic acceptance
 
 The server sorts every checked name into a group (`conversion_names.classify`)
-and computes which group decisions each name can take. The browser only shows
-them, so a bulk or automatic path can never write a coarser or different taxon
-than the user's name, and never overwrites a name the user decided one at a
-time.
+and summarizes what each group choice would change. Automatic decisions never
+write a coarser or different taxon, and a group choice never overwrites a name
+the user decided one at a time.
 
 | Group | Who is in it | What happens by default | Group decisions | One at a time |
 | --- | --- | --- | --- | --- |
-| Accepted automatically | EXACT match of the same name (markers kept, a subgenus ignored), no qualifier, no conflict | Accepted (`auto:exact`): COL's name and authorship when the authorships agree and COL has no other taxon written the same way, else the user's name and authorship | Use COL name, Use split, Keep as written | Other COL names, Don't publish a name |
-| Uncertain to genus or family | "sp.", "spp.", "indet." names whose stem COL has exactly | Accepted (`auto:uncertain`) as the stem | Publish the genus or family name, Keep as written | Other COL names, Don't publish a name |
-| Spelling differs from COL | VARIANT/FUZZY match | "Use COL spelling" pre-selected when a spelling correction exists | Use COL spelling (spelling corrections only), Keep my spelling | Other changes, with confirmation |
-| Not confirmed by COL | Homonyms COL can't pick between, higher rank only, not found, an ID not found, "cf."/"aff."/"nr."/"?" | "Keep my names" pre-selected | Keep my names (not for cf. and the like) | Pick a candidate (with kingdom › phylum › class), a coarser name with confirmation |
-| Check against your data | EXACT match but COL's name differs from the user's, the source ID points elsewhere, the label's rows disagree on kingdom/phylum/class, the hinted kingdom/phylum/class differs from COL's, or a uninomial's supplied rank (genus or above, or two such ranks across its rows) differs from COL's, also for a "sp." stem | Nothing pre-selected | Use COL names (same name, agreeing authorship; not for mixed rows or a rank conflict), Keep my names | Everything else |
+| Accepted automatically | Exact match of the same name with no remaining check | Accepted safely: COL's name and agreeing authorship, else the user's name and authorship | Use COL names, Keep my names | Other COL names, Don't publish a name |
+| Uncertain to genus or family | "sp.", "spp.", "indet." names whose stem COL has exactly | Accepted as the stem | Use stem, Keep my names | Other COL names, Don't publish a name |
+| Spelling differs from COL | VARIANT/FUZZY match | COL spelling is pre-selected for a spelling correction | Use COL names, Keep my names | Other changes, with confirmation |
+| Not confirmed by COL | Homonyms, a higher rank only, not found, an ID not found, or a doubtful label | Keep my names is pre-selected | Use COL names, Keep my names | Pick another COL name or leave it unpublished |
+| Check against your data | Different name, conflicting kingdom or rank, mixed kingdoms or ranks, or an ID pointing elsewhere | No choice is pre-selected | Use COL names, Keep my names | Review each name |
 
-"Keep my name(s)" writes the parsed name split from its authorship when the
-split rebuilds the text exactly, else the supplied text. A check group is one
-card per conflict signature: in 558 every tree is tagged Animalia, and one
-decision covers the 81 names COL places in Plantae ("Sapotaceae sp" among them
-is published as its stem).
+"Keep my name(s)" writes the parsed name split when it rebuilds the text
+exactly and there is no qualifier, else the supplied text. Every group offers
+one bulk choice. COL choices can replace a different name, authorship or rank;
+members with no COL name keep their own. In an automatic group, Use COL names
+keeps the existing safe per-name default.
+
+Each option reports eligible names, names kept because COL has no usage, broader
+groups, other name changes, spelling corrections, authorship replacements and
+rank changes. A stem for "sp." or "spp." counts as broader only when it is
+above family or differs from a supplied genus-or-higher rank. Spelling
+corrections have their own count instead of being counted as other name changes.
+
+Classification hints ignore placeholders such as "NA" and "Not assigned".
+Different phylum, class, order or family names do not create checks or stop
+automatic acceptance. The review reports those differences once as a
+classification notice. A check remains when kingdoms differ, rows disagree on
+kingdom, a uninomial has mixed higher ranks, or another same-name COL usage
+matches the source's phylum, class, order or family while the pick does not.
 
 **Automatic decisions never override the user.** They are made after each
 chunk of the name check. Undo all (per group) or a row's Undo removes them and
@@ -176,9 +191,11 @@ automatic answer is withdrawn and the question is asked again (an answer the
 user gave stands). A bulk decision keeps the snapshots it replaced for its
 Undo; the last five can be undone.
 
-**Bulk decisions are batches.** "Apply to N names" covers the group's eligible
-names not decided one at a time and records the batch. Its Undo restores only
-names that still carry that batch; a name changed since stays as it is.
+**Bulk decisions are batches.** A group choice covers every member not decided
+one at a time and records the batch. Its Undo restores only names that still
+carry that batch; a name changed since stays as it is. Review all manually
+removes the group's automatic and earlier group decisions; automatic decisions
+are marked declined so they do not return during this review.
 
 **Uncertain names ("sp.", "spp.", "indet.").** The label's qualifier, or a
 `identificationQualifier` column whose values are all sp./spp./indet. (blank
@@ -188,21 +205,20 @@ the user, with how many rows say so. The stem (`stem` decision) is the COL usage
 the matcher's own pick, or exact alternatives that agree on one rank. COL's
 authorship is written only when the same-name usages agree on it and it agrees
 with any authorship the user supplied, so homonyms ("Viola" the plant and the
-moth, "Ficus" in 558) are published as the bare genus name. "sp." and "spp." follow a genus or family, so a stem COL has at a
-higher rank ("Anura sp.", the order) is decided one name at a time; "indet." may
-stop at any rank. When the same-name candidates sit at different ranks ("Anura" the order and
+moth, "Ficus" in 558) are published as the bare genus name. "sp." and "spp." follow a genus or family, so COL's higher-rank
+stem for "Anura sp." is available as a group choice; "indet." may stop at any
+rank. When the same-name candidates sit at different ranks ("Anura" the order and
 the genus), only the source's own rank settles which one is meant; a genus and
-its subgenus of the same name count as one. The stem's lineage is checked
-against the source's kingdom, phylum and class like any other name. Every
+its subgenus of the same name count as one. The stem's kingdom is checked
+against the source like any other name. Every
 exact match is also fetched with GBIF's verbose output, because the batch
 response leaves out homonyms; the batch's pick stands and only the homonyms are
 added. An exact name with a homonym (another authorship, a missing one, or
-another lineage down to family) keeps the user's authorship, and so does one
-COL places in another family than the source (usually a taxonomic change, so
-the name itself is still accepted). Rows of one label that give different
-families are a mixed-classification check. The same name parts with another (or no)
+another lineage) keeps the user's authorship. Different higher-group names do
+not make the user's authorship be kept. Rows of one label that give different
+kingdom values are a mixed-classification check. The same name parts with another (or no)
 explicit rank marker ("subsp. juncea" and "var. juncea"), hybrid sign or "agg." are another name
-(change kind `marker`), confirmed one name at a time. DwC-DP has no
+(change kind `marker`). DwC-DP has no
 identificationQualifier, so identification rows get `taxonFormula` "A sp.",
 "A spp." or "A indet." from their own row's qualifier, else the label's (blank
 cells only). `verbatimIdentification` still holds the text as written.
@@ -218,10 +234,10 @@ subspecies. GBIF's diagnostics issues are kept; an ID that is not found
 (`TAXON_ID_NOT_FOUND`, 567's Oncaea) is a reason under "Not confirmed", and one
 that points to another name is a conflict.
 
-**Authorship.** An automatic or bulk COL name is written with COL's authorship
-only when every supplied authorship (the label's own or the
-`scientificNameAuthorship` column) agrees with it; otherwise the user's is kept
-(a different authorship can mean a homonym, or an author error to look at).
+**Authorship.** Automatic COL names use COL's authorship only when every
+supplied authorship (the label's own or the `scientificNameAuthorship` column)
+agrees with it; otherwise the user's is kept. An explicit group choice may
+replace a different supplied authorship, and the report counts those names.
 The comparison (`taxon_matching.authorships_agree`) works as follows:
 
 - years must be equal when both give one;
@@ -247,7 +263,7 @@ The comparison (`taxon_matching.authorships_agree`) works as follows:
 
 **Stamped decisions.** Every COL decision records the change kind it was
 checked against (`changeKind`, null for the same name) and the name rules it
-was checked under (`nameRules`, `taxon_matching.NAME_RULES_VERSION`, now 2). It
+was checked under (`nameRules`, `taxon_matching.NAME_RULES_VERSION`, now 3). It
 is trusted from then on. A snapshot without the stamp, or with other name
 rules, is checked again against the record's stored usage; an automatic or bulk
 one is also checked for authorship agreement. A decision that fails is held:
@@ -261,10 +277,9 @@ one is also checked for authorship agreement. A decision that fails is held:
 The review lists same-name COL usages (homonyms) inline, with their
 kingdom › phylum › class, those from another lineage than the source's last. A
 homonym at another rank says so (for example "Anura" the order and the genus).
-A changing option names what it would do, for example "replaces your genus with
-a phylum", and asks for a second click; so does a same-name COL usage whose
-authorship is not the one in the data. Rank and lineage conflicts are checked
-for any match that is the user's own name, EXACT or a variant of it.
+A changing individual option names what it would do, for example "replaces
+your genus with a phylum", and asks for a second click. Rank conflicts are
+checked for any match that is the user's own name, exact or a variant of it.
 
 **Re-inspection carries name decisions** (`conversion_names.carry_decisions`).
 A new rule version makes a plan stale, and the re-inspection used to drop every

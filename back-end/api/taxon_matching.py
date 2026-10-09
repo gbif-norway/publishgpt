@@ -94,7 +94,7 @@ def split_qualifier(label):
 
 # Bump when name comparison or authorship agreement changes: stored automatic and bulk COL decisions are
 # re-checked for name replacements and authorship changes under the current rules.
-NAME_RULES_VERSION = 2
+NAME_RULES_VERSION = 3
 
 # Highest first. Ranks outside this list are never compared.
 RANK_ORDER = (
@@ -233,9 +233,8 @@ def explicit_markers(name):
 def name_change(asserted, usage, match_type=None, asserted_rank=None, hints=None):
     """How accepting `usage` would change the asserted name; None when it is the same name.
 
-    The same name (ignoring markers, authorship and case) is never a change, whatever the ranks say: "Larus sp."
-    accepted as the genus Larus keeps the user's assertion. Every kind but "spelling" needs the user's explicit
-    confirmation and is never accepted in bulk:
+    Missing infraspecific markers, authorship and case do not change a name; explicit marker changes do. "Larus sp."
+    accepted as the genus Larus keeps the user's assertion. Every kind but "spelling" needs explicit confirmation:
     - coarser: a higher-rank match, fewer name parts or a higher rank ("Calanus" -> the phylum Arthropoda);
     - finer: more name parts than the user asserted;
     - spelling: COL's spelling of the same name in the same place (`_is_spelling`), e.g. Circium -> Cirsium;
@@ -251,7 +250,13 @@ def name_change(asserted, usage, match_type=None, asserted_rank=None, hints=None
     change = {"from": asserted_rank, "to": rank, "confirm": True}
     # The same parts with another explicit rank marker ("subsp. juncea" and "var. juncea") are another name.
     my_markers, their_markers = explicit_markers(asserted), explicit_markers(usage.get("scientificName"))
-    if mine == theirs and my_markers != their_markers:
+    rank_markers = {"subsp.", "var.", "subvar.", "f.", "subf.", "nothosubsp.", "nothovar."}
+    my_rank = next((marker for marker in my_markers if marker in rank_markers), None)
+    their_rank = next((marker for marker in their_markers if marker in rank_markers), None)
+    special_differs = (("×" in my_markers) != ("×" in their_markers)
+                       or ("agg." in my_markers) != ("agg." in their_markers))
+    rank_differs = bool(my_rank and their_rank and my_rank != their_rank) or bool(my_rank and not their_rank)
+    if mine == theirs and (special_differs or rank_differs):
         mine_text = " ".join(my_markers) or "name without a rank marker"
         return {**change, "kind": "marker", "text": f"writes your {mine_text} as {' '.join(their_markers) or 'a name without one'}"}
     if mine == theirs:

@@ -11,89 +11,111 @@ export const DECISION_LABELS = {
 }
 
 export const GROUPS = {
-  check: { title: 'Check against your data', options: { col: 'Use COL names', mine: 'Keep my names' } },
-  unconfirmed: { title: 'Not confirmed by COL', options: { mine: 'Keep my names' } },
-  spelling: { title: 'Spelling differs from COL', options: { col: 'Use COL spelling', mine: 'Keep my spelling' } },
-  uncertain: { title: 'Uncertain to genus or family', options: { stem: 'Publish the name without “sp.”', keep: 'Keep as written' } },
-  auto: { title: 'Accepted automatically', options: { col: 'Use COL name', parsed: 'Use split', keep: 'Keep as written' } },
+  check: { title: 'Check against Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
+  unconfirmed: { title: 'Not found exactly in Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
+  spelling: { title: 'Spelling differs from Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
+  uncertain: { title: 'Identified to genus or family (sp.)', buttons: { stem: 'Use the genus or family', mine: 'Keep my names', manual: 'Review all manually' } },
+  auto: { title: 'Matched exactly', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
 }
 
 const CONTEXT_RANKS = ['kingdom', 'phylum', 'class']
 export const PAGE_SIZE = 100
 
-export const classificationContext = (usage) =>
-  CONTEXT_RANKS.map(rank => usage?.classification?.[rank]).filter(Boolean).join(' › ')
+export const classificationContext = usage => CONTEXT_RANKS.map(rank => usage?.classification?.[rank]).filter(Boolean).join(' › ')
 
-export const choiceGroups = (entry) => {
+export const choiceGroups = entry => {
   const choices = entry?.col_choices || []
   const main = choices.find(choice => choice.decision === 'col') || null
   const alternatives = choices.filter(choice => choice.decision === 'alternative')
   const fresh = alternatives.filter(choice => !main || String(choice.usage.id) !== String(main.usage.id))
-  return {
-    main,
-    sameName: fresh.filter(choice => choice.same_name && !choice.replaces),
-    others: fresh.filter(choice => !(choice.same_name && !choice.replaces)),
-  }
+  return { main, sameName: fresh.filter(choice => choice.same_name && !choice.replaces), others: fresh.filter(choice => !(choice.same_name && !choice.replaces)) }
 }
 
-export const choiceLabel = (choice) => {
+export const choiceLabel = choice => {
   const usage = choice?.usage
   if (!usage) return ''
   return [formatName(usage), usage.taxonRank, classificationContext(usage)].filter(Boolean).join(' · ')
 }
 
+export const needsConfirmation = choice => Boolean(choice?.replaces || choice?.authorship_differs || choice?.rank_change)
+
 export const replacementWarning = (choice, rows) => {
   if (!needsConfirmation(choice)) return ''
   const count = rows ? ` on ${rows.toLocaleString()} ${rows === 1 ? 'row' : 'rows'}` : ''
-  if (!choice.replaces && choice.rank_change) {
-    return `“${choice.usage.scientificName}” ${choice.rank_change}${count}. It may be a different taxon with the same name.`
-  }
-  if (!choice.replaces) {
-    return `Catalogue of Life writes the authorship of “${choice.usage.scientificName}” as “${choice.usage.scientificNameAuthorship}”, `
-      + `which is not the authorship in your data; it would replace yours${count}. It may be a different taxon with the same name.`
-  }
+  if (!choice.replaces && choice.rank_change) return `“${choice.usage.scientificName}” ${choice.rank_change}${count}. It may be a different taxon with the same name.`
+  if (!choice.replaces) return `Catalogue of Life writes the authorship of “${choice.usage.scientificName}” as “${choice.usage.scientificNameAuthorship}”, which is not the authorship in your data; it would replace yours${count}. It may be a different taxon with the same name.`
   return `“${choice.usage.scientificName}” ${choice.replaces.text}${count}. Your text stays in verbatimIdentification.`
 }
 
-// A COL choice that replaces the user's name, or their authorship, waits for a second click.
-export const needsConfirmation = (choice) => Boolean(choice?.replaces || choice?.authorship_differs || choice?.rank_change)
-
-export const decisionResult = (decision) => {
+export const decisionResult = decision => {
   if (!decision) return ''
   if (decision.decision === 'empty') return 'No name published'
   if (decision.decision === 'keep') return 'Your text as written'
   return `${formatName(decision)}${decision.taxonRank ? ` (${decision.taxonRank})` : ''}`
 }
 
-export const groupTitle = (group) => {
-  if (!group) return ''
-  if (group.kind === 'check') return GROUPS.check.title
-  return GROUPS[group.kind]?.title || ''
+const CHECK_TITLES = {
+  name: 'Catalogue of Life has a different name',
+  rank: 'Rank differs from Catalogue of Life',
+  lineage: 'May be another taxon with the same name',
+  kingdom: 'Kingdom differs from Catalogue of Life',
+  id: 'Your identifier points to another name',
 }
 
-export const groupSubtitle = (group) => {
-  const signature = group?.signature
-  if (group?.kind !== 'check' || !signature) return ''
-  if (['kingdom', 'phylum', 'class'].includes(signature.code)) {
-    const count = group.labels || 0
-    const subject = count === 1 ? 'this name' : `these ${count.toLocaleString()} names`
-    return `Your ${signature.code} says ${signature.yours}; COL places ${subject} in ${signature.col}.`
-  }
-  if (signature.code === 'name') return 'COL returned a different name for these. Keep yours unless you are sure.'
+export const groupTitle = group => {
+  if (group?.kind !== 'check') return GROUPS[group?.kind]?.title || ''
+  const signature = group.signature || {}
+  if (signature.code === 'mixed') return signature.yours === 'rank' ? 'Listed at two ranks' : 'Listed under two kingdoms'
+  return CHECK_TITLES[signature.code] || GROUPS.check.title
+}
+
+export const groupExplanation = group => {
+  const signature = group?.signature || {}
+  if (group?.kind !== 'check') return ({
+    auto: 'Catalogue of Life matched these names to accepted names.',
+    uncertain: 'Choose whether to publish the genus or family without the uncertain ending.',
+    spelling: 'Catalogue of Life suggests a different spelling for these names.',
+    unconfirmed: 'Catalogue of Life could not confirm these names.',
+  })[group?.kind] || ''
+  if (signature.code === 'kingdom') return `Your file says ${signature.yours}; Catalogue of Life has these names in ${signature.col}.`
+  if (signature.code === 'mixed') return signature.text || signature.reason || signature.first_reason || group?.reasons?.[0]?.text || 'Your file lists this name with more than one classification.'
+  if (signature.code === 'lineage') return signature.text || signature.reason || 'Catalogue of Life has another use of this name in the group your file uses.'
+  if (signature.code === 'rank') return `Your file gives this name the rank ${signature.yours}; Catalogue of Life has it as ${signature.col}.`
   if (signature.code === 'id') return 'Your scientificNameID or taxonID points to another name in Catalogue of Life.'
-  if (signature.code === 'rank') return `Your rank says ${signature.yours}; COL has ${group.labels === 1 ? 'this name' : 'these names'} as ${signature.col}. It may be a different taxon with the same name.`
-  if (signature.code === 'mixed') return `Rows with the same name give different ${signature.yours || 'classifications'}, so they may be different taxa. Keep yours unless you are sure.`
+  if (signature.code === 'name') return 'Catalogue of Life has a different name here. Keep yours unless you are sure.'
   return ''
 }
 
-export const groupOptions = (group) => (group?.options || []).map(option => ({
-  decision: option.decision,
-  label: GROUPS[group.kind]?.options?.[option.decision] || option.decision,
-  eligible: option.eligible || 0,
-}))
+export const groupChoiceBody = (planId, group, choice) => ({ action: 'names', plan_id: planId, group_choice: { group: group.id, choice } })
+export const selectedGroupChoice = group => group?.choice || (group?.kind === 'auto' ? 'col' : group?.kind === 'uncertain' ? 'stem' : '')
+export const ariaPressed = (selected, choice) => selected === choice
 
-export const applyLabel = (count) => `Apply to ${count.toLocaleString()} ${count === 1 ? 'name' : 'names'}`
+export const optionNote = option => {
+  if (!option) return ''
+  const counts = []
+  const add = (count, singular, plural, prefix = '') => {
+    if (count) counts.push(`${count.toLocaleString()} ${prefix}${count === 1 ? singular : plural}`)
+  }
+  add(option.broader || 0, 'would become a broader group', 'would become a broader group', 'of these ')
+  add(option.different || 0, 'would change name', 'would change name')
+  add(option.spelling || 0, "would get COL's spelling", "would get COL's spelling")
+  add(option.kept || 0, 'has no COL name and keeps yours', 'have no COL name and keep yours')
+  add(option.authorship || 0, 'would replace your authorship', 'would replace your authorship')
+  return counts.join(' · ')
+}
 
+export const classificationNotice = summary => {
+  const notice = summary?.classification_notice
+  if (!notice?.names) return ''
+  const example = notice.examples?.[0]
+  if (!example) return notice.mixed
+    ? `Your file uses two sets of higher-group names for ${notice.names.toLocaleString()} names.`
+    : `Your file uses other higher-group names than Catalogue of Life for ${notice.names.toLocaleString()} names.`
+  const prefix = notice.mixed ? 'Your file uses two sets of higher-group names' : 'Your file uses other higher-group names than Catalogue of Life'
+  return `${prefix} for ${notice.names.toLocaleString()} names (e.g. ${example.yours} where COL has ${example.col}). Only names are published, so this changes nothing.`
+}
+
+export const groupOptions = group => (group?.options || []).map(option => ({ ...option, decision: option.decision, eligible: option.eligible || 0 }))
 export const progress = (summary = {}) => {
   const groups = summary.groups || []
   const auto = groups.reduce((sum, group) => sum + (group.auto || 0), 0)
@@ -101,21 +123,13 @@ export const progress = (summary = {}) => {
   const unchecked = summary.unchecked || 0
   const decided = summary.decided || 0
   const labels = summary.labels || 0
-  return {
-    auto,
-    need,
-    unchecked,
-    decided,
-    labels,
-    percent: labels ? Math.min(100, Math.round((decided / labels) * 100)) : 0,
-    text: `${auto.toLocaleString()} accepted automatically · ${need.toLocaleString()} need you${unchecked ? ` · ${unchecked.toLocaleString()} still being checked` : ''}`,
-  }
+  return { auto, need, unchecked, decided, labels, percent: labels ? Math.min(100, Math.round((decided / labels) * 100)) : 0,
+    text: `${auto.toLocaleString()} accepted automatically · ${need.toLocaleString()} need you${unchecked ? ` · ${unchecked.toLocaleString()} still being checked` : ''}` }
 }
 
-export const rowStatus = (entry) => {
+export const rowStatus = entry => {
   const decision = entry?.decision
   if (!decision) return { kind: null, text: '' }
-  // A held choice is converted as the user's own text until it is confirmed, so that is what the row shows.
   if (entry.decision_unconfirmed || entry.decision_held) return { kind: 'held', text: 'Your text as written (until you confirm)' }
   if (decision.by === 'user') return { kind: 'user', text: 'Changed by you' }
   if (decision.by?.startsWith('bulk:')) return { kind: 'bulk', text: 'Applied to the group' }
@@ -123,56 +137,19 @@ export const rowStatus = (entry) => {
   return { kind: null, text: '' }
 }
 
-export const reasonText = (entry) => entry?.reasons?.[0]?.text || ''
-
-export const stemLabel = (entry) => {
-  const stem = entry?.stem
-  if (!stem?.scientificName) return ''
-  return `Publish ${formatName(stem)}${stem.taxonRank ? ` (${stem.taxonRank})` : ''}`
-}
-
-// An undecided name the chosen group decision does not cover; nothing is flagged until a decision is chosen.
-export const needsRowDecision = (entry, option) => Boolean(option) && !entry?.decision && !(entry?.eligible || []).includes(option)
-
-// What applying the group decision would write for this name, shown before it is applied; '' when it would not apply.
-export const previewResult = (entry, option) => {
-  if (!entry || entry.decision || !(entry.eligible || []).includes(option)) return ''
-  const parsed = entry.parsed || {}
-  const usage = entry.match?.usage
-  // A "sp." name in a check group is published as its stem when COL's name is chosen.
-  if (option === 'stem' || (option === 'col' && entry.stem)) return formatName(entry.stem)
-  if (option === 'col') return usage ? formatName(usage) : ''
-  if (option === 'parsed' || (option === 'mine' && parsed.usable && parsed.lossless && !entry.qualifier)) return parsed.canonical || entry.label
-  return entry.label
-}
-
-export const decisionBody = (planId, label, kind, usageId, { confirmCoarser = false } = {}) => ({
-  action: 'names',
-  plan_id: planId,
-  name_decisions: {
-    [label]: kind ? { decision: kind, ...(usageId ? { usage_id: usageId } : {}), ...(confirmCoarser ? { confirm_coarser: true } : {}) } : null,
-  },
-})
-
-// The latest bulk decision of a group that can still be undone; earlier groups keep their own Undo.
-export const groupBatch = (summary, groupId) => [...(summary?.batches || (summary?.last_batch ? [summary.last_batch] : []))]
-  .reverse().find(batch => batch.group === groupId) || null
-
-export const bulkBody = (planId, group, decision) => ({ action: 'names', plan_id: planId, bulk: { group, decision } })
-export const undoBatchBody = (planId, id) => ({ action: 'names', plan_id: planId, undo_batch: id })
-export const undoAutoBody = (planId, kind) => ({ action: 'names', plan_id: planId, undo_auto: kind })
-
+export const reasonText = entry => entry?.reasons?.[0]?.text || ''
+export const decisionBody = (planId, label, kind, usageId, { confirmCoarser = false } = {}) => ({ action: 'names', plan_id: planId,
+  name_decisions: { [label]: kind ? { decision: kind, ...(usageId ? { usage_id: usageId } : {}), ...(confirmCoarser ? { confirm_coarser: true } : {}) } : null } })
 export const groupQuery = ({ group, offset = 0, limit = PAGE_SIZE, q = '' } = {}) => {
   const params = new URLSearchParams({ names_view: 'group', names_group: group || '', names_offset: String(offset), names_limit: String(limit) })
   if (q) params.set('names_q', q)
   return params.toString()
 }
-
 export const pageCount = (total, limit = PAGE_SIZE) => Math.max(1, Math.ceil((total || 0) / limit))
-export const isEditable = (state) => ['review', 'reviewing'].includes(state?.status)
-export const isChecking = (nameReview) => Boolean(nameReview?.checking) || nameReview?.status === 'running'
+export const isEditable = state => ['review', 'reviewing'].includes(state?.status)
+export const isChecking = nameReview => Boolean(nameReview?.checking) || nameReview?.status === 'running'
 
-export const checkMessage = (nameReview) => {
+export const checkMessage = nameReview => {
   if (!nameReview) return null
   const { status, error, summary = {} } = nameReview
   const checked = `${(summary.checked || 0).toLocaleString()} of ${(summary.labels || 0).toLocaleString()} names checked`
@@ -182,7 +159,7 @@ export const checkMessage = (nameReview) => {
   return null
 }
 
-export const carriedMessage = (carried) => {
+export const carriedMessage = carried => {
   const kept = carried?.decisions || 0
   const dropped = carried?.dropped || 0
   if (!kept && !dropped) return null
@@ -190,23 +167,11 @@ export const carriedMessage = (carried) => {
   const droppedText = dropped ? `${dropped.toLocaleString()} earlier ${dropped === 1 ? 'name decision could' : 'name decisions could'} not be kept because the names in your data changed.` : ''
   return [keptText, droppedText].filter(Boolean).join(' ')
 }
-
-export const unconfirmedMessage = (summary) => {
+export const unconfirmedMessage = summary => {
   const count = summary?.unconfirmed || 0
-  if (!count) return null
-  return `${count.toLocaleString()} held ${count === 1 ? 'decision is' : 'decisions are'} kept as your own name until confirmed.`
+  return count ? `${count.toLocaleString()} held ${count === 1 ? 'decision is' : 'decisions are'} kept as your own name until confirmed.` : null
 }
-
-export const parseNote = (entry) => {
-  const parsed = entry?.parsed
-  if (!parsed) return 'Not parsed yet'
-  if (entry.qualifier) return `Not split: the qualifier “${entry.qualifier}” stays in the supplied text`
-  if (!parsed.usable) return 'The parser could not read this as a scientific name'
-  if (!parsed.lossless) return 'The parser would reformat the supplied text'
-  return parsed.authorship ? 'Splits exactly into name and authorship' : 'No authorship found'
-}
-
-export const skippedMessage = (summary) => {
+export const skippedMessage = summary => {
   const skipped = summary?.skipped_long
   if (!skipped?.labels) return null
   const names = skipped.labels === 1 ? '1 name is' : `${skipped.labels.toLocaleString()} names are`

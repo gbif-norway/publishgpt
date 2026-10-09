@@ -127,6 +127,23 @@ class RealNameTests(SimpleTestCase):
         self.assertTrue(taxon_matching.bulk_acceptable(row))
         self.assertEqual(taxon_matching.usage_for_decision(row)["scientificName"], "Acartia longiremis")
 
+
+    def test_missing_col_rank_marker_is_added_but_explicit_markers_remain_changes(self):
+        self.assertEqual(taxon_matching.NAME_RULES_VERSION, 3)
+        empetrum = taxon_matching.name_change(
+            "Empetrum nigrum hermaphroditum",
+            {"scientificName": "Empetrum nigrum subsp. hermaphroditum", "taxonRank": "subspecies"},
+            "EXACT",
+        )
+        self.assertIsNone(empetrum)
+        carex = taxon_matching.name_change(
+            "Carex nigra subsp. juncea",
+            {"scientificName": "Carex nigra var. juncea", "taxonRank": "variety"}, "EXACT")
+        self.assertEqual((carex["kind"], carex["confirm"]), ("marker", True))
+        hybrid = taxon_matching.name_change(
+            "Rosa × canina", {"scientificName": "Rosa canina", "taxonRank": "species"}, "EXACT")
+        self.assertEqual((hybrid["kind"], hybrid["confirm"]), ("marker", True))
+
     def test_a_hybrid_formula_without_authorship_drops_a_stray_author(self):
         self.assertEqual(taxon_matching._name_without_authorship(
             {"name": "Viola adunca × Viola labradorica Linnaeus", "canonicalName": "Viola adunca × Viola labradorica"}),
