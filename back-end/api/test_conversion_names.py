@@ -2179,6 +2179,26 @@ class NamesV2ContractTests(SimpleTestCase):
         notice = names.classification_notice([record])
         self.assertEqual((notice['names'], notice['examples']), (1, [{'yours': 'Aidae', 'col': 'Bidae'}]))
 
+    def test_review_findings_v2_round4(self):
+        # A snapshot made by build_decision for a column-cf. label: only the cf. row gets "A cf.".
+        record = {'label': 'Aus bus', 'rows': 2, 'qualifier': None, 'source_qualifiers': ['cf.'], 'source_qualifier_rows': 1,
+                  'parsed': real_parse('Aus bus'), 'match': {'matchType': 'EXACT', 'hintOnly': False, 'alternatives': [],
+                  'usage': {'id': 'X', 'scientificName': 'Aus bus', 'taxonRank': 'species', 'scientificNameAuthorship': None}}}
+        snapshot = names.build_decision(record, {'decision': 'col', 'confirm_coarser': True}, {'col_release': RELEASE},
+                                        by='bulk:unconfirmed', group_kind='unconfirmed')
+        frame = pd.DataFrame([{'identification_pk': 'i1', 'scientificName': 'Aus bus', 'taxonFormula': ''},
+                              {'identification_pk': 'i2', 'scientificName': 'Aus bus', 'taxonFormula': ''}])
+        result, _ = names.apply_name_decisions({'identification': frame}, {'labels': [record], 'decisions': {'Aus bus': snapshot}},
+                                               {'identification': [{'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': 'cf.'},
+                                                                   {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': None}]})
+        self.assertEqual(result['identification']['taxonFormula'].tolist(), ['A cf.', ''])
+        # A broader name clears the user's authorship and changes the rank: both are counted.
+        calanus = self.record(label='Calanus', usage_name='Arthropoda', rank='phylum', match_type='HIGHERRANK')
+        calanus.update(source_authorships=['Smith'], source_rank='genus')
+        group = next(item for item in names.groups({'labels': [calanus], 'decisions': {}}) if item['kind'] != 'auto')
+        col = next(item for item in group['options'] if item['decision'] == 'col')
+        self.assertEqual((col['broader'], col['authorship'], col['rank']), (1, 1, 1))
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

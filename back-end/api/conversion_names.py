@@ -1081,9 +1081,15 @@ def groups(state, classified=None):
             elif found or rank_change:
                 counts.update(different=1)
             usage_authorship = target.get('scientificNameAuthorship')
-            if normal(usage_authorship) and not authorship_agrees(record, target):
+            parsed = record.get('parsed') or {}
+            supplied = [*record.get('source_authorships', ()), *([parsed['authorship']] if parsed.get('usable') and parsed.get('authorship') else [])]
+            # COL's authorship replaces a different one, or another name clears the user's ("Calanus Smith" -> Arthropoda).
+            if (normal(usage_authorship) and not authorship_agrees(record, target)) or (found and found.get('kind') != 'spelling'
+                                                                                         and supplied and not normal(usage_authorship)):
                 counts.update(authorship=1)
-            if rank_change:
+            # The rank written differs from the supplied one (a "species" beside a "sp." stem says nothing about it).
+            sp_noise = is_stem and source_rank in RANK_ORDER and RANK_ORDER.index(source_rank) > RANK_ORDER.index('genus')
+            if rank_change or (source_rank and target_rank and source_rank != target_rank and not sp_noise):
                 counts.update(rank=1)
         signature = None
         if kind == 'check':
@@ -1605,19 +1611,22 @@ def apply_name_decisions(frames, name_review, source_names):
                 # holds only for the rows that say it.
                 doubtful_formula = bool(formula) and formula[2:] not in UNCERTAIN_QUALIFIERS
                 label_doubt = bool(_DOUBT_MARKER.search(label) or _NEW_SPECIES.search(label))
-                if decision.get('stemFormula'):
-                    qualifier = normal(row_qualifier)
-                    qualifier = _normal_qualifier(qualifier) if qualifier else None
-                    if qualifier not in UNCERTAIN_QUALIFIERS:
-                        qualifier = normal(records.get(label, {}).get('qualifier'))
-                        qualifier = _normal_qualifier(qualifier) if qualifier else None
-                    # A doubtful label ("Aus cf. bus") keeps the formula its decision saved ("A cf.").
-                    doubtful = formula if doubtful_formula and label_doubt else None
-                    row_formula = 'A ' + qualifier if qualifier in UNCERTAIN_QUALIFIERS else doubtful
-                elif doubtful_formula and not label_doubt:
-                    # A row's own doubtful qualifier ("cf.") is what that row asserts; a row without one asserts none.
+                if decision.get('stemFormula') or doubtful_formula:
+                    # Each row's own qualifier first ("sp." or "cf."), then the label's own; a row of a label whose
+                    # qualifier comes only from the column, and that has none, asserts none.
                     own = _normal_qualifier(normal(row_qualifier)) if normal(row_qualifier) else None
-                    row_formula = ('A ?' if own == '?.' else f'A {own}') if own in {'cf.', 'aff.', 'nr.', '?.'} else None
+                    label_qualifier = normal(records.get(label, {}).get('qualifier'))
+                    label_qualifier = _normal_qualifier(label_qualifier) if label_qualifier else None
+                    if own in UNCERTAIN_QUALIFIERS and decision.get('stemFormula'):
+                        row_formula = f'A {own}'
+                    elif own in {'cf.', 'aff.', 'nr.', '?.'}:
+                        row_formula = 'A ?' if own == '?.' else f'A {own}'
+                    elif decision.get('stemFormula') and label_qualifier in UNCERTAIN_QUALIFIERS:
+                        row_formula = f'A {label_qualifier}'
+                    elif doubtful_formula and label_doubt:
+                        row_formula = formula  # the label itself says "cf." ("Aus cf. bus")
+                    else:
+                        row_formula = None
                 if row_formula and taxon_formula is not None and _blank_cell(taxon_formula[position]):
                     taxon_formula[position] = row_formula
                     formula_written += 1
