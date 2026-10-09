@@ -2222,6 +2222,16 @@ class NamesV2ContractTests(SimpleTestCase):
         collected = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels'][0]
         self.assertEqual(len(collected['hint_values']['family']), 6)
 
+    def test_review_findings_v2_round7(self):
+        # The label's own "cf." is the formula; a column "aff." stays on its own row.
+        self.assertEqual(names.doubt_formula({'label': 'Aus cf. bus', 'source_qualifiers': ['aff.']}), 'cf.')
+        # A same-name rank change that clears the user's authorship is counted.
+        anura = self.record(label='Anura', usage_name='Anura', rank='order')
+        anura.update(source_rank='genus', source_authorships=['Smith'])
+        group = next(item for item in names.groups({'labels': [anura], 'decisions': {}}) if item['kind'] == 'check')
+        col = next(item for item in group['options'] if item['decision'] == 'col')
+        self.assertEqual((col['rank'], col['authorship']), (1, 1))
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

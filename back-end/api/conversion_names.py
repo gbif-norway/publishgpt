@@ -211,7 +211,7 @@ def collect_state(archive, plan):
                 'hint_values': hint_values,
                 'rank_values': [[value, count] for value, count in rank_counts.most_common(3)] if 'rank' in mixed_hints else [],
                 # Every rank the label's rows give, when they give more than one (for the counts a group choice shows).
-                'row_ranks': sorted({key.casefold() for key in record['context_counts'].get('taxonRank', {})})[:5]
+                'row_ranks': sorted({key.casefold() for key in record['context_counts'].get('taxonRank', {})})[:20]
                              if len(record['context_counts'].get('taxonRank', {})) > 1 else [],
                 'source_rank': context.get('taxonRank', '').lower() or None, 'qualifier': qualifier,
                 'source_authorships': authorships[:MAX_AUTHORSHIPS],
@@ -611,16 +611,21 @@ def formula_qualifier(record):
 
 
 def doubt_formula(record):
-    """Return a publishable cf./aff./nr./? formula from the label or source qualifier column."""
+    """Return a publishable cf./aff./nr./? formula: the label's own first (it holds for every row), else the column's
+    (apply then writes it only to the rows that say it)."""
+    label = str(record.get('label') or '')
+    formula_match = re.search(r'(?i)(?:^|\s)(cf|aff|nr)\.?', label)
+    if formula_match:
+        return formula_match.group(1).lower() + '.'
+    if '?' in label:
+        return '?'
     for value in record.get('source_qualifiers') or []:
         qualifier = _normal_qualifier(value)
         if qualifier in {'cf.', 'aff.', 'nr.'}:
             return qualifier
         if '?' in str(value):
             return '?'
-    label = str(record.get('label') or '')
-    formula_match = re.search(r'(?i)(?:^|\s)(cf|aff|nr)\.?', label)
-    return formula_match.group(1).lower() + '.' if formula_match else ('?' if '?' in label else None)
+    return None
 
 
 def _stem_candidates(record):
@@ -1093,8 +1098,9 @@ def groups(state, classified=None):
             supplied = [*record.get('source_authorships', ()), *([parsed['authorship']] if parsed.get('usable') and parsed.get('authorship') else [])]
             # COL's authorship replaces a different one, or another name clears the user's ("Calanus Smith" -> Arthropoda).
             has_supplied = bool(supplied) or bool(record.get('authorships_truncated'))
-            if (normal(usage_authorship) and not authorship_agrees(record, target)) or (found and found.get('kind') != 'spelling'
-                                                                                         and has_supplied and not normal(usage_authorship)):
+            changes_taxon = (found and found.get('kind') != 'spelling') or bool(rank_change)
+            if (normal(usage_authorship) and not authorship_agrees(record, target)) or (changes_taxon and has_supplied
+                                                                                         and not normal(usage_authorship)):
                 counts.update(authorship=1)
             # The rank written differs from the supplied one (a "species" beside a "sp." stem says nothing about it).
             sp_noise = is_stem and source_rank in RANK_ORDER and RANK_ORDER.index(source_rank) > RANK_ORDER.index('genus')
