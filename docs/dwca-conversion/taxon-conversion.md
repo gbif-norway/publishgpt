@@ -183,7 +183,7 @@ kingdom, a uninomial has mixed higher ranks, or another same-name COL usage
 matches the source's phylum, class, order or family while the pick does not.
 
 **Automatic decisions never override the user.** They are made after each
-chunk of the name check. Undo all (per group) or a row's Undo removes them and
+chunk of the name check. "Review all manually" or a row's Undo removes them and
 records the labels in `auto_declined`, so a re-check does not accept them
 again. When every name has a decision, automatic or not, the scientificName
 fallback question settles itself; when names lose their decision again, that
@@ -191,11 +191,18 @@ automatic answer is withdrawn and the question is asked again (an answer the
 user gave stands). A bulk decision keeps the snapshots it replaced for its
 Undo; the last five can be undone.
 
-**Bulk decisions are batches.** A group choice covers every member not decided
-one at a time and records the batch. Its Undo restores only names that still
-carry that batch; a name changed since stays as it is. Review all manually
-removes the group's automatic and earlier group decisions; automatic decisions
-are marked declined so they do not return during this review.
+**Group choices.** Each group card has three toggle buttons, applied at once:
+"Use COL names" (or "Use the genus or family"), "Keep my names" and "Review all
+manually" (`group_choice`). Pressing another one switches. A group choice covers
+every member not decided one at a time; a member with no COL name keeps the
+user's name. "Review all manually" removes the group's automatic and earlier
+group decisions (marked declined, so they do not return) and opens the group's
+names in a review dialog, where every name shows its options. The card says how
+many names a COL choice would make broader, change, respell, give another
+authorship or rank. The classification notice also covers order and family.
+A doubtful identification (cf., aff., nr., ?) decided with COL's name gets
+`taxonFormula` "A cf." etc.: the label's own qualifier on every row, a column
+qualifier only on the rows that give it.
 
 **Uncertain names ("sp.", "spp.", "indet.").** The label's qualifier, or a
 `identificationQualifier` column whose values are all sp./spp./indet. (blank
@@ -216,8 +223,9 @@ response leaves out homonyms; the batch's pick stands and only the homonyms are
 added. An exact name with a homonym (another authorship, a missing one, or
 another lineage) keeps the user's authorship. Different higher-group names do
 not make the user's authorship be kept. Rows of one label that give different
-kingdom values are a mixed-classification check. The same name parts with another (or no)
-explicit rank marker ("subsp. juncea" and "var. juncea"), hybrid sign or "agg." are another name
+kingdom values are a mixed-classification check. A rank marker only COL writes ("Empetrum nigrum
+hermaphroditum" and "Empetrum nigrum subsp. hermaphroditum") is the same name. Another explicit marker
+("subsp. juncea" and "var. juncea"), a marker COL lacks, a hybrid sign or "agg." make another name
 (change kind `marker`). DwC-DP has no
 identificationQualifier, so identification rows get `taxonFormula` "A sp.",
 "A spp." or "A indet." from their own row's qualifier, else the label's (blank
