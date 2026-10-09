@@ -2162,6 +2162,23 @@ class NamesV2ContractTests(SimpleTestCase):
         self.assertEqual(names.auto_accept(conversion.name_review), 0)
         self.assertNotIn('Aus bus', conversion.name_review['decisions'])
 
+    def test_review_findings_v2_round3(self):
+        # A column "cf." on one of two rows gives only that row "A cf.".
+        state = {'labels': [{'label': 'Aus bus', 'qualifier': None, 'source_qualifiers': ['cf.'], 'source_qualifier_rows': 1, 'rows': 2}],
+                 'decisions': {'Aus bus': {'decision': 'col', 'source': 'col', 'scientificName': 'Aus bus', 'taxonRank': 'species',
+                                           'taxonFormula': 'A cf.', 'changeKind': None, 'nameRules': names.NAME_RULES_VERSION, 'by': 'bulk:unconfirmed'}}}
+        frame = pd.DataFrame([{'identification_pk': 'i1', 'scientificName': 'Aus bus', 'taxonFormula': ''},
+                              {'identification_pk': 'i2', 'scientificName': 'Aus bus', 'taxonFormula': ''}])
+        result, _ = names.apply_name_decisions({'identification': frame}, state, {'identification': [
+            {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': 'cf.'},
+            {'name': 'Aus bus', 'authorship': None, 'rank': None, 'qualifier': None}]})
+        self.assertEqual(result['identification']['taxonFormula'].tolist(), ['A cf.', ''])
+        # An order- or family-only difference is part of the classification notice.
+        record = self.record(label='Aus bus', usage_name='Aus bus', hints={'kingdom': 'Plantae', 'family': 'Aidae'},
+                             classification={'kingdom': 'Plantae', 'family': 'Bidae'})
+        notice = names.classification_notice([record])
+        self.assertEqual((notice['names'], notice['examples']), (1, [{'yours': 'Aidae', 'col': 'Bidae'}]))
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')

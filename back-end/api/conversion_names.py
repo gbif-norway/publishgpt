@@ -1601,6 +1601,10 @@ def apply_name_decisions(frames, name_review, source_names):
                 if names is not None:
                     names[position] = decided_name
                 row_formula = formula
+                # A doubtful formula ("A cf.") from the label itself holds for every row; one from the qualifier column
+                # holds only for the rows that say it.
+                doubtful_formula = bool(formula) and formula[2:] not in UNCERTAIN_QUALIFIERS
+                label_doubt = bool(_DOUBT_MARKER.search(label) or _NEW_SPECIES.search(label))
                 if decision.get('stemFormula'):
                     qualifier = normal(row_qualifier)
                     qualifier = _normal_qualifier(qualifier) if qualifier else None
@@ -1608,13 +1612,12 @@ def apply_name_decisions(frames, name_review, source_names):
                         qualifier = normal(records.get(label, {}).get('qualifier'))
                         qualifier = _normal_qualifier(qualifier) if qualifier else None
                     # A doubtful label ("Aus cf. bus") keeps the formula its decision saved ("A cf.").
-                    doubtful = formula if formula and formula[2:] not in UNCERTAIN_QUALIFIERS else None
+                    doubtful = formula if doubtful_formula and label_doubt else None
                     row_formula = 'A ' + qualifier if qualifier in UNCERTAIN_QUALIFIERS else doubtful
-                elif formula and normal(row_qualifier):
-                    # A row's own doubtful qualifier ("cf.") is what that row asserts.
-                    own = _normal_qualifier(normal(row_qualifier))
-                    row_formula = f'A {own}' if own in {'cf.', 'aff.', 'nr.', '?.'} else formula
-                    row_formula = 'A ?' if own == '?.' else row_formula
+                elif doubtful_formula and not label_doubt:
+                    # A row's own doubtful qualifier ("cf.") is what that row asserts; a row without one asserts none.
+                    own = _normal_qualifier(normal(row_qualifier)) if normal(row_qualifier) else None
+                    row_formula = ('A ?' if own == '?.' else f'A {own}') if own in {'cf.', 'aff.', 'nr.', '?.'} else None
                 if row_formula and taxon_formula is not None and _blank_cell(taxon_formula[position]):
                     taxon_formula[position] = row_formula
                     formula_written += 1
@@ -1787,17 +1790,20 @@ def state_section(conversion, offset=0, limit=PAGE_SIZE, view='all', group=None,
             'labels': [_entry(record, decisions, held, classified[record['label']]) for record in shown[offset:offset + limit]]}
 
 
+NOTICE_RANKS = ('phylum', 'class', 'order', 'family')
+
+
 def classification_notice(labels):
-    """Summarize labels using a different or mixed phylum/class classification."""
+    """Summarize labels whose phylum, class, order or family differ from COL's or between their rows."""
     examples, count = [], 0
     for record in labels:
         lineage = _lineage(record)
         hints = record.get('hints') or {}
         values_by_rank = record.get('hint_values') or {}
-        mixed = any(len(values_by_rank.get(rank) or []) > 1 for rank in ('phylum', 'class'))
+        mixed = any(len(values_by_rank.get(rank) or []) > 1 for rank in NOTICE_RANKS)
         differs = any(hints.get(rank) and lineage.get(rank)
                       and _hint_normal(hints[rank]) != _hint_normal(lineage[rank])
-                      for rank in ('phylum', 'class'))
+                      for rank in NOTICE_RANKS)
         if not (mixed or differs):
             continue
         source_kingdom = hints.get('kingdom')
@@ -1807,7 +1813,12 @@ def classification_notice(labels):
             continue
         count += 1
         yours_parts, col_parts = [], []
-        for rank in ('phylum', 'class'):
+        # Examples show phylum / class when they differ, else the order or family that does.
+        shown = [rank for rank in ('phylum', 'class') if rank in values_by_rank or (hints.get(rank) and lineage.get(rank)
+                 and _hint_normal(hints[rank]) != _hint_normal(lineage[rank]))] or \
+                [rank for rank in ('order', 'family') if rank in values_by_rank or (hints.get(rank) and lineage.get(rank)
+                 and _hint_normal(hints[rank]) != _hint_normal(lineage[rank]))]
+        for rank in shown:
             source = hints.get(rank)
             if values_by_rank.get(rank):
                 alternatives = values_by_rank[rank]
@@ -1822,7 +1833,7 @@ def classification_notice(labels):
             if example not in examples and len(examples) < 2:
                 examples.append(example)
     return {'names': count, 'mixed': any(any(len((record.get('hint_values') or {}).get(rank) or []) > 1
-                                               for rank in ('phylum', 'class')) for record in labels),
+                                               for rank in NOTICE_RANKS) for record in labels),
             'examples': examples} if count else None
 
 
