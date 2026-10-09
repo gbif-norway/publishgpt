@@ -53,6 +53,7 @@ MAX_BATCHES = 5  # bulk decisions that can still be undone; each keeps the snaps
 _OVERLONG_SOURCE_ID = '\0overlong'
 UNCERTAIN_QUALIFIERS = {'sp.', 'spp.', 'indet.'}
 INFRASPECIFIC_RANKS = {'subspecies', 'variety', 'subvariety', 'form', 'subform'}
+MAX_HINT_VALUES = 10  # distinct values kept per rank for the lineage check; the UI shows the first two
 # Rank markers inside a name; any other word after the genus in an unparsed label may be an authorship.
 RANK_MARKER_WORDS = {'subsp.', 'ssp.', 'var.', 'subvar.', 'f.', 'fo.', 'forma', 'subf.', 'agg.', 'nothosubsp.', 'nothovar.', '×', 'x'}
 # "cf.", "aff.", "nr." or "?" anywhere in a label make the identification doubtful, even beside a trailing "sp.".
@@ -187,7 +188,7 @@ def collect_state(archive, plan):
             counts = record['context_counts'].get(rank, {})
             if len(counts) > 1:
                 hint_values[rank] = [[record['context_first'][(rank, key)], count]
-                                     for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:3]]
+                                     for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:MAX_HINT_VALUES]]
         mixed_hints = ['kingdom'] if 'kingdom' in hint_values else []
         # A uninomial's rows giving two ranks at genus or above ("Anura" order and genus) may be two taxa; a "species"
         # beside "Larus sp." says nothing about the uninomial and is ignored.
@@ -766,10 +767,12 @@ def _rank_conflict(record):
     below genus and says nothing about the stem.
     """
     source_rank = record.get('source_rank')
-    if source_rank in INFRASPECIFIC_RANKS and len(name_parts(asserted_name(record))) > 2:
-        # An unmarked trinomial supplied as a variety is not COL's subspecies; a broad "species" is tolerated.
+    supplied = {source_rank} if source_rank else set(record.get('row_ranks') or [])
+    if supplied & INFRASPECIFIC_RANKS and len(name_parts(asserted_name(record))) > 2:
+        # An unmarked trinomial supplied as a variety (on any of its rows) is not COL's subspecies; a broad "species" is
+        # tolerated.
         col_rank = (_same_name_match(record) or {}).get('taxonRank')
-        return col_rank if col_rank in INFRASPECIFIC_RANKS and col_rank != source_rank else None
+        return col_rank if col_rank in INFRASPECIFIC_RANKS and supplied & INFRASPECIFIC_RANKS - {col_rank} else None
     if source_rank not in RANK_ORDER or RANK_ORDER.index(source_rank) > RANK_ORDER.index('genus'):
         return None
     if len(name_parts(asserted_name(record))) != 1:
@@ -811,8 +814,10 @@ def _conflicts(record):
             out.append(('name', 'check:name', f'Catalogue of Life has {name} ({rank}) instead{suffix}'))
     col_rank = _rank_conflict(record)
     if col_rank:
-        out.append(('rank', f"check:rank:{record['source_rank']}:{col_rank}",
-                    f"Your file says {record['source_rank']}; Catalogue of Life has this name as {_article(col_rank)} {col_rank}"))
+        yours = record.get('source_rank') or next(rank for rank in sorted(record.get('row_ranks') or [])
+                                                  if rank in INFRASPECIFIC_RANKS and rank != col_rank)
+        out.append(('rank', f"check:rank:{yours}:{col_rank}",
+                    f"Your file says {yours}; Catalogue of Life has this name as {_article(col_rank)} {col_rank}"))
     idcheck = match.get('idCheck') or {}
     if idcheck.get('outcome') == 'elsewhere' or 'SCIENTIFIC_NAME_AND_ID_INCONSISTENT' in (match.get('issues') or []):
         fields = ', '.join((idcheck.get('fields') or record.get('source_ids') or {}).keys()) or 'identifier'

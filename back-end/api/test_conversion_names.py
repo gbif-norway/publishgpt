@@ -2210,6 +2210,18 @@ class NamesV2ContractTests(SimpleTestCase):
         record = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels'][0]
         self.assertEqual(record['row_ranks'], ['species', 'subspecies'])
 
+    def test_review_findings_v2_round6(self):
+        # Rows giving variety and subspecies for an unmarked trinomial: COL's subspecies is a rank check, not automatic.
+        record = self.record(label='Aus bus cus', usage_name='Aus bus subsp. cus', rank='subspecies')
+        record.update(source_rank=None, row_ranks=['subspecies', 'variety'])
+        classification = names.classify(record)
+        self.assertEqual(classification['group'], 'check:rank:variety:subspecies')
+        self.assertEqual(names.auto_accept({'labels': [record], 'decisions': {}, 'col_release': RELEASE}), 0)
+        # Up to ten classification values per rank are kept for the lineage check.
+        content = ('occurrenceID,scientificName,family\n' + ''.join(f'a{i},Aus bus,Fam{i}idae\n' for i in range(6))).encode()
+        collected = names.collect_state(read_inputs([('occurrence.csv', content)]), {'id': 'plan'})['labels'][0]
+        self.assertEqual(len(collected['hint_values']['family']), 6)
+
     def test_group_choices_never_replace_a_single_user_decision(self):
         first = self.record(label='Aus bus', usage_name='Aus dus')
         second = self.record(label='Cus bus', usage_name='Cus dus')
