@@ -1443,6 +1443,12 @@ class AgentViewSet(viewsets.ModelViewSet):
                 {'error': 'Dataset or task not found'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+        if dataset.workflow_type == Dataset.WorkflowType.DWCA_CONVERSION:
+            return Response(
+                {'error': 'Agents cannot be created for Darwin Core Archive conversion datasets.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
         # Rule 1: If an agent is in progress → resume it
         active_agent = dataset.active_agent()

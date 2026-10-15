@@ -196,6 +196,11 @@ class EMLUser(BaseModel):
     orcid: Optional[str] = None
 
 
+class EMLContact(EMLUser):
+    """A source contact or provider may not have a published email address."""
+    email: Optional[EmailStr] = None
+
+
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -1524,20 +1529,20 @@ class SetEML(OpenAIBaseModel):
         None,
         description="Optional list of dataset creators. Contact and metadata provider roles are set separately. Each entry has first_name, last_name, email, and optional orcid."
     )
-    contacts: Optional[List[EMLUser]] = Field(
+    contacts: Optional[List[EMLContact]] = Field(
         None,
         description=(
             "Dataset source contacts, independent of creators and the owner account. "
-            "Each entry has first_name, last_name, email, and optional orcid. "
+            "Each entry has first_name, last_name, optional email, and optional orcid. "
             "Omit or pass null to preserve saved contacts; pass [] to restore the "
             "account holder default. A nonempty list replaces the default contacts."
         ),
     )
-    metadata_providers: Optional[List[EMLUser]] = Field(
+    metadata_providers: Optional[List[EMLContact]] = Field(
         None,
         description=(
             "People who supplied the dataset metadata, independent of creators and the "
-            "owner account. Each entry has first_name, last_name, email, and optional orcid. "
+            "owner account. Each entry has first_name, last_name, optional email, and optional orcid. "
             "Omit or pass null to preserve saved providers; pass [] to restore the "
             "account holder default. A nonempty list replaces the default providers."
         ),
@@ -2024,6 +2029,24 @@ class SetEML(OpenAIBaseModel):
                 "Error: creators_unknown=true cannot be combined with a users list. "
                 "Nothing was saved."
             )
+        placeholder_local_parts = {
+            "unknown", "none", "noreply", "no-reply", "placeholder", "nobody",
+            "anonymous", "na", "n/a", "email", "test",
+        }
+        people_by_role = (
+            ("users", self.users),
+            ("contacts", self.contacts),
+            ("metadata_providers", self.metadata_providers),
+        )
+        for role, people in people_by_role:
+            for person in people or []:
+                email = str(person.email or "").strip()
+                local_part = email.split("@", 1)[0].casefold()
+                if local_part in placeholder_local_parts:
+                    return (
+                        f"Error: {role} contains placeholder email '{email}'. "
+                        "Omit the email or leave it blank instead. Nothing was saved."
+                    )
         try:
             from api.models import Agent
             agent = Agent.objects.get(id=self.agent_id)
@@ -3183,7 +3206,10 @@ class PublishToGBIF(OpenAIBaseModel):
                 task__name=Task.PREPUBLICATION_QUALITY_TASK,
                 completed_at__isnull=False,
             ).exists()
-            if not quality_gate_complete:
+            if (
+                not quality_gate_complete
+                and dataset.workflow_type != Dataset.WorkflowType.DWCA_CONVERSION
+            ):
                 gate_agent = dataset.agent_set.filter(
                     task__name=Task.PREPUBLICATION_QUALITY_TASK,
                     completed_at__isnull=True,
@@ -3203,17 +3229,22 @@ class PublishToGBIF(OpenAIBaseModel):
                         if gate_agent is not None and gate_agent.completed_at is None:
                             from api.agent_turns import queue_agent_turn
 
-                            transaction.on_commit(lambda: queue_agent_turn(gate_agent))
+                            transaction.on_commit(
+                                lambda: queue_agent_turn(gate_agent, delay_seconds=30)
+                            )
                 if gate_agent is not None and gate_agent.completed_at is None:
                     return (
                         "Error: The pre-publication quality gate is now running. "
                         "Follow its review in this dataset's chat and answer any questions it raises. "
-                        "Once it completes, publication can be retried without rebuilding the unchanged archive."
+                        "End this turn now without calling any further tools. Once it completes, "
+                        "publication can be retried without rebuilding the unchanged archive."
                     )
                 return (
                     "Error: Cannot publish until the pre-publication quality gate has completed. "
                     "Please contact support if no quality review appears in this dataset's chat."
                 )
+            if not quality_gate_complete:
+                return "Error: Conversion datasets cannot be published through the publication workflow."
             if not dataset.has_complete_source_coverage:
                 return (
                     "Error: Cannot publish until the current source coverage report ends with "

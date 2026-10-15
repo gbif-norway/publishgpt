@@ -3562,7 +3562,7 @@ class PublishToGbifTests(TestCase):
         self.assertIn("quality gate is now running", second)
         self.assertEqual(dataset.agent_set.filter(task=gate_task).count(), 1)
         self.assertEqual(dataset.next_agent().id, gate_agent.id)
-        queue_mock.assert_called_once_with(gate_agent)
+        queue_mock.assert_called_once_with(gate_agent, delay_seconds=30)
         register_mock.assert_not_called()
 
     @patch("api.agent_tools.register_dataset_and_endpoint")

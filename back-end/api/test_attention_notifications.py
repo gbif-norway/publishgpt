@@ -136,6 +136,25 @@ class AttentionNotificationDispatchTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertFalse(self.client_payload()['enabled'])
 
+    def test_attention_question_uses_earlier_quality_gate(self):
+        maintenance_task = Task.objects.create(name=Task.MAINTENANCE_TASK, text='Maintain', order=3)
+        self.agent.task = maintenance_task
+        self.agent.save(update_fields=['task'])
+        gate_task = Task.objects.create(
+            name=Task.PREPUBLICATION_QUALITY_TASK, text='Review package', order=2,
+        )
+        gate_agent = Agent.objects.create(dataset=self.dataset, task=gate_task)
+        arm_notification(self.dataset, 'notify@example.org')
+        gate_message = Message.objects.create(agent=gate_agent, openai_obj={
+            'role': Message.Role.ASSISTANT, 'content': 'Please answer this quality question.',
+        })
+
+        self.assertTrue(mark_notification_ready_if_needed(self.dataset))
+        notification = self.dataset.attention_notification
+        notification.refresh_from_db()
+        self.assertEqual(notification.attention_kind, DatasetAttentionNotification.AttentionKind.NEEDS_INPUT)
+        self.assertEqual(notification.ready_event_key, f'message:{gate_message.id}')
+
     def client_payload(self):
         from api.attention_notifications import notification_payload
 

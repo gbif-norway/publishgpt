@@ -168,7 +168,7 @@ class Dataset(models.Model):
 
     def notify_active_agent_of_source_change(self, queue_turn=True, queue_delay_seconds=0):
         """Append current source evidence without rewriting the cached prompt."""
-        active_agent = self.agent_set.filter(completed_at__isnull=True).first()
+        active_agent = self.active_agent()
         if active_agent:
             active_agent.append_source_update()
             if queue_turn:

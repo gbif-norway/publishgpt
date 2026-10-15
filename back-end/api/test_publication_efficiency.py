@@ -15,7 +15,7 @@ from openai import OpenAI
 
 import pandas as pd
 
-from api.agent_tools import ExportDwcDp, InspectPublicationArtifacts, SetEML, UploadDwCA
+from api.agent_tools import ExportDwcDp, InspectPublicationArtifacts, PublishToGBIF, SetEML, UploadDwCA
 from api.dwc_specs import DarwinCoreCoreType, DarwinCoreExtensionType
 from api.helpers.openai_helpers import create_response_message, query_responses_api
 from api.helpers.publish import (
@@ -27,7 +27,7 @@ from api.helpers.publish import (
     upload_dwca,
     validate_dwca_archive,
 )
-from api.models import Agent, Dataset, Table, Task
+from api.models import Agent, CustomUser, Dataset, Table, Task
 
 
 META = '''<archive xmlns="http://rs.tdwg.org/dwc/text/">
@@ -118,7 +118,6 @@ class PublicationEfficiencyTests(SimpleTestCase):
             requests[0]["input"][0]["output"][0]["prompt_cache_breakpoint"],
             {"mode": "explicit"},
         )
-
     def test_unparseable_temporal_scope_fails_before_export(self):
         with self.assertRaisesRegex(EmlExportError, "temporal_scope could not be exported"):
             make_eml("Example", "Description", eml_extra={
@@ -439,3 +438,26 @@ class PublicationErrorHandlingTests(TestCase):
 
         self.assertIn("unexpected fingerprint failure", result)
         alert_mock.assert_called_once()
+
+
+class QualityGateRecoveryTests(TestCase):
+    def test_conversion_dataset_does_not_create_quality_gate(self):
+        user = CustomUser.objects.create_user(username="conversion-publisher")
+        dataset = Dataset.objects.create(
+            user=user,
+            title="Converted archive",
+            workflow_type=Dataset.WorkflowType.DWCA_CONVERSION,
+            dwca_url="https://example.org/archive.zip",
+            dwca_validation={
+                "url": "https://example.org/archive.zip",
+                "status": "FINISHED",
+                "metrics": {"indexeable": True},
+            },
+        )
+        maintenance = Task.objects.create(name=Task.MAINTENANCE_TASK, text="Maintain", order=5)
+        agent = Agent.objects.create(dataset=dataset, task=maintenance)
+
+        result = PublishToGBIF(agent_id=agent.id).run()
+
+        self.assertIn("Conversion datasets", result)
+        self.assertFalse(dataset.agent_set.filter(task__name=Task.PREPUBLICATION_QUALITY_TASK).exists())

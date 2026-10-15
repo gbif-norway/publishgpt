@@ -420,6 +420,8 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
   const hasMetadataRows = metadataRows.some(({ value }) => value !== undefined && value !== null && String(value).trim() !== '');
   const hasSourceRows = sourceRows.some(({ value }) => value !== undefined && value !== null && String(value).trim() !== '');
   const emlUsers = Array.isArray(eml.users) ? eml.users : [];
+  const emlContacts = Array.isArray(eml.contacts) ? eml.contacts : [];
+  const emlMetadataProviders = Array.isArray(eml.metadata_providers) ? eml.metadata_providers : [];
   const taxonomicKeywords = Array.isArray(eml.taxonomic_keywords) ? eml.taxonomic_keywords : [];
   const hasGeographicBounds = eml.geographic_bounds && typeof eml.geographic_bounds === 'object';
   const knownEmlKeys = new Set([
@@ -438,6 +440,8 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
     'methods_source',
     'creators_source',
     'users',
+    'contacts',
+    'metadata_providers',
     'taxonomic_keywords',
     'geographic_bounds',
   ]);
@@ -1314,6 +1318,36 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
                   </ul>
                 </>
               )}
+
+              {[
+                ['Source Contacts', emlContacts],
+                ['Metadata Providers', emlMetadataProviders],
+              ].map(([heading, people]) => people.length > 0 && (
+                <section className="mb-3" key={heading}>
+                  <h6 className="mb-2">{heading}</h6>
+                  <ul className="list-group">
+                    {people.map((person, index) => {
+                      const personName = [person.first_name, person.last_name].filter(Boolean).join(' ').trim() || 'Unnamed';
+                      return (
+                        <li className="list-group-item" key={`${personName}-${index}`}>
+                          <div className="fw-semibold">{personName}</div>
+                          {person.email && <small className="text-muted d-block">{person.email}</small>}
+                          {person.orcid && (
+                            <a
+                              href={`https://orcid.org/${String(person.orcid).replace(/^https?:\/\/orcid\.org\//, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-decoration-none"
+                            >
+                              {person.orcid}
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
 
               {additionalEmlEntries.length > 0 && (
                 <>

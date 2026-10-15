@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 from api.dwca_import import DWC, ImportFailure, read_inputs, source_zip
 from api.dwca_conversion import build_plan, convert, option_status, validate_decisions
 from api.dwc_dp_specs import create_dwc_dp_archive, validate_dwc_dp_archive
-from api.models import CustomUser, Dataset, DwcConversion, DwcConversionJob
+from api.models import Agent, CustomUser, Dataset, DwcConversion, DwcConversionJob, Task
 from api.conversion_jobs import process_next_conversion
 
 
@@ -831,6 +831,22 @@ class ConversionAPITests(TransactionTestCase):
         self.settings_override.enable(); self.addCleanup(self.settings_override.disable); self.addCleanup(self.folder.cleanup)
         self.user = CustomUser.objects.create_user(username='conversion-owner')
         self.client = APIClient(); self.client.force_authenticate(self.user)
+
+    def test_agent_creation_is_rejected_for_conversion_dataset(self):
+        dataset = Dataset.objects.create(
+            user=self.user,
+            title='Converted archive',
+            workflow_type=Dataset.WorkflowType.DWCA_CONVERSION,
+        )
+        task = Task.objects.create(name='Data maintenance', text='Maintain', order=1)
+
+        response = self.client.post(
+            '/api/agents/', {'dataset': dataset.id, 'task': task.id}, format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('cannot be created', response.data['error'])
+        self.assertFalse(Agent.objects.filter(dataset=dataset).exists())
 
     def upload(self):
         with patch('api.helpers.discord_bot.send_discord_message') as discord:

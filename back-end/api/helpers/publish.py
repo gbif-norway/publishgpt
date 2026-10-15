@@ -918,6 +918,15 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
         people = eml_extra.get(key)
         if people:
             remove_children(dataset_node, tag)
+            people = [dict(person) for person in people]
+            # The saved contact_email override fills the first source contact without one.
+            if key == 'contacts' and isinstance(contact_email, str) and contact_email.strip():
+                first_without_email = next(
+                    (person for person in people if not clean_text(person.get('email'))),
+                    None,
+                )
+                if first_without_email is not None:
+                    first_without_email['email'] = contact_email.strip()
             for person in people:
                 set_person(ET.SubElement(dataset_node, tag), person)
 

@@ -759,6 +759,20 @@ class PromptCacheStabilityTests(AgentFixtureMixin, TestCase):
         ]
         self.assertEqual(len(included_updates), 1)
 
+    def test_source_change_targets_earlier_quality_gate(self):
+        maintenance_task = Task.objects.get(name=Task.MAINTENANCE_TASK)
+        self.agent.task = maintenance_task
+        self.agent.save(update_fields=["task"])
+        gate_task = Task.objects.create(
+            name=Task.PREPUBLICATION_QUALITY_TASK, text="Review package", order=0,
+        )
+        gate_agent = Agent.objects.create(dataset=self.dataset, task=gate_task)
+
+        self.dataset.notify_active_agent_of_source_change(queue_turn=False)
+
+        self.assertFalse(self.agent.message_set.filter(openai_obj__source_update=True).exists())
+        self.assertTrue(gate_agent.message_set.filter(openai_obj__source_update=True).exists())
+
 
 class ConcurrentTurnTests(AgentFixtureMixin, TestCase):
     """Dataset 527: two overlapping refresh polls sent the same request twice."""

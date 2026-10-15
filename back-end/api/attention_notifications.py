@@ -30,7 +30,7 @@ def attention_event_for_dataset(dataset, ready_sent_key=''):
 
     ready_key = _ready_key(dataset) if dataset.package_ready else ''
     unannounced_ready_key = ready_key if ready_key != ready_sent_key else ''
-    active_agent = dataset.agent_set.filter(completed_at__isnull=True).order_by('created_at').first()
+    active_agent = dataset.active_agent()
     if not active_agent:
         if unannounced_ready_key:
             return DatasetAttentionNotification.AttentionKind.READY, unannounced_ready_key

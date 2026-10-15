@@ -102,6 +102,49 @@ class EmlSourceRoleTests(TestCase):
         for tag in ("contact", "metadataProvider"):
             self.assert_people(dataset, tag, self.people)
 
+    def test_source_contact_without_email_exports_and_validates(self):
+        source_contact = {"first_name": "Taylor", "last_name": "Field", "orcid": None}
+        SetEML(
+            agent_id=self.agent.id,
+            contacts=[source_contact],
+            metadata_providers=[source_contact],
+        ).run()
+
+        dataset = self.render()
+        for tag in ("contact", "metadataProvider"):
+            person = dataset.find(tag)
+            self.assertEqual(person.findtext("individualName/surName"), "Field")
+            self.assertIsNone(person.find("electronicMailAddress"))
+
+    def test_placeholder_email_is_rejected_for_all_roles(self):
+        for role in ("users", "contacts", "metadata_providers"):
+            with self.subTest(role=role):
+                result = SetEML(
+                    agent_id=self.agent.id,
+                    **{role: [{
+                        "first_name": "Unknown", "last_name": "Person",
+                        "email": "unknown@example.org",
+                    }]},
+                ).run()
+
+                self.assertIn("placeholder email", result)
+                self.assertIn("Omit the email", result)
+                self.dataset.refresh_from_db()
+                self.assertNotIn(role, self.dataset.eml or {})
+
+    def test_saved_contact_email_fills_first_source_contact_without_email(self):
+        SetEML(
+            agent_id=self.agent.id,
+            contacts=[{"first_name": "Taylor", "last_name": "Field"}],
+        ).run()
+        self.dataset.refresh_from_db()
+        self.dataset.eml["contact_email"] = "taylor.field@example.org"
+        self.dataset.save(update_fields=["eml"])
+
+        dataset = self.render()
+
+        self.assertEqual(dataset.findtext("contact/electronicMailAddress"), "taylor.field@example.org")
+
     def test_source_orcids_are_normalized_and_missing_surnames_block_export(self):
         for key in ("contacts", "metadata_providers"):
             with self.subTest(key=key):
