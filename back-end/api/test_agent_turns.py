@@ -360,3 +360,50 @@ class AgentTurnQueueTests(TestCase):
             self.assertTrue(process_next_agent_turn())
         self.assertFalse(AgentTurnJob.objects.exists())
         self.assertEqual(gate.message_set.last().role, Message.Role.ASSISTANT)
+
+    def test_stale_job_of_completed_stage_still_starts_the_next_stage(self):
+        # A worker crashed after the stage completed but before its job finished.
+        next_task = Task.objects.create(name='Next stage', text='Continue', order=2)
+        queue_agent_turn(self.agent)
+        self.agent.completed_at = timezone.now()
+        self.agent.save(update_fields=['completed_at'])
+        AgentTurnJob.objects.update(claimed_at=timezone.now() - timedelta(days=1))
+
+        def create_agent(task, dataset):
+            next_agent = Agent.objects.create(dataset=dataset, task=task)
+            Message.objects.create(agent=next_agent, openai_obj={
+                'role': Message.Role.SYSTEM, 'content': 'Start the next stage.',
+            })
+            return next_agent
+
+        with patch.object(Task, 'create_agent_with_system_messages', create_agent):
+            self.assertTrue(process_next_agent_turn())
+
+        next_agent = Agent.objects.get(dataset=self.dataset, task=next_task)
+        self.assertEqual(AgentTurnJob.objects.get().agent_id, next_agent.id)
+
+    def test_conversion_dataset_job_is_dropped_without_a_turn(self):
+        self.dataset.workflow_type = Dataset.WorkflowType.DWCA_CONVERSION
+        self.dataset.save(update_fields=['workflow_type'])
+        AgentTurnJob.objects.create(agent=self.agent, requested_after_message_id=self.message.id)
+
+        with patch.object(Agent, 'next_message') as next_message:
+            self.assertFalse(process_next_agent_turn())
+
+        next_message.assert_not_called()
+        self.assertFalse(AgentTurnJob.objects.exists())
+
+    def test_reply_to_an_inactive_open_agent_is_refused(self):
+        gate_task = Task.objects.create(name=Task.PREPUBLICATION_QUALITY_TASK, text='Review', order=0)
+        Agent.objects.create(dataset=self.dataset, task=gate_task)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            '/api/messages/',
+            data=json.dumps({'agent': self.agent.id, 'openai_obj': {'role': 'user', 'content': 'Hi'}}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no longer active', response.content.decode())
+        self.assertEqual(self.agent.message_set.count(), 1)

@@ -1340,6 +1340,12 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         if agent and (openai_obj or {}).get('role') == Message.Role.USER:
             dataset = agent.dataset
+            # Only the active agent runs; a reply elsewhere would never be answered.
+            active_agent = dataset.active_agent()
+            if not agent.completed_at and active_agent and active_agent.id != agent.id:
+                raise ValidationError(
+                    'This step of the conversation is no longer active. Reload the page to continue.'
+                )
             previous_message = agent.message_set.order_by('-created_at').first()
             cutoff = previous_message.created_at if previous_message else None
 

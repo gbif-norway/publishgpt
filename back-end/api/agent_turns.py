@@ -189,6 +189,10 @@ def _retry_or_fail_job(job_id, claimed_at):
         job.save(update_fields=['claimed_at', 'available_at', 'failure_count'])
 
 
+# Due jobs inspected per polling pass; the rest wait for the next pass.
+CLAIM_CANDIDATE_LIMIT = 50
+
+
 def process_next_agent_turn():
     """Claim one due turn. The job survives each turn until a genuine pause."""
     close_old_connections()
@@ -199,7 +203,7 @@ def process_next_agent_turn():
         AgentTurnJob.objects.filter(available_at__lte=now)
         .filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=stale_before))
         .order_by('available_at', 'requested_at', 'id')
-        .values_list('id', flat=True)
+        .values_list('id', flat=True)[:CLAIM_CANDIDATE_LIMIT]
     )
     for candidate_id in candidate_ids:
         with transaction.atomic():
@@ -213,8 +217,13 @@ def process_next_agent_turn():
             ).filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=stale_before)).first()
             if not candidate:
                 continue
+            if dataset.workflow_type == Dataset.WorkflowType.DWCA_CONVERSION:
+                candidate.delete()  # Conversion jobs have their own queue.
+                continue
+            # Without an open agent the job still has to advance the workflow
+            # (a crash can leave a completed stage's job behind), so it runs.
             active_agent = dataset.active_agent()
-            if not active_agent or candidate.agent_id != active_agent.id:
+            if active_agent and candidate.agent_id != active_agent.id:
                 candidate.delete()
                 continue
             another_claim = AgentTurnJob.objects.filter(
