@@ -1342,7 +1342,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             dataset = agent.dataset
             # Only the active agent runs; a reply elsewhere would never be answered.
             active_agent = dataset.active_agent()
-            if not agent.completed_at and active_agent and active_agent.id != agent.id:
+            if active_agent and active_agent.id != agent.id:
                 raise ValidationError(
                     'This step of the conversation is no longer active. Reload the page to continue.'
                 )

@@ -407,3 +407,19 @@ class AgentTurnQueueTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('no longer active', response.content.decode())
         self.assertEqual(self.agent.message_set.count(), 1)
+
+    def test_reply_to_a_completed_agent_is_refused_once_the_next_stage_is_active(self):
+        self.agent.completed_at = timezone.now()
+        self.agent.save(update_fields=['completed_at'])
+        next_task = Task.objects.create(name='Next stage', text='Continue', order=2)
+        Agent.objects.create(dataset=self.dataset, task=next_task)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            '/api/messages/',
+            data=json.dumps({'agent': self.agent.id, 'openai_obj': {'role': 'user', 'content': 'Hi'}}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.agent.message_set.count(), 1)
