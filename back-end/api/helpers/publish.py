@@ -552,6 +552,18 @@ def is_synthetic_orcid_email(value) -> bool:
     return (clean_text(value) or '').lower().endswith('@orcid.org')
 
 
+_PLACEHOLDER_EMAIL_LOCAL_PARTS = frozenset({
+    'unknown', 'none', 'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+    'no.reply', 'placeholder', 'nobody', 'anonymous', 'na', 'email', 'test',
+})
+
+
+def is_placeholder_email(value) -> bool:
+    """Return whether an email's local part is a known placeholder value."""
+    email = clean_text(value) or ''
+    return email.split('@', 1)[0].casefold() in _PLACEHOLDER_EMAIL_LOCAL_PARTS
+
+
 def eml_package_id(dataset_id=None) -> str:
     """Unique id for this version of a dataset's EML, in IPT's "<uuid>/v<version>" form.
 
@@ -762,7 +774,11 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
 
         if include_email:
             email_value = person.get('email') or person.get('electronicMailAddress') or ''
-            if email_value and not is_synthetic_orcid_email(email_value):
+            if (
+                email_value
+                and not is_synthetic_orcid_email(email_value)
+                and not is_placeholder_email(email_value)
+            ):
                 set_text(get_or_create(parent_node, 'electronicMailAddress'), email_value)
         if orcid_value:
             user_id = get_or_create(parent_node, 'userId')

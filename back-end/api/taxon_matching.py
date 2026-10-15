@@ -1276,10 +1276,12 @@ def open_review(dataset, lock=False):
     """(agent, scope) when the dataset's current agent is paused waiting for a taxon review."""
     from api.models import Agent, Message
 
-    agents = Agent.objects.filter(dataset=dataset, completed_at__isnull=True).order_by("id")
+    agents = Agent.objects.filter(dataset=dataset, completed_at__isnull=True).order_by(
+        'task__order', 'task_id', 'created_at', 'id',
+    )
     if lock:
         agents = agents.select_for_update()
-    agent = agents.last()
+    agent = agents.first()
     if not agent or agent.busy_thinking:
         return None
     last_message = agent.message_set.last()

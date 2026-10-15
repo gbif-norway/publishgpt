@@ -246,3 +246,117 @@ class AgentTurnQueueTests(TestCase):
         self.assertIsNone(job.claimed_at)
         self.assertGreater(job.available_at, timezone.now() + timedelta(seconds=20))
         self.assertFalse(process_next_agent_turn())
+
+    def test_only_active_agent_job_runs_when_earlier_gate_and_maintenance_are_open(self):
+        gate_task = Task.objects.create(name=Task.PREPUBLICATION_QUALITY_TASK, text='Review', order=0)
+        maintenance_task = Task.objects.create(name=Task.MAINTENANCE_TASK, text='Maintain', order=2)
+        gate = Agent.objects.create(dataset=self.dataset, task=gate_task)
+        maintenance = Agent.objects.create(dataset=self.dataset, task=maintenance_task)
+        Message.objects.create(agent=gate, openai_obj={'role': 'system', 'content': 'Gate'})
+        Message.objects.create(agent=maintenance, openai_obj={'role': 'user', 'content': 'Continue'})
+        queue_agent_turn(maintenance)
+        queue_agent_turn(gate)
+        ran = []
+
+        def answer(agent):
+            ran.append(agent.id)
+            Message.objects.create(agent=agent, openai_obj={
+                'role': 'assistant', 'content': 'Review requested.',
+            })
+
+        with patch.object(Agent, 'next_message', answer):
+            self.assertTrue(process_next_agent_turn())
+
+        self.assertEqual(ran, [gate.id])
+        self.assertFalse(AgentTurnJob.objects.filter(agent=maintenance).exists())
+        self.assertFalse(AgentTurnJob.objects.exists())
+
+    def test_duplicate_open_agents_for_same_task_only_run_active_agent(self):
+        quality_task = Task.objects.create(
+            name=Task.PREPUBLICATION_QUALITY_TASK, text='Review', order=0,
+        )
+        agents = [Agent.objects.create(dataset=self.dataset, task=quality_task) for _ in range(3)]
+        for agent in agents:
+            Message.objects.create(agent=agent, openai_obj={'role': 'system', 'content': 'Review'})
+            queue_agent_turn(agent)
+        active = self.dataset.active_agent()
+        ran = []
+
+        def answer(agent):
+            ran.append(agent.id)
+            Message.objects.create(agent=agent, openai_obj={
+                'role': 'assistant', 'content': 'Review requested.',
+            })
+
+        with patch.object(Agent, 'next_message', answer):
+            self.assertTrue(process_next_agent_turn())
+
+        self.assertEqual(ran, [active.id])
+        # Jobs for the inactive duplicates are dropped when a worker reaches them.
+        with patch.object(Agent, 'next_message', answer):
+            self.assertFalse(process_next_agent_turn())
+        self.assertEqual(ran, [active.id])
+        self.assertFalse(AgentTurnJob.objects.exists())
+
+    def test_gate_job_waits_while_another_job_for_dataset_has_a_live_claim(self):
+        gate_task = Task.objects.create(name=Task.PREPUBLICATION_QUALITY_TASK, text='Review', order=0)
+        gate = Agent.objects.create(dataset=self.dataset, task=gate_task)
+        Message.objects.create(agent=gate, openai_obj={'role': 'system', 'content': 'Gate'})
+        gate_job = queue_agent_turn(gate)
+        maintenance_job = AgentTurnJob.objects.create(
+            agent=self.agent,
+            requested_after_message_id=self.message.id,
+            claimed_at=timezone.now(),
+        )
+
+        with patch.object(Agent, 'next_message') as next_message:
+            self.assertFalse(process_next_agent_turn())
+
+        next_message.assert_not_called()
+        gate_job.refresh_from_db()
+        maintenance_job.refresh_from_db()
+        self.assertIsNone(gate_job.claimed_at)
+        self.assertIsNotNone(maintenance_job.claimed_at)
+
+    def test_maintenance_turn_hands_continuation_to_new_quality_gate(self):
+        from api.agent_tools import PublishToGBIF
+
+        gate_task = Task.objects.create(name=Task.PREPUBLICATION_QUALITY_TASK, text='Review', order=0)
+        maintenance_task = Task.objects.create(name=Task.MAINTENANCE_TASK, text='Maintain', order=2)
+        self.agent.completed_at = timezone.now()
+        self.agent.save(update_fields=['completed_at'])
+        maintenance = Agent.objects.create(dataset=self.dataset, task=maintenance_task)
+        Message.objects.create(agent=maintenance, openai_obj={'role': 'user', 'content': 'Continue'})
+        queue_agent_turn(maintenance)
+        gate_agents = []
+
+        def maintenance_turn(agent):
+            if agent.id == maintenance.id:
+                self.dataset.dwca_url = 'https://example.org/archive.zip'
+                self.dataset.dwca_validation = {
+                    'url': self.dataset.dwca_url, 'status': 'FINISHED',
+                    'metrics': {'indexeable': True},
+                }
+                self.dataset.save(update_fields=['dwca_url', 'dwca_validation'])
+                PublishToGBIF(agent_id=agent.id).run()
+                gate = Agent.objects.get(dataset=self.dataset, task=gate_task)
+                gate_agents.append(gate)
+                Message.objects.create(agent=agent, openai_obj={
+                    'role': 'tool', 'content': 'Quality gate runs next.',
+                })
+                return
+            Message.objects.create(agent=agent, openai_obj={
+                'role': 'assistant', 'content': 'Review requested.',
+            })
+
+        with self.captureOnCommitCallbacks(execute=True), patch.object(
+            Agent, 'next_message', maintenance_turn,
+        ):
+            self.assertTrue(process_next_agent_turn())
+
+        gate = gate_agents[0]
+        self.assertEqual(AgentTurnJob.objects.get().agent_id, gate.id)
+        with patch.object(Agent, 'next_message', maintenance_turn):
+            self.assertTrue(process_next_agent_turn())
+        self.assertFalse(AgentTurnJob.objects.exists())
+        self.assertEqual(gate.message_set.last().role, Message.Role.ASSISTANT)

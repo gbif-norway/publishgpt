@@ -694,6 +694,27 @@ class TaxonToolTests(TestCase):
         )
         self.assertIn("MatchTaxonNames first", other_context.run())
 
+    def test_open_review_uses_dataset_active_agent_order(self, match_col, aids, release):
+        self.agent.task.order = 1
+        self.agent.task.save(update_fields=['order'])
+        Message.objects.create(agent=self.agent, openai_obj={
+            'role': 'assistant', 'content': 'Review current names.',
+            'taxon_review': {'source_table': 'occurrence', 'context_column': ''},
+        })
+        later_agent = Agent.objects.create(
+            dataset=self.dataset,
+            task=Task.objects.create(name='Later task', text='Later', order=2),
+        )
+        Message.objects.create(agent=later_agent, openai_obj={
+            'role': 'assistant', 'content': 'Later review.',
+            'taxon_review': {'source_table': 'later', 'context_column': ''},
+        })
+
+        review = taxon_matching.open_review(self.dataset)
+
+        self.assertEqual(review[0].id, self.agent.id)
+        self.assertEqual(review[1]['source_table'], 'occurrence')
+
     def test_rejects_tables_from_other_datasets(self, match_col, aids, release):
         other = Table.objects.create(dataset=Dataset.objects.create(title="Other"), title="occurrence",
                                      df=pd.DataFrame({"verbatimIdentification": ["x"]}))

@@ -130,6 +130,26 @@ def _finish_claimed_job(job_id, claimed_at):
             job.delete()
             return
 
+        active_agent = dataset.active_agent()
+        if active_agent and active_agent.id != agent.id:
+            if AgentTurnJob.objects.filter(agent=active_agent).exists():
+                job.delete()
+                return
+            last_message = active_agent.message_set.last()
+            if not last_message:
+                job.delete()
+                return
+            job.agent = active_agent
+            job.requested_after_message_id = last_message.id
+            job.available_at = _available_at(last_message)
+            job.claimed_at = None
+            job.failure_count = 0
+            job.save(update_fields=[
+                'agent', 'requested_after_message_id', 'available_at',
+                'claimed_at', 'failure_count',
+            ])
+            return
+
         last_message = agent.message_set.last()
         if not last_message or last_message.role == Message.Role.ASSISTANT:
             job.delete()
@@ -174,21 +194,46 @@ def process_next_agent_turn():
     close_old_connections()
     now = timezone.now()
     stale_before = now - timedelta(seconds=getattr(settings, 'AGENT_TURN_LEASE_SECONDS', 3600))
-    with transaction.atomic():
-        job = (
-            AgentTurnJob.objects.select_for_update(skip_locked=True)
-            .filter(available_at__lte=now)
-            .filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=stale_before))
-            .order_by('available_at', 'requested_at', 'id')
-            .first()
-        )
-        if not job:
-            return False
-        was_stale = job.claimed_at is not None
-        job.claimed_at = now
-        job.save(update_fields=['claimed_at'])
-        if was_stale:
-            Agent.objects.filter(pk=job.agent_id).update(busy_thinking=False)
+    job = None
+    candidate_ids = list(
+        AgentTurnJob.objects.filter(available_at__lte=now)
+        .filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=stale_before))
+        .order_by('available_at', 'requested_at', 'id')
+        .values_list('id', flat=True)
+    )
+    for candidate_id in candidate_ids:
+        with transaction.atomic():
+            probe = AgentTurnJob.objects.select_related('agent').filter(pk=candidate_id).first()
+            if not probe:
+                continue
+            dataset = Dataset.objects.select_for_update().get(pk=probe.agent.dataset_id)
+            candidate = AgentTurnJob.objects.select_for_update().filter(
+                pk=candidate_id,
+                available_at__lte=now,
+            ).filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=stale_before)).first()
+            if not candidate:
+                continue
+            active_agent = dataset.active_agent()
+            if not active_agent or candidate.agent_id != active_agent.id:
+                candidate.delete()
+                continue
+            another_claim = AgentTurnJob.objects.filter(
+                agent__dataset_id=dataset.id,
+                claimed_at__gte=stale_before,
+            ).exclude(pk=candidate.pk).exists()
+            if another_claim:
+                candidate.available_at = now + timedelta(seconds=30)
+                candidate.save(update_fields=['available_at'])
+                continue
+            was_stale = candidate.claimed_at is not None
+            candidate.claimed_at = now
+            candidate.save(update_fields=['claimed_at'])
+            if was_stale:
+                Agent.objects.filter(pk=candidate.agent_id).update(busy_thinking=False)
+            job = candidate
+            break
+    if not job:
+        return False
 
     try:
         agent = Agent.objects.get(pk=job.agent_id)

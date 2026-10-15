@@ -16,6 +16,7 @@ from api.helpers.publish import (
     EmlExportError,
     clean_person_name,
     clean_text,
+    is_placeholder_email,
     normalize_orcid,
     inspect_dwca_archive,
     normalize_temporal_scope,
@@ -2029,10 +2030,6 @@ class SetEML(OpenAIBaseModel):
                 "Error: creators_unknown=true cannot be combined with a users list. "
                 "Nothing was saved."
             )
-        placeholder_local_parts = {
-            "unknown", "none", "noreply", "no-reply", "placeholder", "nobody",
-            "anonymous", "na", "n/a", "email", "test",
-        }
         people_by_role = (
             ("users", self.users),
             ("contacts", self.contacts),
@@ -2041,11 +2038,17 @@ class SetEML(OpenAIBaseModel):
         for role, people in people_by_role:
             for person in people or []:
                 email = str(person.email or "").strip()
-                local_part = email.split("@", 1)[0].casefold()
-                if local_part in placeholder_local_parts:
+                if is_placeholder_email(email):
+                    if role == "users":
+                        guidance = (
+                            "Provide the creator's real email, or leave them out of creators and record them "
+                            "as a contact/metadata provider without email (or use creators_unknown)."
+                        )
+                    else:
+                        guidance = "Omit the email or leave it blank instead."
                     return (
                         f"Error: {role} contains placeholder email '{email}'. "
-                        "Omit the email or leave it blank instead. Nothing was saved."
+                        f"{guidance} Nothing was saved."
                     )
         try:
             from api.models import Agent
@@ -3230,13 +3233,12 @@ class PublishToGBIF(OpenAIBaseModel):
                             from api.agent_turns import queue_agent_turn
 
                             transaction.on_commit(
-                                lambda: queue_agent_turn(gate_agent, delay_seconds=30)
+                                lambda: queue_agent_turn(gate_agent)
                             )
                 if gate_agent is not None and gate_agent.completed_at is None:
                     return (
-                        "Error: The pre-publication quality gate is now running. "
-                        "Follow its review in this dataset's chat and answer any questions it raises. "
-                        "End this turn now without calling any further tools. Once it completes, "
+                        "The pre-publication quality gate runs next. Follow its review in this dataset's chat "
+                        "and answer any questions it raises. Once it completes, "
                         "publication can be retried without rebuilding the unchanged archive."
                     )
                 return (
