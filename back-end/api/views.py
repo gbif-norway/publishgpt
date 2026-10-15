@@ -1445,7 +1445,7 @@ class AgentViewSet(viewsets.ModelViewSet):
             )
         
         # Rule 1: If an agent is in progress → resume it
-        active_agent = dataset.agent_set.filter(completed_at__isnull=True).first()
+        active_agent = dataset.active_agent()
         if active_agent:
             serializer = self.get_serializer(active_agent)
             return Response(serializer.data, status=status.HTTP_200_OK)

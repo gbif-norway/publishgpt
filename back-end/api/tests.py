@@ -3529,6 +3529,43 @@ class PublishToGbifTests(TestCase):
         register_mock.assert_not_called()
 
     @patch("api.agent_tools.register_dataset_and_endpoint")
+    @patch("api.agent_turns.queue_agent_turn")
+    def test_legacy_maintenance_starts_missing_quality_gate_once(self, queue_mock, register_mock):
+        gate_task = Task.objects.create(
+            name=Task.PREPUBLICATION_QUALITY_TASK,
+            text="Review current packages",
+            order=9,
+        )
+        maintenance_task = Task.objects.create(
+            name=Task.MAINTENANCE_TASK,
+            text="Maintain",
+            order=11,
+        )
+        dataset = Dataset.objects.create(
+            title="Legacy dataset",
+            description="Ready for review",
+            dwca_url="https://example.org/current.zip",
+            dwca_validation={
+                "url": "https://example.org/current.zip",
+                "status": "FINISHED",
+                "metrics": {"indexeable": True},
+            },
+        )
+        maintenance_agent = Agent.objects.create(dataset=dataset, task=maintenance_task)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            first = PublishToGBIF(agent_id=maintenance_agent.id).run()
+        second = PublishToGBIF(agent_id=maintenance_agent.id).run()
+
+        gate_agent = Agent.objects.get(dataset=dataset, task=gate_task)
+        self.assertIn("quality gate is now running", first)
+        self.assertIn("quality gate is now running", second)
+        self.assertEqual(dataset.agent_set.filter(task=gate_task).count(), 1)
+        self.assertEqual(dataset.next_agent().id, gate_agent.id)
+        queue_mock.assert_called_once_with(gate_agent)
+        register_mock.assert_not_called()
+
+    @patch("api.agent_tools.register_dataset_and_endpoint")
     def test_run_refuses_validation_for_replaced_archive(self, register_mock):
         quality_task = Task.objects.create(
             name=Task.PREPUBLICATION_QUALITY_TASK,
