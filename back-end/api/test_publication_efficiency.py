@@ -185,6 +185,8 @@ class PublicationEfficiencyTests(SimpleTestCase):
              "scientificName": "Apus apus", "occurrenceStatus": "detected"},
             {"_coreid": "ev-1", "occurrenceID": "occ-2", "basisOfRecord": "MaterialSample",
              "scientificName": "Apus apus", "occurrenceStatus": "Not detected"},
+            {"_coreid": "ev-1", "occurrenceID": "occ-3", "basisOfRecord": "MaterialSample",
+             "scientificName": "Apus apus", "occurrenceStatus": "notDetected"},
         ])
         with patch.dict(os.environ, {
             "MINIO_URI": "storage.example.org", "MINIO_ACCESS_KEY": "key",
@@ -201,6 +203,8 @@ class PublicationEfficiencyTests(SimpleTestCase):
         self.assertIn("absent", captured["occurrence"])
         self.assertNotIn("detected", captured["occurrence"])
         self.assertEqual(occurrence.loc[0, "occurrenceStatus"], "detected")
+        self.assertEqual(occurrence.loc[2, "occurrenceStatus"], "notDetected")
+        self.assertEqual(captured["occurrence"].count("absent"), 2)
 
     def test_occurrence_preflight_catches_missing_and_invalid_vocabulary(self):
         with tempfile.TemporaryDirectory() as directory:

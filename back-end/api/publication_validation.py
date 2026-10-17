@@ -319,7 +319,7 @@ def bdq_inspired_dwc_warnings(resources: Mapping[str, pd.DataFrame]) -> list[str
                     not _is_blank(value)
                     and (
                         not isinstance(value, str)
-                        or value not in {"present", "absent"}
+                        or value not in {"present", "absent", "detected", "notDetected"}
                     )
                 )
             )
@@ -328,7 +328,8 @@ def bdq_inspired_dwc_warnings(resources: Mapping[str, pd.DataFrame]) -> list[str
                 "VALIDATION_OCCURRENCESTATUS_STANDARD",
                 resource_name,
                 _row_positions(invalid_occurrence_status),
-                "has occurrenceStatus outside the exact lowercase values 'present' and 'absent'",
+                "has occurrenceStatus outside the recommended values 'detected' and 'notDetected' "
+                "or the legacy values 'present' and 'absent'; document any justified vocabulary extension",
             )
 
         component_fields = (

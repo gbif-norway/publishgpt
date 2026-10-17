@@ -469,6 +469,22 @@ class DwcDpSpecTests(SimpleTestCase):
             validation,
         )
 
+    def test_bdq_accepts_current_occurrence_vocabulary_and_preserves_custom_values(self):
+        from api.publication_validation import semantic_dwc_dp_warnings
+
+        occurrence = pd.DataFrame({
+            'occurrenceStatus': ['detected', 'notDetected', 'present', 'absent', '', None],
+        })
+        self.assertEqual(semantic_dwc_dp_warnings({'occurrence': occurrence}), [])
+
+        occurrence.loc[6, 'occurrenceStatus'] = 'uncertain'
+        warnings = semantic_dwc_dp_warnings({'occurrence': occurrence})
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('VALIDATION_OCCURRENCESTATUS_STANDARD', warnings[0])
+        self.assertIn('row(s) 7', warnings[0])
+        self.assertIn('justified vocabulary extension', warnings[0])
+        self.assertEqual(occurrence.loc[6, 'occurrenceStatus'], 'uncertain')
+
     @patch('api.dwc_dp_specs.upload_file')
     @patch('minio.Minio')
     def test_uploads_package_with_gzip_content_type(self, minio_class, upload_file_mock):

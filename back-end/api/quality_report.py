@@ -9,6 +9,7 @@ import pandas as pd
 from django.utils import timezone
 
 from api import agent_tools
+from api.publication_validation import _as_integer, _is_blank
 
 
 REPORT_FLAG = 'quality_report'
@@ -268,7 +269,36 @@ def provisional_core(dataset):
     core['occurrenceID'] = core[pk].astype('string')
     if 'basisOfRecord' not in core:
         core['basisOfRecord'] = basis
+    _omit_redundant_year(core)
     return core
+
+
+def _omit_redundant_year(core):
+    """Avoid GBIF coarsening a full date to an agreeing year-only date.
+
+    Only the provisional copy changes. A conflicting year, invalid eventDate,
+    or another supplied date component stays available for validation.
+    https://techdocs.gbif.org/en/data-processing/temporal-interpretation
+    """
+    if not {'eventDate', 'year'} <= set(core.columns):
+        return
+    other_components = [
+        name for name in ('month', 'day', 'startDayOfYear', 'endDayOfYear')
+        if name in core
+    ]
+    redundant = []
+    for index, row in core.iterrows():
+        if any(not _is_blank(row[name]) for name in other_components):
+            continue
+        try:
+            event_date = datetime.date.fromisoformat(str(row['eventDate']).strip())
+        except ValueError:
+            continue
+        if _as_integer(row['year']) == event_date.year:
+            redundant.append(index)
+    if redundant:
+        core['year'] = core['year'].astype('object')
+        core.loc[redundant, 'year'] = ''
 
 
 # Agent roles that name the people who recorded or collected an occurrence or its specimen.
@@ -366,6 +396,9 @@ def render_refinement_report(dataset, note=None):
         "the DwC-DP tables only to run the GBIF validator; it is not published and is not the final "
         "projection. GBIF sample record IDs are occurrence_pk or materialEntity_pk values, and "
         "informational notes need no action. Metadata is not checked here.\n"
+        "Projection compatibility findings do not justify changing authoritative source facts; "
+        "keep them separate from source-data conflicts. GBIF RECORDED_DATE_MISMATCH can also "
+        "describe differing date precision, so compare all supplied date fields.\n"
         "For each finding, correct the authoritative DwC-DP tables, include it in one consolidated "
         "question to the user, or record it as an accepted limitation in structure_notes. Then call "
         "SetAgentTaskToComplete again; no second report is produced.\n\n"

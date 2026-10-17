@@ -264,10 +264,11 @@ def _sanitize_dataframe_for_utf8_export(df: pd.DataFrame) -> pd.DataFrame:
         )
     return sanitized
 
-# DwC-DP uses detection wording for molecular records; GBIF's DwC-A
-# occurrenceStatus expects present/absent.
+# DwC-DP recommends detected/notDetected; GBIF's current DwC-A validator
+# still expects present/absent. Translate only the exported copy.
 DWCA_OCCURRENCE_STATUS_ALIASES = {
     "detected": "present",
+    "notdetected": "absent",
     "not detected": "absent",
     "undetected": "absent",
 }

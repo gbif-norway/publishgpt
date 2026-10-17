@@ -116,6 +116,35 @@ class PrepareGateReportTests(TestCase):
 
 
 class ProvisionalCoreTests(TestCase):
+    def test_full_date_keeps_precision_without_hiding_source_conflicts(self):
+        import pandas as pd
+        from api.models import Table
+        from api.quality_report import provisional_core
+
+        dataset = Dataset.objects.create(title="Dates", description="Test")
+        events = pd.DataFrame([
+            {"event_pk": "matching", "eventDate": "2018-06-30", "year": 2018},
+            {"event_pk": "conflicting", "eventDate": "2018-06-30", "year": 2019},
+            {"event_pk": "invalid", "eventDate": "2018-02-30", "year": 2018},
+            {"event_pk": "partial", "eventDate": "2018-06", "year": 2018},
+            {"event_pk": "interval", "eventDate": "2018-06-01/2018-06-30", "year": 2018},
+            {"event_pk": "components", "eventDate": "2018-06-30", "year": 2018, "month": 7},
+            {"event_pk": "unparseable-year", "eventDate": "2018-06-30", "year": "unknown"},
+            {"event_pk": "year-only", "year": 2018},
+        ])
+        table = Table.objects.create(dataset=dataset, title="event", df=events)
+        Table.objects.create(dataset=dataset, title="occurrence", df=pd.DataFrame([
+            {"occurrence_pk": f"o-{key}", "event_fk": key, "occurrenceStatus": "notDetected"}
+            for key in events["event_pk"]
+        ]))
+
+        core = provisional_core(dataset)
+
+        self.assertEqual(core["year"].tolist(), ['', 2019, 2018, 2018, 2018, 2018, 'unknown', 2018])
+        self.assertEqual(core["occurrenceStatus"].tolist(), ['notDetected'] * len(events))
+        table.refresh_from_db()
+        pd.testing.assert_frame_equal(table.df, events)
+
     def test_material_records_take_event_and_accepted_identification(self):
         import pandas as pd
         from api.models import Table
@@ -242,9 +271,39 @@ class RefinementReportTests(TestCase):
     def test_provisional_archive_drops_dwc_dp_keys_instead_of_failing_preflight(
         self, _minio, _upload, _submit, _delete
     ):
+        import io
+        import os
+        import zipfile
+        import pandas as pd
+        from api.models import Table
         from api.quality_report import start_refinement_report
 
-        start_refinement_report(self.agent)
+        occurrence = self.dataset.table_set.get(title="occurrence")
+        occurrence.df = pd.DataFrame([
+            {"occurrence_pk": "o1", "event_fk": "e1", "occurrenceStatus": "detected"},
+            {"occurrence_pk": "o2", "event_fk": "e2", "occurrenceStatus": "notDetected"},
+        ])
+        occurrence.save()
+        Table.objects.create(dataset=self.dataset, title="event", df=pd.DataFrame([
+            {"event_pk": "e1", "eventDate": "2018-06-30", "year": "2018"},
+            {"event_pk": "e2", "eventDate": "2018-06-30", "year": "2019"},
+        ]))
+        captured = {}
+
+        def capture_archive(_client, _bucket, _name, local_path):
+            with zipfile.ZipFile(local_path) as archive:
+                captured["core"] = pd.read_csv(
+                    io.BytesIO(archive.read("occurrence.txt")), sep="\t", dtype=str, keep_default_na=False,
+                )
+
+        _upload.side_effect = capture_archive
+        with patch.dict(os.environ, {"MINIO_BUCKET": "bucket", "MINIO_BUCKET_FOLDER": "test"}):
+            start_refinement_report(self.agent)
 
         self.dataset.refresh_from_db()
         self.assertEqual(self.dataset.provisional_dwca_validation.get("key"), "k1")
+        self.assertEqual(captured["core"]["occurrenceStatus"].tolist(), ["present", "absent"])
+        self.assertEqual(captured["core"]["year"].tolist(), ["", "2019"])
+        self.assertEqual(captured["core"]["eventDate"].tolist(), ["2018-06-30"] * 2)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.df["occurrenceStatus"].tolist(), ["detected", "notDetected"])

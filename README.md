@@ -143,6 +143,14 @@ against its canonical table schema, `eml.xml` against the EML 2.2.0 XSDs in
 `d3dd96bc7c769724466f8495c331299ebd8c977f`), and every row with Frictionless
 `validate()`.
 
+The provisional GBIF check during refinement uses a disposable DwC-A projection.
+It translates `detected`/`notDetected` to the current validator's `present`/`absent`
+vocabulary and omits a redundant year beside an agreeing full ISO date when no
+other date components are supplied. This avoids GBIF reducing the date precision;
+conflicting years remain available to the validator. Authoritative DwC-DP tables
+retain all source values, and their vocabulary checks accept both the current
+detection terms and legacy presence terms.
+
 ## Deployment docs
 
 Operational deployment instructions are maintained in [`DEPLOYMENT.md`](DEPLOYMENT.md).
