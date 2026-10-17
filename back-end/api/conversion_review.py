@@ -93,12 +93,13 @@ def apply_kinds():
 
 
 def review_model():
-    return (setting('OPENAI_CONVERSION_REVIEW_MODEL', None) or setting('OPENAI_MODEL_STANDARD', 'gpt-6-sol'),
+    return (setting('OPENAI_CONVERSION_REVIEW_MODEL', None) or setting('OPENAI_MODEL_STANDARD', 'gpt-6.1-sol'),
             setting('OPENAI_CONVERSION_REVIEW_EFFORT', 'high'))
 
 
 def service_tier(model, configured):
-    return configured if configured in {'flex', 'default'} and (model == 'gpt-6-sol' or model.startswith('gpt-6-sol-')) else 'default'
+    from api.openai_models import model_service_tier
+    return model_service_tier(model, configured)
 
 
 def lease_seconds():
@@ -108,7 +109,7 @@ def lease_seconds():
 
 def dataset_cost_limit():
     try:
-        return max(Decimal(str(setting('OPENAI_DATASET_COST_LIMIT_USD', '5.00'))), Decimal('0'))
+        return max(Decimal(str(setting('OPENAI_DATASET_COST_LIMIT_USD', '7.00'))), Decimal('0'))
     except (InvalidOperation, TypeError, ValueError):
         logger.error('Invalid OPENAI_DATASET_COST_LIMIT_USD setting')
         return Decimal('0')

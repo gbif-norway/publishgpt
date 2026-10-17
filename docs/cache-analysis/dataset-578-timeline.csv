@@ -1,0 +1,191 @@
+call,usage_id,time_SAST,stage,agent_id,model,service_tier,gap_seconds_approx,input_tokens,read_tokens,write_tokens,ordinary_input_tokens,read_percent,read_drop_tokens,prefix_changed,user_messages_since_previous,uploads_since_previous,flat_read_with_writes,diagnostic,write_cost_usd,total_cost_usd,flags
+1,2667,2026-10-06T16:28:14+02:00,Data structure exploration,2348,gpt-6-luna,default,,7348,0,7101,247,0.0,0,False,0,0,False,missing,0.000888,0.001411,first call for agent
+2,2668,2026-10-06T16:28:24+02:00,Data structure exploration,2348,gpt-6-luna,default,3.0,9199,7090,1862,247,77.07,-7090,False,0,0,False,unavailable,0.000233,0.000611,
+3,2669,2026-10-06T16:28:37+02:00,Data structure exploration,2348,gpt-6-luna,default,2.8,10511,7090,3174,247,67.45,0,False,0,0,False,unavailable,0.000397,0.000873,
+4,2670,2026-10-06T16:28:43+02:00,Data structure exploration,2348,gpt-6-luna,default,0.1,10930,7090,3295,545,64.87,0,False,0,0,False,unavailable,0.000412,0.000709,
+5,2671,2026-10-06T16:28:46+02:00,Data content exploration,2349,gpt-6-sol,flex,,6831,0,6828,3,0.0,0,False,0,0,False,missing,0.008535,0.009193,first call for agent
+6,2672,2026-10-06T16:28:53+02:00,Data content exploration,2349,gpt-6-sol,flex,2.9,7552,6828,477,247,90.41,-6828,False,0,0,False,cache_hit,0.000596,0.002551,
+7,2673,2026-10-06T16:29:00+02:00,Data content exploration,2349,gpt-6-sol,flex,2.9,8468,6828,1393,247,80.63,0,False,0,0,False,unavailable,0.001741,0.003956,
+8,2674,2026-10-06T16:29:05+02:00,Data content exploration,2349,gpt-6-sol,flex,0.2,9522,6828,2447,247,71.71,0,False,0,0,False,unavailable,0.003059,0.005634,
+9,2675,2026-10-06T16:29:10+02:00,Data content exploration,2349,gpt-6-sol,flex,0.1,9943,6828,2868,247,68.67,0,False,0,0,False,unavailable,0.003585,0.006040,
+10,2676,2026-10-06T16:29:14+02:00,Data content exploration,2349,gpt-6-sol,flex,0.1,10514,6828,3439,247,64.94,0,False,0,0,False,unavailable,0.004299,0.006419,
+11,2677,2026-10-06T16:29:21+02:00,Data content exploration,2349,gpt-6-sol,flex,0.1,10849,6828,3774,247,62.94,0,False,0,0,False,unavailable,0.004718,0.007657,
+12,2678,2026-10-06T16:29:31+02:00,Data content exploration,2349,gpt-6-sol,flex,0.3,14247,6828,3932,3487,47.93,0,False,0,0,False,unavailable,0.004915,0.013680,
+13,2679,2026-10-06T16:29:35+02:00,Data content exploration,2349,gpt-6-sol,flex,0.2,12600,6828,4859,913,54.19,0,False,0,0,False,unavailable,0.006074,0.009535,
+14,2680,2026-10-06T16:29:39+02:00,Data content exploration,2349,gpt-6-sol,flex,0.5,13469,6828,5231,1410,50.69,0,False,0,0,True,unavailable,0.006539,0.008927,flat read boundary; >=5000 write tokens
+15,2681,2026-10-06T16:29:43+02:00,Data suitability assessment,2350,gpt-6-luna,default,,8324,0,8321,3,0.0,0,False,0,0,False,missing,0.001040,0.001081,first call for agent
+16,2682,2026-10-06T16:29:48+02:00,Data transformation,2351,gpt-6-sol,flex,,12304,0,12301,3,0.0,0,False,0,0,False,missing,0.015376,0.016959,first call for agent
+17,2683,2026-10-06T16:29:53+02:00,Data transformation,2351,gpt-6-sol,flex,2.9,13662,12301,1027,334,90.04,-12301,False,0,0,False,cache_hit,0.001284,0.003268,
+18,2684,2026-10-06T16:29:58+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,14055,12301,1420,334,87.52,0,False,0,0,False,unavailable,0.001775,0.004964,
+19,2685,2026-10-06T16:30:03+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,14447,12301,1562,584,85.15,0,False,0,0,False,unavailable,0.001952,0.005392,
+20,2686,2026-10-06T16:30:09+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,17071,12301,3207,1563,72.06,0,False,0,0,False,unavailable,0.004009,0.009082,
+21,2687,2026-10-06T16:30:15+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,17434,12301,3570,1563,70.56,0,False,0,0,False,unavailable,0.004462,0.009441,
+22,2688,2026-10-06T16:30:20+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,17985,12301,4121,1563,68.4,0,False,0,0,False,unavailable,0.005151,0.010244,
+23,2689,2026-10-06T16:30:44+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,21890,12301,6831,2758,56.19,0,False,0,0,True,unavailable,0.008539,0.022952,flat read boundary; >=5000 write tokens
+24,2690,2026-10-06T16:30:51+02:00,Data transformation,2351,gpt-6-sol,flex,0.4,27365,12301,8411,6653,44.95,0,False,0,0,True,unavailable,0.010514,0.020147,flat read boundary; >=5000 write tokens
+25,2691,2026-10-06T16:30:56+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,23831,12301,8631,2899,51.62,0,False,0,0,True,unavailable,0.010789,0.016298,flat read boundary; >=5000 write tokens
+26,2692,2026-10-06T16:31:13+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,24020,12301,8457,3262,51.21,0,False,0,0,True,unavailable,0.010571,0.020998,flat read boundary; >=5000 write tokens
+27,2693,2026-10-06T16:31:22+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,25089,12301,9526,3262,49.03,0,False,0,0,True,unavailable,0.011908,0.018775,flat read boundary; >=5000 write tokens
+28,2694,2026-10-06T16:31:49+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,25567,12301,10004,3262,48.11,0,False,0,0,True,unavailable,0.012505,0.028532,flat read boundary; >=5000 write tokens
+29,2695,2026-10-06T16:32:05+02:00,Data transformation,2351,gpt-6-sol,flex,0.5,33384,12301,11222,9861,36.85,0,False,0,0,True,unavailable,0.014028,0.032304,flat read boundary; >=5000 write tokens
+30,2696,2026-10-06T16:32:11+02:00,Data transformation,2351,gpt-6-sol,flex,0.7,35314,12301,12469,10544,34.83,0,False,0,0,True,unavailable,0.015586,0.028835,flat read boundary; >=5000 write tokens
+31,2697,2026-10-06T16:32:13+02:00,Data transformation,2351,gpt-6-sol,flex,0.1,28144,12301,12382,3461,43.71,0,False,0,0,True,unavailable,0.015478,0.020304,flat read boundary; >=5000 write tokens
+32,2698,2026-10-06T16:32:19+02:00,Data transformation,2351,gpt-6-sol,flex,0.5,29019,12301,12613,4105,42.39,0,False,0,0,True,unavailable,0.015766,0.022336,flat read boundary; >=5000 write tokens
+33,2699,2026-10-06T16:32:28+02:00,Data transformation,2351,gpt-6-sol,flex,4.0,23992,12301,7258,4433,51.27,0,False,0,0,True,unavailable,0.009072,0.016376,flat read boundary; >=5000 write tokens
+34,2700,2026-10-06T16:32:39+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,24385,12301,7651,4433,50.44,0,False,0,0,True,unavailable,0.009564,0.020617,flat read boundary; >=5000 write tokens
+35,2701,2026-10-06T16:33:06+02:00,Data transformation,2351,gpt-6-sol,flex,0.3,23885,12301,7151,4433,51.5,0,False,0,0,True,unavailable,0.008939,0.027687,flat read boundary; >=5000 write tokens
+36,2702,2026-10-06T16:33:16+02:00,Data transformation,2351,gpt-6-sol,flex,0.4,25315,12301,7830,5184,48.59,0,False,0,0,True,unavailable,0.009788,0.019967,flat read boundary; >=5000 write tokens
+37,2703,2026-10-06T16:33:24+02:00,Data transformation,2351,gpt-6-sol,flex,0.6,24661,12301,8213,4147,49.88,0,False,0,0,True,unavailable,0.010266,0.019008,flat read boundary; >=5000 write tokens
+38,2704,2026-10-06T16:33:33+02:00,Data transformation,2351,gpt-6-sol,flex,0.3,25762,12301,9314,4147,47.75,0,False,0,0,True,unavailable,0.011642,0.021025,flat read boundary; >=5000 write tokens
+39,2705,2026-10-06T16:33:40+02:00,Data transformation,2351,gpt-6-sol,flex,0.4,26258,12301,9682,4275,46.85,0,False,0,0,True,unavailable,0.012102,0.019958,flat read boundary; >=5000 write tokens
+40,2706,2026-10-06T16:33:48+02:00,Data transformation,2351,gpt-6-sol,flex,0.3,26345,12301,10530,3514,46.69,0,False,0,0,True,unavailable,0.013162,0.020422,flat read boundary; >=5000 write tokens
+41,2707,2026-10-06T16:33:53+02:00,Data transformation,2351,gpt-6-sol,flex,0.6,22600,12301,6146,4153,54.43,0,False,0,0,True,unavailable,0.007682,0.014691,flat read boundary; >=5000 write tokens
+42,2708,2026-10-06T16:33:56+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,22710,12301,6269,4140,54.17,0,False,0,0,True,unavailable,0.007836,0.013831,flat read boundary; >=5000 write tokens
+43,2709,2026-10-06T16:34:10+02:00,Data transformation,2351,gpt-6-sol,flex,3.7,25731,12301,8940,4490,47.81,0,False,0,0,True,unavailable,0.011175,0.021850,flat read boundary; >=5000 write tokens
+44,2710,2026-10-06T16:34:20+02:00,Data transformation,2351,gpt-6-sol,flex,0.3,25593,12301,9268,4024,48.06,0,False,0,0,True,unavailable,0.011585,0.022154,flat read boundary; >=5000 write tokens
+45,2711,2026-10-06T16:34:44+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,23904,12301,7532,4071,51.46,0,False,0,0,True,unavailable,0.009415,0.027716,flat read boundary; >=5000 write tokens
+46,2712,2026-10-06T16:34:46+02:00,Data transformation,2351,gpt-6-sol,flex,0.2,26687,12301,8713,5673,46.09,0,False,0,0,True,unavailable,0.010891,0.017959,flat read boundary; >=5000 write tokens
+47,2713,2026-10-06T16:34:49+02:00,Data validation and refinement,2352,gpt-6-sol,flex,,20185,0,20182,3,0.0,0,False,0,0,False,missing,0.025228,0.026936,first call for agent
+48,2714,2026-10-06T16:34:56+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.2,27477,20182,3450,3845,73.45,-20182,False,0,0,False,cache_hit,0.004312,0.012521,
+49,2715,2026-10-06T16:35:08+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.3,29526,20182,4239,5105,68.35,0,False,0,0,False,unavailable,0.005299,0.021342,
+50,2716,2026-10-06T16:35:20+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.7,30869,20182,7123,3564,65.38,0,False,0,0,True,unavailable,0.008904,0.020811,flat read boundary; >=5000 write tokens
+51,2717,2026-10-06T16:35:36+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.4,31956,20182,8210,3564,63.16,0,False,0,0,True,unavailable,0.010262,0.026055,flat read boundary; >=5000 write tokens
+52,2718,2026-10-06T16:35:44+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.4,35005,20182,8373,6450,57.65,0,False,0,0,True,unavailable,0.010466,0.021779,flat read boundary; >=5000 write tokens
+53,2719,2026-10-06T16:35:48+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.1,32394,20182,8544,3668,62.3,0,False,0,0,True,unavailable,0.010680,0.017336,flat read boundary; >=5000 write tokens
+54,2720,2026-10-06T16:36:05+02:00,Data validation and refinement,2352,gpt-6-sol,flex,4.0,34965,20182,10391,4392,57.72,0,False,0,0,True,unavailable,0.012989,0.025559,flat read boundary; >=5000 write tokens
+55,2721,2026-10-06T16:36:08+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.2,37610,20182,11471,5957,53.66,0,False,0,0,True,unavailable,0.014339,0.022889,flat read boundary; >=5000 write tokens
+56,2722,2026-10-06T16:41:51+02:00,Data validation and refinement,2352,gpt-6-sol,flex,340.6,36953,20182,10814,5957,54.62,0,False,1,0,True,unavailable,0.013518,0.021853,flat read boundary; >=5000 write tokens
+57,2723,2026-10-06T16:41:55+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.2,36605,20182,10466,5957,55.13,0,False,0,0,True,unavailable,0.013082,0.021968,flat read boundary; >=5000 write tokens
+58,2724,2026-10-06T16:41:59+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.2,36758,20182,10622,5954,54.91,0,False,0,0,True,unavailable,0.013278,0.021435,flat read boundary; >=5000 write tokens
+59,2725,2026-10-06T16:44:09+02:00,Data validation and refinement,2352,gpt-6-luna,default,122.3,37612,0,31658,5954,0.0,20182,True,0,0,False,missing,0.003957,0.004763,model switch; opening fingerprint changed; read drop >=5000 tokens
+60,2726,2026-10-06T16:44:14+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.3,37998,20182,11862,5954,53.11,-20182,True,0,0,False,unavailable,0.014828,0.024890,model switch; opening fingerprint changed
+61,2727,2026-10-06T16:44:21+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.3,38815,20182,12679,5954,52.0,0,False,0,0,True,unavailable,0.015849,0.026641,flat read boundary; >=5000 write tokens
+62,2728,2026-10-06T16:44:27+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.4,39600,20182,12901,6517,50.96,0,False,0,0,True,unavailable,0.016126,0.025661,flat read boundary; >=5000 write tokens
+63,2729,2026-10-06T16:44:38+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.5,39212,20182,13291,5739,51.47,0,False,0,0,True,unavailable,0.016614,0.028881,flat read boundary; >=5000 write tokens
+64,2730,2026-10-06T16:44:44+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.2,29755,20182,3771,5802,67.83,0,False,0,0,False,unavailable,0.004714,0.014539,
+65,2731,2026-10-06T16:44:48+02:00,Data validation and refinement,2352,gpt-6-sol,flex,0.3,29934,20182,3946,5806,67.42,0,False,0,0,False,unavailable,0.004932,0.013172,
+66,2732,2026-10-06T16:44:53+02:00,Publication package preparation,2353,gpt-6-sol,flex,,19546,0,19543,3,0.0,0,False,0,0,False,missing,0.024429,0.025792,first call for agent
+67,2733,2026-10-06T16:44:59+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.2,27693,19543,4915,3235,70.57,-19543,False,0,0,False,cache_hit,0.006144,0.012543,
+68,2734,2026-10-06T16:45:06+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.2,27975,19543,5072,3360,69.86,0,False,0,0,True,unavailable,0.006340,0.013829,flat read boundary; >=5000 write tokens
+69,2735,2026-10-06T16:45:20+02:00,Publication package preparation,2353,gpt-6-sol,flex,2.8,36322,19543,12168,4611,53.8,0,False,0,0,True,unavailable,0.015210,0.024750,flat read boundary; >=5000 write tokens
+70,2736,2026-10-06T16:45:30+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.1,36543,19543,12357,4643,53.48,0,False,0,0,True,unavailable,0.015446,0.025389,flat read boundary; >=5000 write tokens
+71,2737,2026-10-06T16:45:51+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.3,32238,19543,8052,4643,60.62,0,False,0,0,True,unavailable,0.010065,0.022022,flat read boundary; >=5000 write tokens
+72,2738,2026-10-06T16:46:17+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.2,33175,19543,8989,4643,58.91,0,False,0,0,True,unavailable,0.011236,0.023999,flat read boundary; >=5000 write tokens
+73,2739,2026-10-06T16:46:43+02:00,Publication package preparation,2353,gpt-6-sol,flex,2.7,33559,19543,9373,4643,58.23,0,False,0,0,True,unavailable,0.011716,0.024229,flat read boundary; >=5000 write tokens
+74,2740,2026-10-06T16:48:06+02:00,Publication package preparation,2353,gpt-6-sol,flex,2.7,33857,29214,0,4643,86.29,-9671,False,0,0,False,cache_hit,0.000000,0.026924,
+75,2741,2026-10-06T16:48:26+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.3,35429,19543,11243,4643,55.16,9671,False,0,0,False,unavailable,0.014054,0.032366,read drop >=5000 tokens; unexplained short-gap drop
+76,2742,2026-10-06T16:48:39+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,37321,19543,13135,4643,52.36,0,False,0,0,True,unavailable,0.016419,0.027791,flat read boundary; >=5000 write tokens
+77,2743,2026-10-06T16:48:46+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.5,37805,19543,13414,4848,51.69,0,False,0,0,True,unavailable,0.016768,0.025800,flat read boundary; >=5000 write tokens
+78,2744,2026-10-06T16:48:53+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.7,42746,19543,12994,10209,45.72,0,False,0,0,True,unavailable,0.016242,0.030671,flat read boundary; >=5000 write tokens
+79,2745,2026-10-06T16:48:59+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,37828,19543,13432,4853,51.66,0,False,0,0,True,unavailable,0.016790,0.025677,flat read boundary; >=5000 write tokens
+80,2746,2026-10-06T16:49:03+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.3,38093,19543,13659,4891,51.3,0,False,0,0,True,unavailable,0.017074,0.024719,flat read boundary; >=5000 write tokens
+81,2747,2026-10-06T16:49:11+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.9,38275,19543,13841,4891,51.06,0,False,0,0,True,unavailable,0.017301,0.026727,flat read boundary; >=5000 write tokens
+82,2748,2026-10-06T16:49:14+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,40274,19543,14072,6659,48.53,0,False,0,0,True,unavailable,0.017590,0.026993,flat read boundary; >=5000 write tokens
+83,2749,2026-10-06T16:49:18+02:00,Publication package preparation,2353,gpt-6-sol,flex,1.0,29135,19543,4671,4921,67.08,0,False,0,0,False,unavailable,0.005839,0.012894,
+84,2750,2026-10-06T16:49:26+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,30511,19543,6047,4921,64.05,0,False,0,0,True,unavailable,0.007559,0.017659,flat read boundary; >=5000 write tokens
+85,2751,2026-10-06T16:49:38+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,31896,19543,7432,4921,61.27,0,False,0,0,True,unavailable,0.009290,0.021685,flat read boundary; >=5000 write tokens
+86,2752,2026-10-06T16:49:45+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,32786,19543,8322,4921,59.61,0,False,0,0,True,unavailable,0.010402,0.019783,flat read boundary; >=5000 write tokens
+87,2753,2026-10-06T16:49:52+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,33310,19543,8793,4974,58.67,0,False,0,0,True,unavailable,0.010991,0.020495,flat read boundary; >=5000 write tokens
+88,2754,2026-10-06T16:50:12+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.4,33943,19543,9426,4974,57.58,0,False,0,0,True,unavailable,0.011782,0.030261,flat read boundary; >=5000 write tokens
+89,2755,2026-10-06T16:50:16+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.3,37463,19543,11215,6705,52.17,0,False,0,0,True,unavailable,0.014019,0.023898,flat read boundary; >=5000 write tokens
+90,2756,2026-10-06T16:50:19+02:00,Publication package preparation,2353,gpt-6-sol,flex,0.2,37720,19543,11457,6720,51.81,0,False,0,0,True,unavailable,0.014321,0.023316,flat read boundary; >=5000 write tokens
+91,2757,2026-10-06T16:51:36+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,,26999,0,26996,3,0.0,0,False,0,0,False,missing,0.033745,0.039933,first call for agent
+92,2758,2026-10-06T16:51:50+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,3.1,33190,21981,8845,2364,66.23,-21981,False,0,0,False,unavailable,0.011056,0.019618,
+93,2759,2026-10-06T16:51:58+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,34308,21981,9963,2364,64.07,0,False,0,0,True,unavailable,0.012454,0.020681,flat read boundary; >=5000 write tokens
+94,2760,2026-10-06T16:52:04+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,34632,21981,10287,2364,63.47,0,False,0,0,True,unavailable,0.012859,0.020041,flat read boundary; >=5000 write tokens
+95,2761,2026-10-06T16:52:13+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,36014,21981,11669,2364,61.03,0,False,0,0,True,unavailable,0.014586,0.021873,flat read boundary; >=5000 write tokens
+96,2762,2026-10-06T16:52:20+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,36736,21981,12391,2364,59.84,0,False,0,0,True,unavailable,0.015489,0.023931,flat read boundary; >=5000 write tokens
+97,2763,2026-10-06T16:52:35+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,37682,21981,13337,2364,58.33,0,False,0,0,True,unavailable,0.016671,0.028278,flat read boundary; >=5000 write tokens
+98,2764,2026-10-06T16:52:52+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,38713,21981,14368,2364,56.78,0,False,0,0,True,unavailable,0.017960,0.030562,flat read boundary; >=5000 write tokens
+99,2765,2026-10-06T16:53:08+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,40052,21981,15707,2364,54.88,0,False,0,0,True,unavailable,0.019634,0.031836,flat read boundary; >=5000 write tokens
+100,2766,2026-10-06T16:53:22+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,40987,21981,16642,2364,53.63,0,False,0,0,True,unavailable,0.020802,0.032455,flat read boundary; >=5000 write tokens
+101,2767,2026-10-06T16:53:40+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,42132,21981,17787,2364,52.17,0,False,0,0,True,unavailable,0.022234,0.035016,flat read boundary; >=5000 write tokens
+102,2768,2026-10-06T16:54:23+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,43039,21981,18694,2364,51.07,0,False,0,0,True,unavailable,0.023368,0.045155,flat read boundary; >=5000 write tokens
+103,2769,2026-10-06T16:55:11+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,44689,21981,20344,2364,49.19,0,False,0,0,True,unavailable,0.025430,0.047502,flat read boundary; >=5000 write tokens
+104,2770,2026-10-06T16:55:51+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,46242,21981,21685,2576,47.53,0,False,0,0,True,unavailable,0.027106,0.044150,flat read boundary; >=5000 write tokens
+105,2771,2026-10-06T16:56:53+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,47333,21981,22776,2576,46.44,0,False,0,0,True,unavailable,0.028470,0.057989,flat read boundary; >=5000 write tokens
+106,2772,2026-10-06T16:57:09+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,50320,21981,24088,4251,43.68,0,False,0,0,True,unavailable,0.030110,0.043179,flat read boundary; >=5000 write tokens
+107,2773,2026-10-06T17:00:09+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,173.5,66942,21981,31579,13382,32.84,0,False,1,1,True,unavailable,0.039474,0.057829,flat read boundary; >=5000 write tokens
+108,2774,2026-10-06T17:00:17+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.5,47183,21981,21321,3881,46.59,0,False,0,0,True,unavailable,0.026651,0.035430,flat read boundary; >=5000 write tokens
+109,2775,2026-10-06T17:00:32+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,48224,21981,22362,3881,45.58,0,False,0,0,True,unavailable,0.027952,0.037562,flat read boundary; >=5000 write tokens
+110,2776,2026-10-06T17:00:43+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,49185,21981,23323,3881,44.69,0,False,0,0,True,unavailable,0.029154,0.038683,flat read boundary; >=5000 write tokens
+111,2777,2026-10-06T17:00:55+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,49964,21981,24102,3881,43.99,0,False,0,0,True,unavailable,0.030128,0.040877,flat read boundary; >=5000 write tokens
+112,2778,2026-10-06T17:01:07+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,50991,21981,25076,3934,43.11,0,False,0,0,True,unavailable,0.031345,0.042422,flat read boundary; >=5000 write tokens
+113,2779,2026-10-06T17:01:23+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,51950,21981,26035,3934,42.31,0,False,0,0,True,unavailable,0.032544,0.045681,flat read boundary; >=5000 write tokens
+114,2780,2026-10-06T17:01:41+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,52923,21981,27008,3934,41.53,0,False,0,0,True,unavailable,0.033760,0.046952,flat read boundary; >=5000 write tokens
+115,2781,2026-10-06T17:02:02+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,53837,21981,27922,3934,40.83,0,False,0,0,True,unavailable,0.034902,0.049355,flat read boundary; >=5000 write tokens
+116,2782,2026-10-06T17:02:15+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,45894,21981,19925,3988,47.9,0,False,0,0,True,unavailable,0.024906,0.035607,flat read boundary; >=5000 write tokens
+117,2783,2026-10-06T17:02:26+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,46756,21981,20787,3988,47.01,0,False,0,0,True,unavailable,0.025984,0.036265,flat read boundary; >=5000 write tokens
+118,2784,2026-10-06T17:02:38+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.3,47399,21981,21430,3988,46.37,0,False,0,0,True,unavailable,0.026788,0.037379,flat read boundary; >=5000 write tokens
+119,2785,2026-10-06T17:02:50+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,47499,21981,21507,4011,46.28,0,False,0,0,True,unavailable,0.026884,0.038283,flat read boundary; >=5000 write tokens
+120,2786,2026-10-06T17:03:10+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.3,48875,21981,22129,4765,44.97,0,False,0,0,True,unavailable,0.027661,0.043469,flat read boundary; >=5000 write tokens
+121,2787,2026-10-06T17:03:28+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,49633,21981,22887,4765,44.29,0,False,0,0,True,unavailable,0.028609,0.044272,flat read boundary; >=5000 write tokens
+122,2788,2026-10-06T17:03:44+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,50521,21981,23775,4765,43.51,0,False,0,0,True,unavailable,0.029719,0.044142,flat read boundary; >=5000 write tokens
+123,2789,2026-10-06T17:04:01+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,51046,21981,24300,4765,43.06,0,False,0,0,True,unavailable,0.030375,0.045878,flat read boundary; >=5000 write tokens
+124,2790,2026-10-06T17:04:10+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,44254,21981,17508,4765,49.67,0,False,0,0,True,unavailable,0.021885,0.032733,flat read boundary; >=5000 write tokens
+125,2791,2026-10-06T17:04:21+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,45502,21981,18756,4765,48.31,0,False,0,0,True,unavailable,0.023445,0.035773,flat read boundary; >=5000 write tokens
+126,2792,2026-10-06T17:04:33+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,46524,21981,19778,4765,47.25,0,False,0,0,True,unavailable,0.024722,0.037311,flat read boundary; >=5000 write tokens
+127,2793,2026-10-06T17:04:52+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,47722,21981,20976,4765,46.06,0,False,0,0,True,unavailable,0.026220,0.043423,flat read boundary; >=5000 write tokens
+128,2794,2026-10-06T17:05:04+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.6,50915,21981,21514,7420,43.17,0,False,0,0,True,unavailable,0.026892,0.041771,flat read boundary; >=5000 write tokens
+129,2795,2026-10-06T17:05:34+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,49207,21981,22461,4765,44.67,0,False,0,0,True,unavailable,0.028076,0.049214,flat read boundary; >=5000 write tokens
+130,2796,2026-10-06T17:05:49+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.1,49479,21981,22733,4765,44.42,0,False,0,0,True,unavailable,0.028416,0.041529,flat read boundary; >=5000 write tokens
+131,2797,2026-10-06T17:06:06+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,49945,21981,23199,4765,44.01,0,False,0,0,True,unavailable,0.028999,0.043452,flat read boundary; >=5000 write tokens
+132,2798,2026-10-06T17:06:15+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,46192,21981,19446,4765,47.59,0,False,0,0,True,unavailable,0.024308,0.035981,flat read boundary; >=5000 write tokens
+133,2799,2026-10-06T17:06:23+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,46506,21981,19760,4765,47.26,0,False,0,0,True,unavailable,0.024700,0.033913,flat read boundary; >=5000 write tokens
+134,2800,2026-10-06T17:06:48+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,47235,21981,20489,4765,46.54,0,False,0,0,True,unavailable,0.025611,0.044129,flat read boundary; >=5000 write tokens
+135,2801,2026-10-06T17:06:59+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,47891,21981,21238,4672,45.9,0,False,0,0,True,unavailable,0.026548,0.036778,flat read boundary; >=5000 write tokens
+136,2802,2026-10-06T17:16:44+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,577.8,52507,21981,23408,7118,41.86,0,False,1,1,True,unavailable,0.029260,0.042481,flat read boundary; >=5000 write tokens
+137,2803,2026-10-06T17:16:55+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,3.0,51892,21981,25195,4716,42.36,0,False,0,0,True,unavailable,0.031494,0.042468,flat read boundary; >=5000 write tokens
+138,2804,2026-10-06T17:17:03+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,52623,21981,25926,4716,41.77,0,False,0,0,True,unavailable,0.032408,0.043297,flat read boundary; >=5000 write tokens
+139,2805,2026-10-06T17:17:17+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.5,53902,21981,27205,4716,40.78,0,False,0,0,True,unavailable,0.034006,0.044905,flat read boundary; >=5000 write tokens
+140,2806,2026-10-06T17:17:29+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.4,49186,21981,22489,4716,44.69,0,False,0,0,True,unavailable,0.028111,0.040135,flat read boundary; >=5000 write tokens
+141,2807,2026-10-06T17:17:43+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.1,50303,21981,23606,4716,43.7,0,False,0,0,True,unavailable,0.029508,0.041772,flat read boundary; >=5000 write tokens
+142,2808,2026-10-06T17:18:04+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.6,52076,21981,25229,4866,42.21,0,False,0,0,True,unavailable,0.031536,0.047425,flat read boundary; >=5000 write tokens
+143,2809,2026-10-06T17:18:22+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.7,52898,21981,26051,4866,41.55,0,False,0,0,True,unavailable,0.032564,0.048348,flat read boundary; >=5000 write tokens
+144,2810,2026-10-06T17:18:45+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.9,60293,21981,27541,10771,36.46,0,False,0,0,True,unavailable,0.034426,0.057660,flat read boundary; >=5000 write tokens
+145,2811,2026-10-06T17:19:01+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.6,55969,21981,29122,4866,39.27,0,False,0,0,True,unavailable,0.036402,0.050397,flat read boundary; >=5000 write tokens
+146,2812,2026-10-06T17:19:12+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.6,56789,21981,29942,4866,38.71,0,False,0,0,True,unavailable,0.037428,0.048017,flat read boundary; >=5000 write tokens
+147,2813,2026-10-06T17:19:25+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.5,57044,21981,30197,4866,38.53,0,False,0,0,True,unavailable,0.037746,0.050410,flat read boundary; >=5000 write tokens
+148,2814,2026-10-06T17:19:42+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.7,53677,21981,24215,7481,40.95,0,False,0,0,True,unavailable,0.030269,0.046878,flat read boundary; >=5000 write tokens
+149,2815,2026-10-06T17:19:54+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.6,51611,21981,24731,4899,42.59,0,False,0,0,True,unavailable,0.030914,0.041806,flat read boundary; >=5000 write tokens
+150,2816,2026-10-06T17:20:00+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,52235,21981,25281,4973,42.08,0,False,0,0,True,unavailable,0.031601,0.040082,flat read boundary; >=5000 write tokens
+151,2817,2026-10-06T17:20:05+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.6,53142,21981,25675,5486,41.36,0,False,0,0,True,unavailable,0.032094,0.040893,flat read boundary; >=5000 write tokens
+152,2818,2026-10-06T17:20:13+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,2.9,53400,21981,25849,5570,41.16,0,False,0,0,True,unavailable,0.032311,0.041734,flat read boundary; >=5000 write tokens
+153,2819,2026-10-06T17:20:18+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,1.0,53604,21981,26023,5600,41.01,0,False,0,0,True,unavailable,0.032529,0.040897,flat read boundary; >=5000 write tokens
+154,2820,2026-10-06T17:21:25+02:00,Pre-publication quality gate,2354,gpt-6-luna,default,61.4,58720,0,53061,5659,0.0,21981,True,0,0,False,missing,0.006633,0.007406,model switch; opening fingerprint changed; read drop >=5000 tokens
+155,2821,2026-10-06T17:22:32+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,49.5,59317,21981,31677,5659,37.06,-21981,True,1,0,False,unavailable,0.039596,0.054758,model switch; opening fingerprint changed
+156,2822,2026-10-06T17:22:37+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,46568,21981,18855,5732,47.2,0,False,0,0,True,unavailable,0.023569,0.032739,flat read boundary; >=5000 write tokens
+157,2823,2026-10-06T17:23:11+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,5.6,57541,21981,28122,7438,38.2,0,False,0,0,True,unavailable,0.035152,0.055639,flat read boundary; >=5000 write tokens
+158,2824,2026-10-06T17:23:31+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,3.7,58752,21981,29333,7438,37.41,0,False,0,0,True,unavailable,0.036666,0.052232,flat read boundary; >=5000 write tokens
+159,2825,2026-10-06T17:24:19+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.7,49473,21981,21970,5522,44.43,0,False,0,0,True,unavailable,0.027462,0.054208,flat read boundary; >=5000 write tokens
+160,2826,2026-10-06T17:24:22+02:00,Pre-publication quality gate,2354,gpt-6-sol,flex,0.2,51196,21981,23764,5451,42.93,0,False,0,0,True,unavailable,0.029705,0.037704,flat read boundary; >=5000 write tokens
+161,2827,2026-10-06T17:24:31+02:00,Final Review & Publication,2355,gpt-6-luna,default,,16492,0,16489,3,0.0,0,False,0,0,False,missing,0.002061,0.002337,first call for agent
+162,3143,2026-10-13T16:53:25+02:00,Final Review & Publication,2355,gpt-6-luna,default,602928.0,39222,0,29744,9478,0.0,0,False,1,4,False,comparison_response_not_found,0.003718,0.004782,gap >=30 minutes; expiry plausible
+163,3144,2026-10-13T16:53:34+02:00,Final Review & Publication,2355,gpt-6-luna,default,0.2,32489,16489,13505,2495,50.75,-16489,False,0,0,False,unavailable,0.001688,0.002361,
+164,3145,2026-10-13T16:53:39+02:00,Data maintenance,2375,gpt-6-sol,flex,,31332,0,31329,3,0.0,0,False,0,0,False,missing,0.039161,0.040399,first call for agent
+165,3146,2026-10-13T16:53:43+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,32877,31329,743,805,95.29,-31329,False,0,0,False,cache_hit,0.000929,0.005622,
+166,3147,2026-10-13T16:53:47+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,33613,31329,1479,805,93.21,0,False,0,0,False,unavailable,0.001849,0.006347,
+167,3148,2026-10-13T16:53:50+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,33891,31329,1757,805,92.44,0,False,0,0,False,unavailable,0.002196,0.006779,
+168,3149,2026-10-13T16:53:55+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,34114,31329,1829,956,91.84,0,False,0,0,False,unavailable,0.002286,0.007895,
+169,3150,2026-10-13T17:07:21+02:00,Data maintenance,2375,gpt-6-sol,flex,796.2,34316,31329,2031,956,91.3,0,False,1,0,False,unavailable,0.002539,0.008453,
+170,3151,2026-10-13T17:07:29+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,34933,31329,2648,956,89.68,0,False,0,0,False,unavailable,0.003310,0.009539,
+171,3152,2026-10-13T17:07:47+02:00,Data maintenance,2375,gpt-6-sol,flex,3.1,35451,31329,3166,956,88.37,0,False,0,0,False,unavailable,0.003958,0.010116,
+172,3153,2026-10-13T17:08:00+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,36441,31329,4156,956,85.97,0,False,0,0,False,unavailable,0.005195,0.013359,
+173,3154,2026-10-15T13:16:52+02:00,Data maintenance,2375,gpt-6-sol,flex,158927.1,37427,0,36471,956,0.0,31329,True,1,0,False,missing,0.045589,0.047375,opening fingerprint changed; gap >=30 minutes; expiry plausible; read drop >=5000 tokens
+174,3155,2026-10-15T13:16:56+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,39241,31438,5179,2624,80.12,-31438,False,0,0,False,unavailable,0.006474,0.013347,
+175,3156,2026-10-15T13:17:46+02:00,Data maintenance,2375,gpt-6-sol,flex,46.5,39823,31438,5761,2624,78.94,0,False,1,0,True,unavailable,0.007201,0.013909,flat read boundary; >=5000 write tokens
+176,3157,2026-10-15T13:17:50+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,39969,31438,5901,2630,78.66,0,False,0,0,True,unavailable,0.007376,0.013895,flat read boundary; >=5000 write tokens
+177,3158,2026-10-15T13:17:53+02:00,Data maintenance,2375,gpt-6-sol,flex,0.1,40251,31438,6058,2755,78.1,0,False,0,0,True,unavailable,0.007572,0.014486,flat read boundary; >=5000 write tokens
+178,3159,2026-10-15T13:17:58+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,43885,31438,8044,4403,71.64,0,False,0,0,True,unavailable,0.010055,0.019517,flat read boundary; >=5000 write tokens
+179,3160,2026-10-15T13:18:03+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,44465,31438,8624,4403,70.7,0,False,0,0,True,unavailable,0.010780,0.020347,flat read boundary; >=5000 write tokens
+180,3161,2026-10-15T13:18:10+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,45227,31438,9386,4403,69.51,0,False,0,0,True,unavailable,0.011732,0.022019,flat read boundary; >=5000 write tokens
+181,3162,2026-10-15T13:18:14+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,45753,31438,9912,4403,68.71,0,False,0,0,True,unavailable,0.012390,0.021162,flat read boundary; >=5000 write tokens
+182,3163,2026-10-15T13:18:19+02:00,Data maintenance,2375,gpt-6-sol,flex,0.2,45927,31438,9042,5447,68.45,0,False,0,0,True,unavailable,0.011302,0.022018,flat read boundary; >=5000 write tokens
+183,3164,2026-10-15T13:18:27+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,46317,31438,9432,5447,67.88,0,False,0,0,True,unavailable,0.011790,0.024721,flat read boundary; >=5000 write tokens
+184,3165,2026-10-15T13:18:35+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,44899,31438,8014,5447,70.02,0,False,0,0,True,unavailable,0.010018,0.021488,flat read boundary; >=5000 write tokens
+185,3166,2026-10-15T13:18:46+02:00,Data maintenance,2375,gpt-6-sol,flex,0.3,45878,31438,8993,5447,68.53,0,False,0,0,True,unavailable,0.011241,0.027557,flat read boundary; >=5000 write tokens
+186,3167,2026-10-15T13:18:56+02:00,Data maintenance,2375,gpt-6-sol,flex,0.4,47388,31438,10450,5500,66.34,0,False,0,0,True,unavailable,0.013062,0.027556,flat read boundary; >=5000 write tokens
+187,3168,2026-10-15T13:19:02+02:00,Data maintenance,2375,gpt-6-sol,flex,1.3,55982,31438,11346,13198,56.16,0,False,0,0,True,unavailable,0.014182,0.032069,flat read boundary; >=5000 write tokens
+188,3169,2026-10-15T13:19:08+02:00,Data maintenance,2375,gpt-6-sol,flex,0.4,48563,31438,11625,5500,64.74,0,False,0,0,True,unavailable,0.014531,0.026210,flat read boundary; >=5000 write tokens
+189,3170,2026-10-15T13:19:11+02:00,Data maintenance,2375,gpt-6-sol,flex,0.7,50898,31438,12001,7459,61.77,0,False,0,0,True,unavailable,0.015001,0.026019,flat read boundary; >=5000 write tokens
+190,3171,2026-10-15T13:19:17+02:00,Data maintenance,2375,gpt-6-sol,flex,0.6,46564,31438,8292,6834,67.52,0,False,0,0,True,unavailable,0.010365,0.021753,flat read boundary; >=5000 write tokens

@@ -272,7 +272,7 @@ OPENAI_SDK_MAX_RETRIES = int(os.environ.get("OPENAI_SDK_MAX_RETRIES", "0"))
 # before each model request; 0 disables it. A response already in flight can put
 # the final total slightly above the ceiling, but no subsequent request is made.
 OPENAI_DATASET_COST_LIMIT_USD = Decimal(
-    os.environ.get("OPENAI_DATASET_COST_LIMIT_USD", "5.00")
+    os.environ.get("OPENAI_DATASET_COST_LIMIT_USD", "7.00")
 )
 OPENAI_TOOL_HISTORY_TURNS = int(os.environ.get("OPENAI_TOOL_HISTORY_TURNS", "8"))
 OPENAI_FULL_TOOL_HISTORY_TURNS = int(os.environ.get("OPENAI_FULL_TOOL_HISTORY_TURNS", "2"))
@@ -280,13 +280,16 @@ OPENAI_COMPACT_TOOL_CHARS = int(os.environ.get("OPENAI_COMPACT_TOOL_CHARS", "250
 # OPENAI_MODEL remains a backwards-compatible override for the standard tier.
 OPENAI_MODEL_STANDARD = os.environ.get(
     "OPENAI_MODEL_STANDARD",
-    os.environ.get("OPENAI_MODEL", "gpt-6-sol"),
+    os.environ.get("OPENAI_MODEL", "gpt-6.1-sol"),
 )
 OPENAI_MODEL_EFFICIENT = os.environ.get("OPENAI_MODEL_EFFICIENT", "gpt-6-luna")
-OPENAI_MODEL_CRITICAL = os.environ.get("OPENAI_MODEL_CRITICAL", "gpt-6-sol")
+OPENAI_MODEL_CRITICAL = os.environ.get("OPENAI_MODEL_CRITICAL", "gpt-6.1-sol")
 OPENAI_SOL_SERVICE_TIER = os.environ.get("OPENAI_SOL_SERVICE_TIER", "flex").lower()
 if OPENAI_SOL_SERVICE_TIER not in {"flex", "default"}:
     raise ImproperlyConfigured("OPENAI_SOL_SERVICE_TIER must be flex or default")
+OPENAI_LUNA_SERVICE_TIER = os.environ.get("OPENAI_LUNA_SERVICE_TIER", "flex").lower()
+if OPENAI_LUNA_SERVICE_TIER not in {"flex", "default"}:
+    raise ImproperlyConfigured("OPENAI_LUNA_SERVICE_TIER must be flex or default")
 OPENAI_MODEL = OPENAI_MODEL_STANDARD
 OPENAI_REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "high")
 OPENAI_SIMPLE_REASONING_EFFORT = os.environ.get("OPENAI_SIMPLE_REASONING_EFFORT", "low")

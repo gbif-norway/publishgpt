@@ -25,6 +25,13 @@ MODEL_PRICING = {
         "output": Decimal("0.50"),
         "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
     },
+    "gpt-6.1-sol": {
+        "input": Decimal("2.00"),
+        "cached_input": Decimal("0.10"),
+        "cache_write": Decimal("2.50"),
+        "output": Decimal("10.00"),
+        "source": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+    },
     "gpt-6-sol": {
         "input": Decimal("2.00"),
         "cached_input": Decimal("0.20"),

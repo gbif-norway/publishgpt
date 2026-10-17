@@ -67,7 +67,7 @@ Local URLs:
 
 ChatIPT routes bounded work (including the suitability assessment, at `xhigh`
 effort) to `gpt-6-luna`, general agentic work to
-`gpt-6-sol`, and the independent pre-publication quality gate to `gpt-6-sol`
+`gpt-6.1-sol`, and the independent pre-publication quality gate to `gpt-6.1-sol`
 at `xhigh` reasoning effort. The tier defaults can be overridden with
 `OPENAI_MODEL_EFFICIENT`, `OPENAI_MODEL_STANDARD`, and
 `OPENAI_MODEL_CRITICAL` (for example `gpt-6-astra`), and the quality gate's
@@ -86,18 +86,22 @@ The report groups calls by model, service tier, and workflow task and includes
 completion proxies, retries, latency, token/cache usage, and estimated cost.
 
 For GPT-5.6 and later, each agent keeps its opening prompt fixed and places an
-explicit cache breakpoint after it. A second breakpoint follows the latest
-eligible conversation item so unchanged history can also be reused. The
-changing per-turn workflow state follows that breakpoint. Each usage record
+explicit cache breakpoint after it. Up to three more breakpoints preserve the
+previous and current compacted history boundaries and the latest eligible item.
+This keeps an earlier cache endpoint available when recent tool output is
+compacted. The changing per-turn workflow state follows all breakpoints. Each usage record
 includes a hash of the opening cache prefix and
 OpenAI's comparison diagnostics against the previous call with that prefix.
 Compare `cached_input_tokens`, `cache_write_input_tokens`, and
 `cache_diagnostics` across calls when evaluating a cost change.
 
-GPT-6 Sol calls use Flex processing by default (`OPENAI_SOL_SERVICE_TIER=flex`);
-GPT-6 Luna stays on Standard. Flex costs are included in the per-dataset ceiling.
+GPT-6.1 Sol and GPT-6 Luna calls use Flex processing by default
+(`OPENAI_SOL_SERVICE_TIER=flex` and `OPENAI_LUNA_SERVICE_TIER=flex`). Flex costs are included in the per-dataset ceiling.
+The default cumulative ceiling is $7 per dataset, including later revisions;
+set `OPENAI_DATASET_COST_LIMIT_USD` to override it.
 Capacity-only Flex 429s get one retry before a Standard fallback. Set
-`OPENAI_SOL_SERVICE_TIER=default` to disable Flex. Agent turns are queued in the
+`OPENAI_SOL_SERVICE_TIER=default` or `OPENAI_LUNA_SERVICE_TIER=default` to disable
+Flex for the corresponding model family. Agent turns are queued in the
 database and run by `run_agent_turns --watch` from the backend container, so
 longer Flex calls do not hold a browser request open. Once a dataset upload or
 user reply has been saved, the worker continues model and tool turns, advances
@@ -109,10 +113,7 @@ Flex timeout is 900 seconds; a crashed worker's turn is recoverable after the
 3600-second lease. Three workers run per backend container by default; set
 `AGENT_TURN_WORKER_COUNT` to adjust concurrency or `RUN_AGENT_TURN_WORKER=0`
 to disable them. One worker also reconciles recently active workflows left
-without a queued job by the earlier browser-driven implementation. OpenAI
-currently offers EU data residency for GPT-6 Sol only
-on Standard processing; use the Standard override if that applies to this
-deployment.
+without a queued job by the earlier browser-driven implementation.
 
 ## DwC-DP schema snapshot
 

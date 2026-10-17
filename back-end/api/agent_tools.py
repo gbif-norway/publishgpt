@@ -16,7 +16,6 @@ from api.helpers.publish import (
     EmlExportError,
     clean_person_name,
     clean_text,
-    is_placeholder_email,
     normalize_orcid,
     inspect_dwca_archive,
     normalize_temporal_scope,
@@ -2030,26 +2029,6 @@ class SetEML(OpenAIBaseModel):
                 "Error: creators_unknown=true cannot be combined with a users list. "
                 "Nothing was saved."
             )
-        people_by_role = (
-            ("users", self.users),
-            ("contacts", self.contacts),
-            ("metadata_providers", self.metadata_providers),
-        )
-        for role, people in people_by_role:
-            for person in people or []:
-                email = str(person.email or "").strip()
-                if is_placeholder_email(email):
-                    if role == "users":
-                        guidance = (
-                            "Provide the creator's real email, or leave them out of creators and record them "
-                            "as a contact/metadata provider without email (or use creators_unknown)."
-                        )
-                    else:
-                        guidance = "Omit the email or leave it blank instead."
-                    return (
-                        f"Error: {role} contains placeholder email '{email}'. "
-                        f"{guidance} Nothing was saved."
-                    )
         try:
             from api.models import Agent
             agent = Agent.objects.get(id=self.agent_id)

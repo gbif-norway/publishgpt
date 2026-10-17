@@ -1297,10 +1297,10 @@ class Task(models.Model):  # See tasks.yaml for the only objects this model is p
     @property
     def model_name(self):
         if self.name == self.PREPUBLICATION_QUALITY_TASK:
-            return getattr(settings, "OPENAI_MODEL_CRITICAL", "gpt-6-sol")
+            return getattr(settings, "OPENAI_MODEL_CRITICAL", "gpt-6.1-sol")
         if self.name in self.EFFICIENT_MODEL_TASKS:
             return getattr(settings, "OPENAI_MODEL_EFFICIENT", "gpt-6-luna")
-        return getattr(settings, "OPENAI_MODEL_STANDARD", "gpt-6-sol")
+        return getattr(settings, "OPENAI_MODEL_STANDARD", "gpt-6.1-sol")
 
     @property
     def reasoning_effort(self):
@@ -1983,7 +1983,7 @@ class Agent(models.Model):
     def dataset_cost_limit_usd(self):
         try:
             return max(
-                Decimal(str(getattr(settings, 'OPENAI_DATASET_COST_LIMIT_USD', '5.00'))),
+                Decimal(str(getattr(settings, 'OPENAI_DATASET_COST_LIMIT_USD', '7.00'))),
                 Decimal('0'),
             )
         except (InvalidOperation, TypeError, ValueError):
@@ -2142,6 +2142,33 @@ class Agent(models.Model):
                         + content[-half:]
                     )
             bounded.append(SimpleNamespace(openai_obj=compact_obj))
+        # Cache both the previous and the current compacted frontier. The former
+        # was written on the preceding request and still has identical content;
+        # the latter becomes next turn's lookup target. The newest full result
+        # alone cannot serve this purpose: older full results compact before it.
+        frontier = tool_turn_count - full_tool_turn_limit - 1
+        checkpoint_call_ids = []
+        for index in (frontier - 1, frontier):
+            if index < 0 or index >= len(tool_assistant_messages):
+                continue
+            turn = tool_assistant_messages[index]
+            if turn.id not in kept_tool_messages:
+                continue
+            checkpoint_call_ids.append({
+                str(call.get('id'))
+                for call in (turn.openai_obj or {}).get('tool_calls') or []
+                if call.get('id')
+            })
+        checkpoint_indices = set()
+        for call_ids in checkpoint_call_ids:
+            for index in range(len(bounded) - 1, -1, -1):
+                obj = bounded[index].openai_obj or {}
+                if obj.get('role') == Message.Role.TOOL and str(obj.get('tool_call_id')) in call_ids:
+                    checkpoint_indices.add(index)
+                    break
+        for index in checkpoint_indices:
+            bounded[index] = copy.copy(bounded[index])
+            bounded[index].cache_checkpoint = True
         return bounded
 
     @staticmethod

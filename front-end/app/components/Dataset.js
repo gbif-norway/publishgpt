@@ -632,7 +632,7 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
                 <i className={`bi ${statusMeta.icon} me-1`} aria-hidden="true"></i>
                 {statusMeta.label}
               </span>
-              {(currentDataset.package_ready || currentDataset.published_at) && (
+              {(currentDataset.dwc_dp_url || currentDataset.dwca_url) && (
                 <a className="btn btn-warning btn-sm" href="#publication-packages">
                   <i className="bi bi-box-arrow-down me-1" aria-hidden="true"></i>
                   Download packages

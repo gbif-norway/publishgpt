@@ -549,7 +549,7 @@ def run_chat_turn(conversion_id, job_id, claim):
         session = Session(conversion_id, job_id, claim, conversion.plan.get('id', ''), [message.id for message in batch],
                           conversion.status == 'review')
         dataset_id = conversion.dataset_id
-    model = review.setting('OPENAI_CONVERSION_CHAT_MODEL', None) or review.setting('OPENAI_MODEL_STANDARD', 'gpt-6-sol')
+    model = review.setting('OPENAI_CONVERSION_CHAT_MODEL', None) or review.setting('OPENAI_MODEL_STANDARD', 'gpt-6.1-sol')
     effort = review.setting('OPENAI_CONVERSION_CHAT_EFFORT', 'medium')
     session.model = model
     tools = [tool for tool in TOOLS if session.can_decide or tool['name'] != 'set_decision']
@@ -557,7 +557,7 @@ def run_chat_turn(conversion_id, job_id, claim):
     for _ in range(MAX_REQUESTS):
         args = {'model': model, 'store': False, 'reasoning': {'effort': effort}, 'max_output_tokens': OUTPUT_TOKENS,
                 'include': ['reasoning.encrypted_content'], 'parallel_tool_calls': False, 'tools': tools,
-                'service_tier': review.service_tier(model, review.setting('OPENAI_CONVERSION_CHAT_SERVICE_TIER', 'default')),
+                'service_tier': review.service_tier(model, review.setting('OPENAI_CONVERSION_CHAT_SERVICE_TIER', review.setting('OPENAI_SOL_SERVICE_TIER', 'flex'))),
                 'input': input_items,
                 'text': {'format': {'type': 'json_schema', 'name': 'conversion_chat_reply', 'strict': True, 'schema': FINAL_SCHEMA}}}
         if tool_calls >= MAX_TOOL_CALLS:

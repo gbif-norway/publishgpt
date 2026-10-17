@@ -80,7 +80,7 @@ class ChatTests(ConversionTestCase):
             self.assertFalse(payload['store'])
             self.assertEqual(payload['include'], ['reasoning.encrypted_content'])
             self.assertFalse(payload['parallel_tool_calls'])
-            self.assertEqual(payload['service_tier'], 'default')
+            self.assertEqual(payload['service_tier'], 'flex')
             self.assertTrue(all(tool['strict'] for tool in payload['tools']))
             self.assertTrue(payload['text']['format']['strict'])
         reply_message = DwcConversionMessage.objects.filter(role='assistant').latest('id')

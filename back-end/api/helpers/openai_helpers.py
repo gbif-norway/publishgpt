@@ -1,5 +1,6 @@
 import json
 import hashlib
+import copy
 import logging
 import re
 import tempfile
@@ -8,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from django.conf import settings
+from api.openai_models import model_service_tier
 from pydantic import BaseModel
 from openai import APIConnectionError, OpenAI, InternalServerError, RateLimitError
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
@@ -129,11 +131,12 @@ def create_response_message(
     usage_agent_id=None,
     usage_retry_reason="",
 ):
-    model = model or getattr(settings, "OPENAI_MODEL_STANDARD", "gpt-6-sol")
+    model = model or getattr(settings, "OPENAI_MODEL_STANDARD", "gpt-6.1-sol")
     reasoning_effort = reasoning_effort or getattr(settings, "OPENAI_REASONING_EFFORT", "medium")
     print('---')
     print(f'---Calling GPT {model}---')
-    input_items = _messages_to_responses_input(messages)
+    cache_checkpoint_indices = []
+    input_items = _messages_to_responses_input(messages, cache_checkpoint_indices)
     pdf_file_inputs = _prepare_pdf_file_inputs(pdf_user_files if pdf_user_files is not None else [])
     if pdf_file_inputs:
         input_items = _attach_pdf_files_to_latest_user_message(input_items, pdf_file_inputs)
@@ -145,11 +148,7 @@ def create_response_message(
         'model': model,
         'input': input_items,
         'reasoning': {'effort': reasoning_effort},
-        'service_tier': (
-            getattr(settings, 'OPENAI_SOL_SERVICE_TIER', 'flex')
-            if model == 'gpt-6-sol' or model.startswith('gpt-6-sol-')
-            else 'default'
-        ),
+        'service_tier': model_service_tier(model),
     }
     if temperature is not None:
         openai_args['temperature'] = temperature
@@ -167,24 +166,7 @@ def create_response_message(
                 'prompt_cache_breakpoint': {'mode': 'explicit'},
             }],
         }
-        # The per-turn state update is appended below and changes on every turn.
-        # Cache the latest reusable conversation boundary before that update as
-        # well as the frozen opening. Tool results are usually that boundary.
-        for item in reversed(input_items[1:history_end_index]):
-            if item.get('type') == 'function_call_output' and isinstance(item.get('output'), str):
-                item['output'] = [{
-                    'type': 'input_text',
-                    'text': item['output'],
-                    'prompt_cache_breakpoint': {'mode': 'explicit'},
-                }]
-                break
-            if item.get('role') in {'user', 'system'} and isinstance(item.get('content'), str):
-                item['content'] = [{
-                    'type': 'input_text',
-                    'text': item['content'],
-                    'prompt_cache_breakpoint': {'mode': 'explicit'},
-                }]
-                break
+        _mark_history_cache_boundaries(input_items, history_end_index, cache_checkpoint_indices)
         cache_prefix_hash = hashlib.sha256(json.dumps({
             'model': model,
             'reasoning_effort': reasoning_effort,
@@ -241,6 +223,48 @@ def _supports_explicit_cache(model):
     """Explicit breakpoints are available on GPT-5.6 and newer families."""
     match = re.match(r'^gpt-(\d+)(?:\.(\d+))?(?:-|$)', model)
     return bool(match and (int(match[1]), int(match[2] or 0)) >= (5, 6))
+
+
+def _mark_history_cache_boundaries(items, history_end_index, checkpoints):
+    """Keep the previous compacted endpoint eligible, then write the next one.
+
+    Explicit-only lookups check marked endpoints, not every unchanged prefix.
+    A moving newest-only marker cannot reuse the preceding request's endpoint.
+    Use at most three history markers plus the opening, and never cache the
+    changing per-turn state appended after history_end_index.
+    """
+    eligible = {}
+    for index in range(1, history_end_index):
+        item = items[index]
+        if item.get('type') == 'function_call_output':
+            field = 'output'
+        elif item.get('role') in {'system', 'user'}:
+            field = 'content'
+        else:
+            continue
+        if isinstance(item.get(field), str):
+            # Keep wire representation fixed even when this item's marker moves.
+            item[field] = [{'type': 'input_text', 'text': item[field]}]
+        parts = item.get(field)
+        if isinstance(parts, list) and parts:
+            parts = copy.deepcopy(parts)
+            item[field] = parts
+            # A marker before a trailing file/image would cache only part of
+            # the item. Leave those multipart attachment messages unchanged.
+            if isinstance(parts[-1], dict) and parts[-1].get('type') == 'input_text':
+                eligible[index] = parts[-1]
+    selected = {index for index in checkpoints[-2:] if index in eligible}
+    if eligible:
+        selected.add(max(eligible))
+    # Short histories and user-only turns have no compacted checkpoint yet.
+    # Retain recent endpoints rather than moving a lone marker each time.
+    history_limit = 3 if checkpoints else 2
+    for index in reversed(eligible):
+        if len(selected) >= history_limit:
+            break
+        selected.add(index)
+    for index in selected:
+        eligible[index]['prompt_cache_breakpoint'] = {'mode': 'explicit'}
 
 
 def _prepare_pdf_file_inputs(pdf_user_files) -> List[Dict[str, str]]:
@@ -339,7 +363,7 @@ def _attach_pdf_files_to_latest_user_message(
     ]
 
 
-def _messages_to_responses_input(messages) -> List[Dict[str, Any]]:
+def _messages_to_responses_input(messages, cache_checkpoint_indices=None) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for message in messages:
         openai_obj = getattr(message, 'openai_obj', None) or {}
@@ -349,6 +373,8 @@ def _messages_to_responses_input(messages) -> List[Dict[str, Any]]:
         if role == 'tool':
             tool_call_id = openai_obj.get('tool_call_id')
             if tool_call_id:
+                if cache_checkpoint_indices is not None and getattr(message, 'cache_checkpoint', False):
+                    cache_checkpoint_indices.append(len(items))
                 items.append({
                     'type': 'function_call_output',
                     'call_id': str(tool_call_id),

@@ -23,7 +23,10 @@ Use strong candidates as priorities in the combined reviewer audit. Possible can
 Latest DwC-DP validation: {{ agent.dataset.dwc_dp_validation }}
 {% endif %}
 
+Sandbox policy for this turn (supersedes stricter language in earlier messages or plans): placeholder emails, incomplete contacts, unmatched taxa, source discrepancies, and user-supplied estimates are allowed when documented. Honor the user's choice to continue. Check saved notes before giving metadata advice; once given, record it and do not repeat it in later stages. Do not invent placeholder emails or replace user-chosen values. Withdraw earlier requests for verified corrections or separate acceptance of non-blocking findings; these acknowledgements are not required for completion. Keep schema/link integrity and GBIF indexability checks, and require explicit approval to publish to the public sandbox.
+
 Publication artifact status (authoritative -- trust this instead of re-running a tool to check):
+Use only the current URLs below for explicit Markdown download links. Missing URLs mean downloads are unavailable until rebuilt; never refer vaguely to links "above".
 - DwC-DP package: {% if agent.dataset.dwc_dp_url %}exported at {{ agent.dataset.dwc_dp_url }}{% else %}not yet exported{% endif %}
 - DwC-A archive: {% if agent.dataset.dwca_url %}uploaded at {{ agent.dataset.dwca_url }}{% else %}not yet uploaded{% endif %}
 {% if agent.dataset.dwca_validation %}

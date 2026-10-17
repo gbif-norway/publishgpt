@@ -408,19 +408,20 @@ export function PublicationPackageCards({ dataset, tables }) {
   const schema = standard.schema || dataset?.dwc_dp_validation?.schema || {}
   const hasFinalPackages = Boolean(dataset?.package_ready || dataset?.published_at)
 
-  if (!hasFinalPackages || (!dataset?.dwc_dp_url && !dataset?.dwca_url)) {
+  if (!dataset?.dwc_dp_url && !dataset?.dwca_url) {
     return null
   }
 
   return (
     <section className="publication-packages mt-3" id="publication-packages" aria-labelledby="publication-packages-title">
-      <h3 className="h6 mb-3" id="publication-packages-title">Publication packages</h3>
+      <h3 className="h6 mb-3" id="publication-packages-title">{hasFinalPackages ? 'Publication packages' : 'Review downloads'}</h3>
+      {!hasFinalPackages && <p className="small text-muted">You can download the current packages while review is in progress. Later edits may require new downloads.</p>}
       <div className="row g-3">
         <div className="col-12 col-xl-6">
-          <div className="publication-output-card h-100 border border-success rounded p-3">
+          <div className={`publication-output-card h-100 border ${hasFinalPackages ? 'border-success' : ''} rounded p-3`}>
             <h4 className="h6 mb-1">Darwin Core Data Package</h4>
             <p className="small mb-2">
-              Complete linked dataset · {pluralize(resources.length, 'linked table')} · Validated
+              Linked dataset · {pluralize(resources.length, 'linked table')} · {hasFinalPackages ? 'Validated' : 'Review in progress'}
             </p>
             <p className="small text-muted mb-3">
               DwC-DP profile {profileVersion(standard.profile, schema.version)} ·{' '}
@@ -430,7 +431,7 @@ export function PublicationPackageCards({ dataset, tables }) {
                 </a>
               ) : `schema snapshot ${schema.version || 'Unknown'}${schema.issued ? ` (${schema.issued})` : ''}`}
             </p>
-            {dataset.dwc_dp_url && (
+            {dataset.dwc_dp_url ? (
               <div className="d-flex flex-column align-items-start gap-2">
                 <a href={dataset.dwc_dp_url} className="btn btn-warning btn-sm">
                   <i className="bi bi-download me-1" aria-hidden="true"></i>
@@ -445,19 +446,19 @@ export function PublicationPackageCards({ dataset, tables }) {
                   Explore package
                 </button>
               </div>
-            )}
+            ) : <p className="small text-muted mb-0">Not generated yet.</p>}
           </div>
         </div>
         <div className="col-12 col-xl-6">
           <div className="publication-output-card h-100 border rounded p-3">
             <h4 className="h6 mb-1">Darwin Core Archive</h4>
-            <p className="small mb-3">Standards-compliant projection for current GBIF publication workflows</p>
-            {dataset.dwca_url && (
+            <p className="small mb-3">GBIF-compatible version for sandbox testing</p>
+            {dataset.dwca_url ? (
               <a href={dataset.dwca_url} className="btn btn-outline-secondary btn-sm">
                 <i className="bi bi-download me-1" aria-hidden="true"></i>
                 Download DwC-A
               </a>
-            )}
+            ) : <p className="small text-muted mb-0">Not generated yet.</p>}
             <p className="small text-muted mb-0 mt-3">
               The DwC-A preserves as much of the full package as its core-and-extension structure
               can represent. The DwC-DP remains the complete authoritative package.{' '}

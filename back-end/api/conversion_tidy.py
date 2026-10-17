@@ -73,7 +73,7 @@ SYSTEM_PROMPT = (
 
 
 def model_settings():
-    model = getattr(settings, 'OPENAI_CONVERSION_TIDY_MODEL', None) or getattr(settings, 'OPENAI_MODEL_STANDARD', 'gpt-6-sol')
+    model = getattr(settings, 'OPENAI_CONVERSION_TIDY_MODEL', None) or getattr(settings, 'OPENAI_MODEL_STANDARD', 'gpt-6.1-sol')
     effort = getattr(settings, 'OPENAI_CONVERSION_TIDY_EFFORT', 'medium')
     return model, effort
 

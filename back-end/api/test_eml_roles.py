@@ -116,39 +116,20 @@ class EmlSourceRoleTests(TestCase):
             self.assertEqual(person.findtext("individualName/surName"), "Field")
             self.assertIsNone(person.find("electronicMailAddress"))
 
-    def test_placeholder_email_is_rejected_for_all_roles(self):
-        for role in ("users", "contacts", "metadata_providers"):
+    def test_placeholder_email_is_saved_and_exported_for_all_roles(self):
+        for role, tag in (("users", "creator"), ("contacts", "contact"),
+                          ("metadata_providers", "metadataProvider")):
             with self.subTest(role=role):
-                result = SetEML(
+                SetEML(
                     agent_id=self.agent.id,
                     **{role: [{
-                        "first_name": "Unknown", "last_name": "Person",
+                        "first_name": "Taylor", "last_name": "Field",
                         "email": "unknown@example.org",
                     }]},
                 ).run()
-
-                self.assertIn("placeholder email", result)
-                if role == "users":
-                    self.assertIn("Provide the creator's real email", result)
-                    self.assertIn("creators_unknown", result)
-                else:
-                    self.assertIn("Omit the email", result)
-                self.dataset.refresh_from_db()
-                self.assertNotIn(role, self.dataset.eml or {})
-
-    def test_saved_placeholder_contact_email_is_omitted_from_valid_eml(self):
-        self.dataset.eml = {
-            "contacts": [{
-                "first_name": "Taylor", "last_name": "Field",
-                "email": "unknown@example.org",
-            }],
-        }
-        self.dataset.save(update_fields=["eml"])
-
-        dataset = self.render()
-
-        self.assertEqual(len(dataset.findall("contact")), 1)
-        self.assertIsNone(dataset.find("contact/electronicMailAddress"))
+                dataset = self.render()
+                self.assertEqual(self.dataset.eml[role][0]["email"], "unknown@example.org")
+                self.assertEqual(dataset.findtext(f"{tag}/electronicMailAddress"), "unknown@example.org")
 
     def test_saved_contact_email_fills_first_source_contact_without_email(self):
         SetEML(

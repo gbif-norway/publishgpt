@@ -777,7 +777,6 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
             if (
                 email_value
                 and not is_synthetic_orcid_email(email_value)
-                and not is_placeholder_email(email_value)
             ):
                 set_text(get_or_create(parent_node, 'electronicMailAddress'), email_value)
         if orcid_value:

@@ -2454,7 +2454,7 @@ class ResponsesAdapterCompatibilityTests(SimpleTestCase):
         self.assertNotIn("temperature", request)
 
     @patch("api.helpers.openai_helpers.query_responses_api")
-    def test_explicit_cache_writes_only_the_frozen_opening(self, query_mock):
+    def test_explicit_cache_keeps_dynamic_state_outside_breakpoints(self, query_mock):
         query_mock.return_value = SimpleNamespace(id="resp_1", status="completed", output=[])
         messages = [
             self._Message({"role": "system", "content": "Frozen instructions"}),
@@ -2492,14 +2492,14 @@ class ResponsesAdapterCompatibilityTests(SimpleTestCase):
         self.assertEqual(request["input"][0]["content"], "Instructions")
 
     @patch("api.helpers.openai_helpers.query_responses_api")
-    def test_sol_uses_flex_and_luna_stays_on_standard(self, query_mock):
+    def test_sol_and_luna_use_flex(self, query_mock):
         query_mock.return_value = SimpleNamespace(id="resp_1", status="completed", output=[])
 
         create_response_message([], [], model="gpt-6-sol")
         create_response_message([], [], model="gpt-6-luna")
 
         self.assertEqual(query_mock.call_args_list[0].args[0]["service_tier"], "flex")
-        self.assertEqual(query_mock.call_args_list[1].args[0]["service_tier"], "default")
+        self.assertEqual(query_mock.call_args_list[1].args[0]["service_tier"], "flex")
 
     @patch("api.helpers.openai_helpers.query_responses_api")
     @override_settings(OPENAI_SOL_SERVICE_TIER="default")
@@ -2858,6 +2858,7 @@ class OpenAIUsageAccountingTests(TestCase):
         expected_costs = {
             "gpt-6-luna": Decimal("0.003300"),
             "gpt-6-sol": Decimal("0.066000"),
+            "gpt-6.1-sol": Decimal("0.058000"),
             "gpt-6-astra": Decimal("0.330000"),
         }
 
@@ -5174,7 +5175,7 @@ class DwcDpAssertionRoutingPromptTests(SimpleTestCase):
         self.assertIn("this exact current archive is indexable", text)
         self.assertIn("coordinate signs/hemispheres", text)
         self.assertIn("placeholders such as `unknown@example.org`", text)
-        self.assertIn("Do not equate \"indexable\" with publication-ready", text)
+        self.assertIn("ready for sandbox testing", text)
         self.assertIn("no unresolved blockers", text)
         self.assertIn("start a new validation for the replacement archive", text)
 

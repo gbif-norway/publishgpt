@@ -225,7 +225,7 @@
   fields:
     name: Pre-publication quality gate
     text: |-
-      QUALITY_GATE_TASK: Independently assess the completed publication artifacts. This is a blocking review between package preparation and user approval. Do not publish in this task.
+      QUALITY_GATE_TASK: Independently assess the completed publication artifacts. This review checks technical usability for the public GBIF sandbox before user approval. It is not a production publication certification. Do not publish in this task.
 
       Package preparation already built, validated, and exported the current DwC-DP and DwC-A artifacts. Trust the publication artifact status in your state update for what already succeeded instead of re-running ValidateDwcDp, ExportDwcDp, or UploadDwCA speculatively to double-check it. Only rebuild and re-export the specific package(s) that a finding from your audit actually invalidates.
       Your context starts with a QUALITY REPORT that ChatIPT built for the current packages: DwC-DP validation, source coverage reconciliation, the exported archive and EML inspection, and the finished GBIF validator result with sample records per issue. Start from it and do not re-run those checks for unchanged packages. Use targeted Python only for evidence the report and the source manifest cannot establish, and batch related read-only checks in one call.
@@ -236,22 +236,22 @@
          * Reconcile every populated column in the original COMPLETE COLUMN MANIFEST with the authoritative package and projection. Confirm source rows, populated-value counts, joins, identifiers, core/extension links, occurrence status/count consistency, and every deliberate omission or unresolved column.
          * For every deduplicated or aggregated entity, verify that the source establishes identity. Identical payloads, a shared locality, or identical missing values are not sufficient evidence that records represent the same event or entity.
          * For every non-trivial source-to-target mapping, compare the source header and representative values with the authoritative definition of the destination term. Exact value preservation does not make a semantically incorrect mapping valid. Keep table descriptions consistent with the final transformed content.
-         * Inspect the actual exported archive, not only Dataset.eml or temporary projection tables. Confirm that title, description, creators, contact details, licence, temporal/geographic/taxonomic scope, and methodology are complete as the evidence permits and survive into EML. Correct missing or unsupported values from the final data and saved context; use the ORCID profile for creators/contact when no better source exists. If the user did not create the data and its creators are unknown, keep or set SetEML creators_unknown=true; never name the account holder as creator to fill the gap.
+         * Inspect the actual exported archive, not only Dataset.eml or temporary projection tables. Confirm that title, description, creators, contact details, licence, temporal/geographic/taxonomic scope, and methodology are complete as the evidence permits and survive into EML. Correct transformation mistakes from the final data and saved context. Preserve values the user explicitly chose, including placeholders and estimates. Use the ORCID profile only to fill unset creators/contact details when no better source exists. If the user did not create the data and its creators are unknown, keep or set SetEML creators_unknown=true; never name the account holder as creator to fill the gap.
          * Keep the default CC BY 4.0 licence unless the user explicitly selects another supported licence. Do not clear or change it solely because the source is third-party or its owner is different from the showcase compiler.
-         * Check for invented precision or unsupported inference. In particular, month-only and year-only dates must remain at that precision; coordinate signs/hemispheres, datum, country, and locality must be mutually consistent; placeholders such as `unknown@example.org` must not appear as real metadata.
+         * Check for invented precision or unsupported inference. In particular, month-only and year-only dates must remain at that precision; coordinate signs/hemispheres, datum, country, and locality must be mutually consistent; placeholders such as `unknown@example.org` are allowed for sandbox testing; record that they are placeholders, without requiring a real address. User-supplied estimates and guesses are allowed when labelled as such; do not invent facts yourself.
          * Review taxon matches and spelling, coordinate interpretation, controlled vocabularies, record counts, uniqueness, and relationship resolution.
 
       2. **Resolve findings before completion:**
-         * Treat broken links, non-indexable archives, invalid or probably mislocated coordinates, likely spelling errors causing unmatched taxa, invented date precision, missing required contacts, metadata loss, and unexplained material omissions as blocking.
-         * Ask the user one consolidated, plain-language set of questions when source knowledge or approval is required. Do not ask separately about symptoms that share one cause.
-         * A taxon genuinely absent from the GBIF backbone or another unavoidable validator issue may be accepted only when it is supported by source evidence and explicitly acknowledged by the user. Record the reason in structure_notes.
+         * Block on package/schema errors, broken record links, and non-indexable archives. Correct transformation mistakes and unintended metadata or source-data loss. Missing contact emails, placeholders, unmatched taxa, uncertain coordinates, source discrepancies, and documented omissions are non-blocking sandbox limitations. Preserve uncertainty rather than demand verified corrections.
+         * Ask one short, consolidated question only when a meaningful choice is needed to continue. Offer to keep the current values with uncertainty documented. If the user wants to experiment, makes an estimate, or says to proceed, honor that choice without asking again.
+         * Document unmatched taxa and other non-blocking validator findings in structure_notes and continue without requiring separate user acknowledgement for each issue.
          * Apply confirmed corrections to the authoritative data or metadata as appropriate. Rebuild both affected packages, then rerun the relevant internal validation.
 
       3. **Run the final external check:**
          * If you rebuilt the archive, call ValidateDwCA once for the replacement, on its own in that turn. ChatIPT waits for GBIF and returns the finished result to you; do not poll. If nothing was rebuilt, the QUALITY REPORT's validation of the current archive already counts.
          * The task cannot complete unless GBIF reports that this exact current archive is indexable.
-         * Interpret every validator issue. Do not equate "indexable" with publication-ready. If validation requires another correction, rebuild the affected packages and start a new validation for the replacement archive.
-         * Record a concise readiness report in structure_notes: checks performed, issues found, fixes made, remaining non-blocking limitations, explicit user acknowledgements, and the final GBIF validator key/status. End with `SOURCE COVERAGE: COMPLETE` as the final nonblank line only when every current source column has a disposition.
+         * Interpret every validator issue. Describe a technically usable result as ready for sandbox testing, without claiming production publication readiness. If validation requires another correction, rebuild the affected packages and start a new validation for the replacement archive.
+         * Record a concise readiness report in structure_notes: checks performed, issues found, fixes made, remaining non-blocking limitations, user choices or overrides if any, and the final GBIF validator key/status. End with `SOURCE COVERAGE: COMPLETE` as the final nonblank line only when every current source column has a disposition.
 
       Complete this task only when there are no unresolved blockers, the current archive has a finished indexable GBIF validation, metadata has been checked, and temporary DwC-A projection tables can be removed.
 
@@ -259,11 +259,11 @@
   fields:
     name: Final Review & Publication
     text: |-
-      FINAL_PUBLICATION_TASK: The packages have passed the quality gate. Present the result and publish it after explicit user approval.
+      FINAL_PUBLICATION_TASK: The packages have passed the quality gate for sandbox testing. Present the result in a relaxed, helpful tone and publish it after explicit user approval. Do not reopen a production-readiness audit.
 
-      1. Briefly show the dataset title, description, package links, material omissions, and non-blocking limitations.
+      1. Briefly show the dataset title, description, explicit Markdown links to current package URLs, and a short summary of material omissions and non-blocking limitations. Only link packages whose URLs exist in the current workflow state.
       2. Tell the user the metadata is ChatIPT's best-supported draft, including geographic scope and creators seeded from ORCID where applicable (or recorded as unknown when the user did not create the data). The default licence is CC BY 4.0 (`http://creativecommons.org/licenses/by/4.0/legalcode`). Changes can be made in the Dataset Metadata form opened by the blue button beside the title.
-      3. Explain that publication is public in the GBIF sandbox, not production gbif.org; production publication requires sending the sandbox dataset URL to helpdesk@gbif.no. Ask for publication approval.
+      3. Explain that publication is public in the GBIF sandbox, not production gbif.org; production publication requires sending the sandbox dataset URL to helpdesk@gbif.no. Check structure_notes: only if this advice has not already been given, suggest that a real contact email and fuller metadata will save time if the user later wants production publication, then record that the advice was given; placeholders, guesses, and incomplete metadata are fine for sandbox experimentation. Let the user keep them without further justification. Ask for publication approval.
       4. After explicit approval, call PublishToGBIF and report the GBIF sandbox and DwC-DP URLs, or the publication error.
 
       If the user requests a change, record it in structure_notes and complete this task so Data maintenance can apply it, rebuild the packages, and repeat validation before approval.
@@ -278,7 +278,7 @@
       1. Run ValidateDwcDp and resolve every error.
       2. Call ExportDwcDp to rebuild the authoritative package.
       3. Recreate the temporary DwC-A core and extension tables, then call UploadDwCA.
-      4. Repeat the source-to-publication checks from the pre-publication quality gate, call ValidateDwCA for the rebuilt archive, and resolve every blocker.
+      4. Repeat the source-to-publication checks from the pre-publication quality gate, call ValidateDwCA for the rebuilt archive, and resolve technical blockers. Apply the same sandbox policy: document placeholders, user estimates, unmatched taxa, and other non-blocking limitations without reopening settled choices.
       5. Update structure_notes with a concise changelog and readiness report, ending with `SOURCE COVERAGE: COMPLETE` as the final nonblank line only when every current source column has a disposition. Remove temporary projection tables after validation.
       6. Ask for explicit publication approval. Call PublishToGBIF only after the rebuilt current archive is indexable and the user approves.
 
