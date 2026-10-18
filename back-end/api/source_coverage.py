@@ -25,18 +25,20 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-MAPPED_RATE = 0.98
+MAPPED_RATE = 1.0
 PARTIAL_RATE = 0.5
 LOW_CARDINALITY = 3
 OPEN_ITEMS_PREFIX = "COVERAGE OPEN ITEMS:"
 STATE_PREFIX = "COVERAGE STATE:"
 REPORT_PREFIX = "SOURCE COVERAGE CHECK"
 
-_EMPTY = {"", "nan", "none", "null", "<na>", "nat"}
+COVERAGE_VERSION = 3
+_STRINGIFIED_MISSING = frozenset({"nan", "none", "<na>", "nat"})
 _NUMBER_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 _DATETIME_T_RE = re.compile(r"(\d)T(\d)")
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -58,15 +60,26 @@ def normalize_value(value) -> Optional[str]:
     except (TypeError, ValueError):
         pass
     text = _WHITESPACE_RE.sub(" ", str(value)).strip()
-    if text.casefold() in _EMPTY:
+    # Missing objects and empty cells are different from literal source codes
+    # such as "NULL" or "NaN". Do not erase the evidence during comparison.
+    if not text:
         return None
     if _NUMBER_RE.match(text):
         try:
-            number = float(text)
-            if number == int(number) and abs(number) < 1e15:
-                return str(int(number))
-            return format(number, ".10g")
-        except (ValueError, OverflowError):
+            number = Decimal(text)
+            if number.is_zero():
+                return "0"
+            sign, digits, exponent = number.as_tuple()
+            # Decimal.normalize() uses the current precision and can round too.
+            # Remove trailing zeroes directly to compare equivalent spellings
+            # while retaining every supplied significant digit.
+            coefficient = "".join(map(str, digits)).rstrip("0")
+            exponent += len(digits) - len(coefficient)
+            if len(coefficient) + abs(exponent) <= 1000:
+                return format(Decimal((sign, tuple(map(int, coefficient)), exponent)), "f")
+            # Keep extreme exponents compact rather than expanding huge strings.
+            return ("-" if sign else "") + coefficient + "e" + str(exponent)
+        except (InvalidOperation, ValueError, OverflowError):
             pass
     text = _DATETIME_T_RE.sub(r"\1 \2", text)
     return text.casefold()
@@ -275,9 +288,35 @@ def reconcile(
     sources: Sequence[Tuple[str, pd.DataFrame]],
     destinations: Dict[str, pd.DataFrame],
     metadata_text: str = "",
+    working_source_labels: Iterable[str] = (),
 ) -> List[SourceResult]:
+    working_labels = set(working_source_labels)
+    uploads = [frame for label, frame in sources if label not in working_labels]
+    # Working copies may have converted genuine missing objects to strings.
+    # Only uploads establish whether those spellings were explicit source facts.
+    # The uploads themselves are always reconciled without this filtering.
+    upload_literals: Dict[str, set] = defaultdict(set)
+    for frame in uploads:
+        for column in frame.columns:
+            key = "".join(c for c in str(column).casefold() if c.isalnum())
+            upload_literals[key].update(
+                value.strip().casefold()
+                for value in frame[column].dropna()
+                if isinstance(value, str) and value.strip().casefold() in _STRINGIFIED_MISSING
+            )
+
+    checked_sources = []
+    for label, frame in sources:
+        if label in working_labels and uploads:
+            frame = frame.copy()
+            for column in frame.columns:
+                key = "".join(c for c in str(column).casefold() if c.isalnum())
+                unbacked = _STRINGIFIED_MISSING - upload_literals[key]
+                artifacts = frame[column].astype("string").str.strip().str.casefold().isin(unbacked)
+                frame.loc[artifacts, column] = pd.NA
+        checked_sources.append((label, frame))
     index = DestinationIndex(destinations)
-    return [reconcile_table(label, df, index, metadata_text) for label, df in sources]
+    return [reconcile_table(label, df, index, metadata_text) for label, df in checked_sources]
 
 
 def _target_text(column: ColumnResult) -> str:
@@ -380,6 +419,7 @@ def coverage_state(
 ) -> str:
     """Digest every persisted input that can change reconciliation output."""
     digest = hashlib.sha256()
+    digest.update(f"coverage-version:{COVERAGE_VERSION}\n".encode("utf-8"))
     for table_id, title, updated_at in sorted(tables, key=lambda item: item[0]):
         digest.update(f"{table_id}|{title}|{updated_at}\n".encode("utf-8"))
     for file_id, filename, uploaded_at, source_manifest in sorted(user_files, key=lambda item: item[0]):

@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react'
 
 import config from '../config'
 import { getCsrfToken } from '../utils/csrf'
+import { datasetIsActivelyProcessing } from '../utils/workflowState.mjs'
 
 import {
-  getDatasetStatus,
   naturalList,
   pluralize,
   resourceCountLabel,
@@ -95,8 +95,7 @@ export default function DatasetPackageOverview({ dataset, tables, tablesLoading 
   const storyItems = getStoryItems(resources)
   const validation = dataset?.dwc_dp_validation || {}
   const ready = Boolean(dataset?.package_ready)
-  const datasetStatus = getDatasetStatus(dataset)
-  const isWorking = datasetStatus === 'preparing'
+  const isWorking = datasetIsActivelyProcessing(dataset)
   const datasetId = dataset?.id
   const [showEmailNotificationModal, setShowEmailNotificationModal] = useState(false)
   const [emailNotification, setEmailNotification] = useState({ status: 'idle' })
@@ -221,9 +220,9 @@ export default function DatasetPackageOverview({ dataset, tables, tablesLoading 
     }
   }
 
-  const notificationPrompt = datasetId ? (
+  const notificationPrompt = datasetId && isWorking ? (
     <div className="d-inline-flex flex-wrap align-items-center gap-2">
-      {isWorking && <span className="small text-muted">This process can take some time.</span>}
+      <span className="small text-muted">This process can take some time.</span>
       <button
         type="button"
         className={`btn btn-sm rounded-pill px-3 ${emailNotificationArmed ? 'btn-outline-success' : 'btn-warning'}`}

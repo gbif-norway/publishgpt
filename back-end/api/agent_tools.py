@@ -123,6 +123,15 @@ def _normalize_event_date_token(value: str) -> tuple[Optional[str], Optional[dat
             parsed_datetime = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError:
             return None, None
+        if re.match(r"^\d{4}-\d{2}-\d{2}[T ]", text):
+            # datetime validates the value but only retains microseconds and
+            # pads missing clock components. Serialize the original ISO text
+            # instead so normalization does not change its supplied precision.
+            normalized = text[:10] + "T" + text[11:]
+            normalized = normalized.replace(",", ".")
+            if normalized.endswith("Z"):
+                normalized = normalized[:-1] + "+00:00"
+            return normalized, parsed_datetime.date()
         return parsed_datetime.isoformat(), parsed_datetime.date()
 
     if _TEXT_MONTH_YEAR_RE.fullmatch(text):
@@ -153,9 +162,13 @@ def _normalize_event_date(value) -> tuple[Optional[str], Optional[datetime.date]
         pass
 
     if isinstance(value, pd.Timestamp):
-        value = value.to_pydatetime()
+        # to_pydatetime() discards nanoseconds. A timezone-bearing midnight is
+        # an instant, rather than a bare spreadsheet date cell.
+        if value.tzinfo is None and value.time() == datetime.time() and value.nanosecond == 0:
+            return value.date().isoformat(), value.date()
+        return value.isoformat(), value.date()
     if isinstance(value, datetime.datetime):
-        if value.time() == datetime.time():
+        if value.tzinfo is None and value.time() == datetime.time():
             return value.date().isoformat(), value.date()
         return value.isoformat(), value.date()
     if isinstance(value, datetime.date):
@@ -693,6 +706,7 @@ def source_coverage_report(dataset):
         )
 
     sources = []
+    working_source_labels = set()
     problems = []
     upload_fingerprints = set()
     for user_file in user_files:
@@ -719,7 +733,9 @@ def source_coverage_report(dataset):
             continue
         if Table.calculate_content_fingerprint(table.df) in upload_fingerprints:
             continue  # identical to an upload that is already checked
-        sources.append((f"working table {table.id} `{table.title}`", table.df))
+        label = f"working table {table.id} `{table.title}`"
+        working_source_labels.add(label)
+        sources.append((label, table.df))
 
     if not sources:
         return "No source uploads or working tables were found to reconcile. " + " ".join(problems)
@@ -730,7 +746,9 @@ def source_coverage_report(dataset):
         json.dumps(dataset.eml, ensure_ascii=False, default=str)
         if isinstance(dataset.eml, (dict, list)) else str(dataset.eml or ""),
     ])
-    results = source_coverage.reconcile(sources, destinations, metadata_text)
+    results = source_coverage.reconcile(
+        sources, destinations, metadata_text, working_source_labels=working_source_labels,
+    )
     report = source_coverage.render_report(results, destinations, state=state)
     if problems:
         report += "\n" + "\n".join(problems)
@@ -2734,6 +2752,13 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
         try:
             agent = Agent.objects.get(id=self.agent_id)
             task_name = agent.task.name if agent.task else ""
+            from api.prepared_dates import PREPARATION_TASKS, preparation_date_error
+
+            date_warnings = []
+            if task_name in PREPARATION_TASKS:
+                date_error = preparation_date_error(agent.dataset, warnings=date_warnings)
+                if date_error:
+                    return date_error
             if task_name in self.TABLE_REQUIRED_TASK_NAMES:
                 _remove_empty_dwc_dp_resources(agent.dataset)
             # Guardrail: Data content exploration must set basic metadata first.
@@ -2840,7 +2865,10 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
             agent.completed_at = timezone.now()
             agent.save()
             print('Marking as complete...')
-            return f'Task marked as complete for agent id {self.agent_id} .'
+            result = f'Task marked as complete for agent id {self.agent_id} .'
+            if date_warnings:
+                result += '\nDate preservation warnings (not a verified pass): ' + '; '.join(date_warnings)
+            return result
         except Exception as e:
             return repr(e)[:2000]
 

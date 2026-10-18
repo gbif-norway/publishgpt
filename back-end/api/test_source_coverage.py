@@ -51,7 +51,7 @@ class NormalizationTests(SimpleTestCase):
     def test_normalize_value(self):
         self.assertIsNone(normalize_value(" "))
         self.assertIsNone(normalize_value(np.nan))
-        self.assertIsNone(normalize_value("NaN"))
+        self.assertEqual(normalize_value("NaN"), "nan")
         self.assertEqual(normalize_value("12.0"), "12")
         self.assertEqual(normalize_value(12), "12")
         self.assertEqual(normalize_value(" Animalia  "), "animalia")
@@ -239,6 +239,15 @@ class ReconcileSourceCoverageToolTests(TestCase):
         Table.objects.create(dataset=self.dataset, title="occ.txt", df=self.source.copy())
         result = self.run_tool("c1")
         self.assertNotIn("working table", result)
+
+    def test_changed_working_table_does_not_publish_stringified_blanks_as_source_values(self):
+        working = self.source.copy()
+        working["blank"] = working["blank"].astype(str)
+        Table.objects.create(dataset=self.dataset, title="prepared", df=working)
+        report = self.run_tool("c1")
+        working_section = report.split("`prepared`")[1]
+        self.assertIn("Blank-only (1): blank", working_section)
+        self.assertNotIn("e.g. missing 'nan'", report)
 
     def test_tool_is_available_and_read_only_in_transformation(self):
         from api.schema_ledger import READ_ONLY_TOOLS

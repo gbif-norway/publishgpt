@@ -669,6 +669,10 @@ class UserFile(models.Model):
                     sep=delimiter,
                     engine='python',
                     header=0,
+                    # Codes such as NA, NULL and NaN are explicit source text.
+                    # Only an actually empty cell is missing at ingestion.
+                    keep_default_na=False,
+                    na_values=[''],
                 )
             except Exception as exc:
                 detection_errors.append((self._format_delimiter_label(delimiter), str(exc)))
@@ -925,7 +929,10 @@ class UserFile(models.Model):
                 workbook.save(temp_file_name)
 
             try:
-                dfs = pd.read_excel(temp_file_name, dtype='str', sheet_name=None)
+                dfs = pd.read_excel(
+                    temp_file_name, dtype='str', sheet_name=None,
+                    keep_default_na=False, na_values=[''],
+                )
             finally:
                 os.remove(temp_file_name)
 

@@ -1702,6 +1702,35 @@ class EventDateNormalizationTests(SimpleTestCase):
         )
 
 
+    def test_preserves_supplied_clock_and_fractional_precision(self):
+        for value in [
+            "2025-02-11T12",
+            "2025-02-11T12:34",
+            "2025-02-11T12:34:56.123456789+02:00",
+            "2025-02-11T12:34:56.000000000",
+            "2025-02-11T12:34:56.1200",
+        ]:
+            with self.subTest(value=value):
+                self.assertEqual(normalize_event_date(value), value)
+        self.assertEqual(
+            normalize_event_date("2025-02-11 12:34:56.123456789Z"),
+            "2025-02-11T12:34:56.123456789+00:00",
+        )
+
+    def test_preserves_timestamp_nanoseconds_and_midnight_timezone(self):
+        for text in [
+            "2025-02-11T12:34:56.123456789+02:00",
+            "2025-02-11T00:00:00.000000001",
+            "2025-02-11T00:00:00+02:00",
+        ]:
+            with self.subTest(value=text):
+                self.assertEqual(normalize_event_date(pd.Timestamp(text)), text)
+        self.assertEqual(
+            normalize_event_date(datetime.datetime.fromisoformat("2025-02-11T00:00:00+02:00")),
+            "2025-02-11T00:00:00+02:00",
+        )
+
+
 class SetEMLTemporalInferenceTests(SimpleTestCase):
     def test_infer_temporal_bounds_from_eventdate_column(self):
         df = pd.DataFrame(
