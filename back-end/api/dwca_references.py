@@ -32,11 +32,15 @@ _TARGETS = {
 # Targets whose pinned field IRI differs from the source term. These are definition-based, not exact
 # matches. The planner permits the two audited identifier aliases automatically;
 # generic creator/date aliases still require a semantic decision.
+# Source -> target: dc:identifier -> skos:notation (another identifier of the core record) and -> dwc:referenceID
+# (an identifier of the referenced work); dc:creator (elements namespace) -> dc:creator, not dcterms:creator;
+# dcterms:date -> dcterms:issued (dcterms:date is generic and its examples are not ISO dates).
 NON_EXACT_TARGETS = {
-    (IDENTIFIER_ROW_TYPE, DC + "identifier"): "Target field is skos:notation; the extension defines another identifier for the core record.",
-    (REFERENCE_ROW_TYPE, DC + "identifier"): "Target field is dwc:referenceID; the extension defines an identifier of the referenced work.",
-    (REFERENCE_ROW_TYPE, DC + "creator"): "Target field is dc:creator (elements namespace), not dcterms:creator.",
-    (REFERENCE_ROW_TYPE, DC + "date"): "Target field is dcterms:issued; dcterms:date is generic and examples are not ISO dates.",
+    (IDENTIFIER_ROW_TYPE, DC + "identifier"): "Each value is another identifier of the linked record.",
+    (REFERENCE_ROW_TYPE, DC + "identifier"): "Each value identifies the publication itself.",
+    (REFERENCE_ROW_TYPE, DC + "creator"): "This is the closest match for the authors of the reference, but not an exact one, so confirm it.",
+    (REFERENCE_ROW_TYPE, DC + "date"): ("This general date is saved as the date the reference was published. Confirm that is what "
+                                        "it means; the dates do not need to be in ISO format."),
 }
 
 
@@ -84,7 +88,7 @@ def _subject_values(family, mapped, subject_table):
                 raise ImportFailure(f"{table}.{field} must be text.")
             previous = collected.setdefault(neutral, {}).setdefault(field, value)
             if previous != value:
-                raise ImportFailure(f"Contradictory values for {field} in one {family} extension row.")
+                raise ImportFailure(f"Two columns give different values for {field} in one row.")
     return {table: {field: value for field, value in fields.items() if _filled(value)} for table, fields in collected.items()}
 
 
@@ -99,13 +103,14 @@ def emit_reference_records(family, mapped, subject_table, subject_key, record_ke
     if family == "identifier":
         identifier = values.get("occurrence-identifier", {}).get("identifier")
         if not identifier:
-            raise ImportFailure("Alternative Identifiers rows require a nonempty dcterms:identifier.")
+            raise ImportFailure("Each row of an identifier table needs an identifier.")
         return [(f"{subject_table}-identifier", {f"{subject_table}_fk": subject_key, "identifier": identifier})]
     if not _filled(record_key):
         raise ImportFailure("A literature reference row requires a deterministic record key.")
     bibliographic = values.get("bibliographic-resource", {})
     if not bibliographic:
-        raise ImportFailure("A literature reference row has no mapped bibliographic value; map one or keep the table in the originals.")
+        raise ImportFailure("A literature reference row has no value that can be converted. Convert at least one of its columns, "
+                            "or leave the table out of the Data Package.")
     # Internal keys are separate from any supplied referenceID; relationshipType is never inferred.
     return [("bibliographic-resource", {"reference_pk": record_key, **bibliographic}),
             (f"{subject_table}-reference", {"reference_fk": record_key, f"{subject_table}_fk": subject_key})]

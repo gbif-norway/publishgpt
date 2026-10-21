@@ -95,7 +95,7 @@ class RequirementTests(SimpleTestCase):
                                ('humboldt.csv', data([DWC_EVENT_ID, ECO + 'surveyID', ECO + 'siteCount'], [['e1', 's', '1'], ['e2', 's', '2']]))])
         plan = build_plan(archive)
         table = next(item for item in plan['issues'] if item['id'] == 'table:1')
-        self.assertIn('surveyID values would identify several separate surveys', table['reason'])
+        self.assertIn('surveyID values would be used for several separate surveys', table['reason'])
         survey = next(column['id'] for column in plan['columns'] if column['term'] == ECO + 'surveyID')
         status = option_status(plan, {'table:1': 'humboldt-survey'})
         self.assertFalse(status['table:1']['humboldt-survey']['available'])
@@ -286,7 +286,7 @@ class ReviewFollowUpTests(SimpleTestCase):
         self.assertEqual(len(frames['protocol']), 1)
 
     def test_loose_headers_resolving_to_one_term_are_rejected(self):
-        with self.assertRaisesMessage(ImportFailure, 'several headers for the same term'):
+        with self.assertRaisesMessage(ImportFailure, 'several columns for the same Darwin Core term'):
             read_inputs([('occurrence.csv', ('occurrenceID,' + DWC + 'occurrenceID\na,a\n').encode())])
 
 

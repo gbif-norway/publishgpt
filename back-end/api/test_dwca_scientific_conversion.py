@@ -151,7 +151,7 @@ class ScientificConversionTests(SimpleTestCase):
         self.assertNotIn('scientific_hierarchy', plan)
         chosen = decisions(plan)
         chosen[parent_column(plan)['id']] = 'parent-link'
-        with self.assertRaisesMessage(ImportFailure, 'cannot be linked'):
+        with self.assertRaisesMessage(ImportFailure, 'parent event links can'):
             convert(archive, plan, chosen)
 
     def test_report_and_originals_survive_serialized_package_validation(self):
@@ -171,5 +171,5 @@ class ScientificConversionTests(SimpleTestCase):
                                  report['event_hierarchy']['scientific_consistency'])
         old_plan = copy.deepcopy(plan)
         old_plan['id'] = 'old-rules'
-        with self.assertRaisesMessage(ImportFailure, 'mapping rules'):
+        with self.assertRaisesMessage(ImportFailure, 'changed after they were checked'):
             convert(archive, old_plan, decisions(plan))

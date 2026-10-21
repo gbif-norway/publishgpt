@@ -7,7 +7,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from api.dwca_conversion import RULE_VERSION, build_plan, convert, validate_decisions
-from api.dwca_hierarchy import resolve_parents
+from api.dwca_hierarchy import PROBLEM_REASONS, resolve_parents
 from api.dwca_humboldt import ECO
 from api.dwca_import import DWC, ImportFailure, read_inputs, source_zip
 from api.dwc_dp_specs import create_dwc_dp_archive, validate_dwc_dp_archive
@@ -95,7 +95,7 @@ class HierarchyHelperTests(SimpleTestCase):
     def test_values_are_exact_and_archive_keys_only_explain_failures(self):
         result = resolve_parents([node('a', '', 1), node('b', ' a', 2), node('c', 'k1', 3)], archive_keys={'k1'})
         self.assertEqual([problem['problem'] for problem in result['problems']], ['missing', 'missing'])
-        self.assertIn('archive', result['problems'][1]['note'].lower())
+        self.assertIn('meta.xml uses to link the files', result['problems'][1]['note'])
         self.assertNotIn('note', result['problems'][0])
 
     def test_deep_chains_and_long_cycles_need_no_recursion(self):
@@ -175,18 +175,18 @@ class NestedEventConversionTests(SimpleTestCase):
         plan = build_plan(archive)
         column = parent_column(plan)
         self.assertEqual(([option['value'] for option in column['options']], column['default']), (['preserve'], 'preserve'))
-        self.assertIn('meta.xml core id', json.dumps(plan['event_hierarchy']))
+        self.assertIn('meta.xml uses to link the files', json.dumps(plan['event_hierarchy']))
         frames, report = convert(archive, plan, decisions_for(plan))
         self.assertNotIn('parentEvent_fk', frames['event'])
         self.assertEqual(report['event_hierarchy']['source_values'][0]['status'], 'retained in originals')
-        with self.assertRaisesMessage(ImportFailure, '1 missing'):
+        with self.assertRaisesMessage(ImportFailure, '1 points to an eventID that is not in your files'):
             validate_decisions(plan, {**decisions_for(plan), column['id']: 'parent-link'})
 
     def test_core_without_persistent_event_ids_cannot_link(self):
         terms = [PARENT_COLUMN, DWC + 'eventCategory']
         archive = read_inputs([('meta.xml', meta(terms)), ('event.csv', b'key,parentEventID,eventCategory\nk1,,survey\nk2,k1,survey\n')])
         plan = build_plan(archive)
-        self.assertIn('no dwc:eventID', plan['event_hierarchy']['unsupported'])
+        self.assertIn('no eventID column', plan['event_hierarchy']['unsupported'])
         frames, report = convert(archive, plan, decisions_for(plan))
         self.assertNotIn('parentEvent_fk', frames['event'])
         self.assertIn('unsupported', report['event_hierarchy'])
@@ -209,7 +209,7 @@ class NestedEventConversionTests(SimpleTestCase):
                 column = parent_column(plan)
                 self.assertEqual([option['value'] for option in column['options']], ['preserve'])
                 issue = next(issue for issue in [*plan['issues'], *plan.get('automatic_choices', [])] if issue['id'] == column['id'])
-                self.assertIn(kind, issue['reason'])
+                self.assertIn(PROBLEM_REASONS[kind][1:], issue['reason'])
                 self.assertEqual(plan['event_hierarchy']['problem_kinds'], {kind: 1})
                 decisions = decisions_for(plan)
                 frames, report = convert(archive, plan, decisions)
@@ -217,7 +217,7 @@ class NestedEventConversionTests(SimpleTestCase):
                 self.assertTrue(report['validation']['valid'])
                 values = [value['parentEventID'] for value in report['event_hierarchy']['source_values']]
                 self.assertEqual(values, [row.split(',')[1] for row in rows[1:] if row.split(',')[1]])
-                with self.assertRaisesMessage(ImportFailure, 'cannot be linked faithfully'):
+                with self.assertRaisesMessage(ImportFailure, 'parent event links can'):
                     convert(archive, plan, {**decisions, column['id']: 'parent-link'})
 
     def test_valid_parent_links_survive_unrelated_missing_and_cyclic_links(self):
@@ -263,7 +263,7 @@ class NestedEventConversionTests(SimpleTestCase):
         plan = build_plan(archive)
         column = next(column for column in plan['columns'] if column['term'] == PARENT_COLUMN)
         self.assertEqual([option['value'] for option in column['options']], ['preserve'])
-        self.assertIn('Occurrence extension', column['parent_link_unavailable'])
+        self.assertIn('additional occurrence table', column['parent_link_unavailable'])
         frames, report = convert(archive, plan, decisions_for(plan))
         self.assertNotIn('parentEvent_fk', frames['event'])
 
@@ -285,7 +285,7 @@ class OccurrenceCoreHierarchyTests(SimpleTestCase):
         self.assertEqual(sorted(events['parentEvent_fk']), ['', '', shared, shared])
         self.assertEqual(events.set_index('eventID').loc['site-A', 'parentEvent_fk'], '')
         decisions[column['id']] = 'parent-link'
-        with self.assertRaisesMessage(ImportFailure, 'combined by supplied eventID'):
+        with self.assertRaisesMessage(ImportFailure, 'same eventID combined into one event'):
             convert(archive, plan, decisions)
         decisions['event-grain'] = 'by_id'
         frames, report = convert(archive, plan, decisions)
@@ -302,7 +302,7 @@ class OccurrenceCoreHierarchyTests(SimpleTestCase):
                 plan = build_plan(archive)
                 self.assertEqual(plan['event_hierarchy']['problem_kinds'], {kind: 1})
                 column = parent_column(plan)
-                with self.assertRaisesMessage(ImportFailure, kind):
+                with self.assertRaisesMessage(ImportFailure, PROBLEM_REASONS[kind][1:]):
                     validate_decisions(plan, {**decisions_for(plan), column['id']: 'parent-link', 'event-grain': 'by_id'})
 
 

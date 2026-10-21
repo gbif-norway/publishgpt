@@ -933,7 +933,7 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
                   <div>{currentDataset.source_mode || 'Unknown'}</div>
                 </div>
                 <div className="col-md-6">
-                  <label className="form-label">DwC-A projection core</label>
+                  <label className="form-label">Main table of the GBIF archive</label>
                   <div>{currentDataset.dwc_core || 'Not set'}</div>
                 </div>
                 {currentDataset.dwc_dp_url && (

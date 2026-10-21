@@ -88,7 +88,7 @@ class StreamlinedReviewTests(SimpleTestCase):
         self.assertEqual({option['value'] for option in status['options']}, {'present', 'absent'})
         chosen = choices(plan)
         chosen.pop('status:0')
-        with self.assertRaisesMessage(ImportFailure, 'Resolve'):
+        with self.assertRaisesMessage(ImportFailure, 'remaining question'):
             convert(archive, plan, chosen)
         chosen['status:0'] = 'absent'
         frames, _ = convert(archive, plan, chosen)
@@ -131,7 +131,7 @@ class StreamlinedReviewTests(SimpleTestCase):
         self.assertEqual([option['value'] for option in grain['options']], ['per_row'])
         chosen = choices(plan)
         chosen.pop('event-grain')
-        with self.assertRaisesMessage(ImportFailure, 'Resolve'):
+        with self.assertRaisesMessage(ImportFailure, 'remaining question'):
             convert(archive, plan, chosen)
         chosen['event-grain'] = 'per_row'
         chosen[column(plan, DWC + 'eventID')['id']] = 'preserve'
@@ -145,7 +145,7 @@ class StreamlinedReviewTests(SimpleTestCase):
         plan = build_plan(archive)
         chosen = choices(plan)
         chosen['event-category'] = 'occurrence'
-        with self.assertRaisesMessage(ImportFailure, 'needs survey as the missing-category choice'):
+        with self.assertRaisesMessage(ImportFailure, 'needs "survey" as your answer for events with no category'):
             validate_decisions(plan, chosen)
         chosen['table:1'] = 'preserve'
         validate_decisions(plan, chosen)
@@ -170,7 +170,7 @@ class StreamlinedReviewTests(SimpleTestCase):
         scope = next(issue for issue in plan['issues'] if issue['id'].startswith('hum-scope:'))
         chosen = choices(plan)
         chosen.pop(scope['id'])
-        with self.assertRaisesMessage(ImportFailure, 'Resolve'):
+        with self.assertRaisesMessage(ImportFailure, 'remaining question'):
             convert(archive, plan, chosen)
         frames, _ = convert(archive, plan, {**chosen, scope['id']: 'reported-false'})
         self.assertEqual(frames['survey-target'].iloc[0]['isSurveyTargetFullyReported'], 'false')
@@ -212,7 +212,7 @@ class StreamlinedReviewTests(SimpleTestCase):
         self.assertNotIn('decimalLatitude', frames['event'])
         notice = next(warning for warning in report['warnings'] if warning['id'] == 'coordinate-pair:0')
         self.assertEqual(notice['invalid_pairs'], 1)
-        self.assertIn('withheld as invalid', notice['reason'])
+        self.assertIn('the other coordinate is not a valid value', notice['reason'])
         self.assertEqual(report['withheld_values'][0]['source_row'], 1)
         self.assertEqual(report['withheld_values'][0]['value'], 'NA')
 

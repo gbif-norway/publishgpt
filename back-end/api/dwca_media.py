@@ -42,8 +42,10 @@ def media_targets(term, values):
         literal = {DCT + 'format': 'media.format', DCT + 'source': 'provenance.source',
                    DCT + 'rights': 'usage-policy.rights'}[term]
         if any_iris:
-            return [], 'This column mixes identifiers and literals. Split it before mapping; originals retain every value.'
-        return [literal], 'The resource-valued source term contains literals. Confirm the explicit alias to the literal target field.'
+            return [], ('This column mixes web links (IRIs) and text. Split it into two columns to convert it; until then it is left '
+                        'out of the Data Package.')
+        # The resource-valued source term holds literals: an explicit alias to the literal field needs approval.
+        return [literal], 'This column is meant to hold web links (IRIs) but holds text. Confirm it should be copied as text.'
     aliases = {
         DC + 'type': ['media.mediaType'],
         DCT + 'created': ['media.createDate'],
@@ -57,11 +59,13 @@ def media_targets(term, values):
     }
     if term in aliases:
         if term == DCT + 'creator' and any_iris and not all_iris:
-            return [], 'Creator values mix agent identifiers and names; split the column before mapping.'
+            return [], 'This column mixes identifiers and names of creators. Split it into two columns to convert it.'
         target = aliases[term][0]
         if target.endswith('ID') and values and not all_iris:
-            return [], 'Agent and derivation identifiers need absolute IRIs in this converter; names and unresolved local references remain in originals.'
-        return aliases[term], 'Confirm this explicit alias between source and target terms. No agent or parent-media records are inferred.'
+            return [], ('This column needs full web links (IRIs) to people or other media, but some values are names or local '
+                        'references, so it is left out of the Data Package.')
+        return aliases[term], ('This is the closest match in the Data Package, but not an exact one, so confirm it. No people or '
+                               'other media records are created from it.')
     # A generic identifier/agentID annotation occurs on several unrelated keys.
     # Such fields require role-specific source terms, never an arbitrary choice.
     matches = []
@@ -77,5 +81,5 @@ def media_targets(term, values):
     if len(matches) != 1:
         return [], None
     if matches[0].endswith('IRI') and values and not all_iris:
-        return [], 'The target is an IRI field but some source values are not absolute IRIs. Originals retain the column.'
+        return [], 'This field needs full web links (IRIs), but some values are not, so the column is left out of the Data Package.'
     return matches, None

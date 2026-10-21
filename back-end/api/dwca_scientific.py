@@ -131,16 +131,16 @@ def _temporal(values, child, ancestor):
     term = DWC + 'eventDate'
     evidence = {'child': values[child].get(term, ''), 'ancestor': values[ancestor].get(term, '') if ancestor is not None else ''}
     if not evidence['child'] or not evidence['ancestor']:
-        return 'incomparable', 'eventDate is missing on the child or on every ancestor.', evidence
+        return 'incomparable', 'The child event, or all of the events above it, have no eventDate, so the dates could not be compared.', evidence
     c, a = parse_event_date(evidence['child']), parse_event_date(evidence['ancestor'])
     if not c or not a:
-        return 'incomparable', 'An eventDate is not a supported ISO 8601 date, date-time or interval.', evidence
+        return 'incomparable', 'An eventDate is not in a format ChatIPT can compare (ISO 8601, such as 2015-06-16 or 2015-06/2015-08).', evidence
     if c[1] < a[0] or c[2] > a[3]:
-        return 'contradiction', ('As supplied in eventDate, every reading places the child outside its ancestor. '
-            'Check whether the parent date records only a start rather than the full interval.'), evidence
+        return 'contradiction', ("The child event's date falls outside the date of the event above it. "
+            "Check whether that event's eventDate gives only a start date instead of the full period."), evidence
     if c[0] >= a[1] and c[3] <= a[2]:
-        return 'compatible', 'Every reading of the child interval lies within every reading of the ancestor interval.', evidence
-    return 'not-demonstrated', 'The supplied precision or time zones allow readings both inside and outside the ancestor.', evidence
+        return 'compatible', "The child event's date falls within the date of the event above it.", evidence
+    return 'not-demonstrated', "Depending on how their precision or time zones are read, the child event's date may or may not fall within the date of the event above it.", evidence
 
 
 SPATIAL_TERMS = [DWC + term for term in ('decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters', 'geodeticDatum',
@@ -166,12 +166,12 @@ def _coordinate_rounding(values):
 def _circle(values):
     lat, lon, radius = (values.get(DWC + term, '') for term in ('decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters'))
     if not all(_NUMBER.fullmatch(value) for value in (lat, lon, radius)):
-        return None, 'Coordinates or a positive coordinateUncertaintyInMeters are missing or invalid.'
+        return None, 'Coordinates, or a coordinateUncertaintyInMeters above zero, are missing or not valid, so the locations could not be compared.'
     lat, lon, radius = float(lat), float(lon), float(radius)
     if not (-90 <= lat <= 90 and -180 <= lon <= 180 and radius > 0 and math.isfinite(radius)):
-        return None, 'Coordinates or a positive coordinateUncertaintyInMeters are missing or invalid.'
+        return None, 'Coordinates, or a coordinateUncertaintyInMeters above zero, are missing or not valid, so the locations could not be compared.'
     if values.get(DWC + 'geodeticDatum', '') not in WGS84:
-        return None, 'geodeticDatum is missing or not a supported WGS84 alias.'
+        return None, 'geodeticDatum is missing or is not WGS84, so the locations could not be compared.'
     return (math.radians(lat), math.radians(lon), radius), None
 
 
@@ -179,13 +179,13 @@ def _spatial(values, child, ancestor):
     evidence = {side: {term: values[node].get(term, '') for term in SPATIAL_TERMS if values[node].get(term)}
                 for side, node in (('child', child), ('ancestor', ancestor)) if node is not None}
     if ancestor is None:
-        return 'incomparable', 'No ancestor supplies coordinates.', evidence
+        return 'incomparable', 'None of the events above this one has coordinates.', evidence
     (c, c_reason), (a, a_reason) = _circle(values[child]), _circle(values[ancestor])
     if not c or not a:
         return 'incomparable', c_reason or a_reason, evidence
     c_rounding, a_rounding = _coordinate_rounding(values[child]), _coordinate_rounding(values[ancestor])
     if c_rounding is None or a_rounding is None:
-        return 'incomparable', 'Supplied coordinatePrecision is invalid; no spatial claim is made.', evidence
+        return 'incomparable', 'coordinatePrecision is not valid, so the locations were not compared.', evidence
     # Enclosing circles only bound the locations; overlap never demonstrates containment.
     h = math.sin((a[0] - c[0]) / 2) ** 2 + math.cos(c[0]) * math.cos(a[0]) * math.sin((a[1] - c[1]) / 2) ** 2
     distance = 2 * EARTH_RADIUS * math.asin(min(1.0, math.sqrt(h)))
@@ -194,10 +194,10 @@ def _spatial(values, child, ancestor):
     evidence['calculated'] = {'distance_m': round(distance, 1), 'tolerance_m': round(tolerance, 1),
                               'circles_disjoint': disjoint}
     if any(values[child].get(term) or values[ancestor].get(term) for term in SPATIAL_TERMS[4:7]):
-        return 'incomparable', 'A footprint or generalized/withheld location means the circles may not bound the true extents.', evidence
+        return 'incomparable', 'A footprint, or a location that was generalised or withheld, means the coordinates may not show the true area, so the locations were not compared.', evidence
     if not disjoint:
-        return 'not-demonstrated', 'Enclosing circles overlap; point-radius data cannot demonstrate containment.', evidence
-    return 'contradiction', 'Both enclosing circles are disjoint beyond a conservative geodesic tolerance.', evidence
+        return 'not-demonstrated', 'The two locations overlap, but their coordinates and uncertainties cannot show that the child lies inside the event above it.', evidence
+    return 'contradiction', "The child event's location is outside the location of the event above it, even allowing for coordinate uncertainty.", evidence
 
 
 def _survey(rows):
@@ -235,7 +235,7 @@ def _survey_checks(child, parent, ancestor, child_rows, ancestor_rows):
     rows = {'child': c_refs, 'ancestor': a_refs}
     if c_ambiguous or a_ambiguous:
         return [_check(child, parent, ancestor, 'survey-ambiguous', 'incomparable',
-                       'An event has several distinct survey rows; none is selected for comparison.', {}, rows)]
+                       'An event has several different survey rows, so the surveys could not be compared.', {}, rows)]
     checks = []
     for term in INFERENCE_TERMS:
         if a_values.get(term) and not c_values.get(term):
@@ -243,11 +243,11 @@ def _survey_checks(child, parent, ancestor, child_rows, ancestor_rows):
             evidence = {'term': term, 'ancestor': a_values[term]}
             if counterpart in INFERENCE_TERMS and c_values.get(counterpart):
                 checks.append(_check(child, parent, ancestor, 'inference-term', 'incomparable',
-                    'The child supplies only the literal/IRI counterpart; the two representations are not assumed equivalent.',
+                    'The child gives this as a web link (IRI) and the event above it as text, or the reverse, so they could not be compared.',
                     {**evidence, 'child_counterpart': {counterpart: c_values[counterpart]}}, rows))
             else:
                 checks.append(_check(child, parent, ancestor, 'inference-term', 'reporting-gap',
-                    'The ancestor declares this scope/completeness term; the child supplies neither representation. Nothing is inherited.',
+                    'An event above this one gives this scope or completeness detail, but the child does not. It is not copied to the child.',
                     evidence, rows))
     for dim in DIMENSIONS:
         for ns in (ECO, ECOIRI):
@@ -257,10 +257,10 @@ def _survey_checks(child, parent, ancestor, child_rows, ancestor_rows):
             evidence = {'child': {ns + 'target' + dim + 'Scope': target}, 'ancestor': {ns + 'excluded' + dim + 'Scope': excluded}}
             target_set, excluded_set = _tokens(target), _tokens(excluded)
             if target_set is None or excluded_set is None:
-                checks.append(_check(child, parent, ancestor, 'scope-collision', 'incomparable', 'A scope list is malformed.', evidence, rows))
+                checks.append(_check(child, parent, ancestor, 'scope-collision', 'incomparable', 'A scope list is not written correctly, so it could not be compared.', evidence, rows))
             elif target_set & excluded_set:
                 checks.append(_check(child, parent, ancestor, 'scope-collision', 'conflict-signal',
-                    'The child targets an exact token its ancestor excludes; the child may not contribute to the ancestor.',
+                    "The child event's survey targets something that the survey above it excludes, so the child may not belong to that survey.",
                     {**evidence, 'tokens': sorted(target_set & excluded_set)}, rows))
     pairs = [(term, 'true', 'false') for term in FLAG_TERMS]
     pairs += [(ns + 'taxonCompletenessReported', 'reportedComplete', 'reportedIncomplete') for ns in (ECO, ECOIRI)]
@@ -273,10 +273,10 @@ def _survey_checks(child, parent, ancestor, child_rows, ancestor_rows):
         evidence = {'term': term, 'ancestor': a_value, 'child': c_value}
         if not a_scope or not c_scope or a_scope != c_scope:
             checks.append(_check(child, parent, ancestor, 'completeness', 'incomparable',
-                'Completeness weakens, but the declared scopes are not identical (or are malformed).', evidence, rows))
+                'The survey above says it was complete and the child says not, but their scopes differ (or are not written correctly), so they could not be compared.', evidence, rows))
         else:
             checks.append(_check(child, parent, ancestor, 'completeness', 'conflict-signal',
-                'The ancestor reports complete and the child incomplete for the same declared scope; the ancestor inference may not hold.', evidence, rows))
+                "The survey above says it was complete and the child says it was not, for the same scope, so the claim of completeness above may not hold.", evidence, rows))
     for child_area, ancestor_area in AREAS:
         terms = {'child': (ECO + child_area + 'Value', ECO + child_area + 'Unit'),
                  'ancestor': (ECO + ancestor_area + 'Value', ECO + ancestor_area + 'Unit')}
@@ -290,12 +290,12 @@ def _survey_checks(child, parent, ancestor, child_rows, ancestor_rows):
         if not (valid_value(DIRECT[terms['child'][0]], c_value) and
                 valid_value(DIRECT[terms['ancestor'][0]], a_value)) or not c_unit or c_unit != a_unit:
             checks.append(_check(child, parent, ancestor, kind, 'incomparable',
-                'Values are invalid, or units are missing or not identical strings; no conversion is applied.', evidence, rows))
+                'The areas are not valid numbers, or their units are missing or differ, so they could not be compared. ChatIPT does not convert units.', evidence, rows))
         elif Decimal(c_value) > Decimal(a_value):
             checks.append(_check(child, parent, ancestor, kind, 'conflict-signal',
-                'The child area exceeds the ancestor area in the same supplied unit.', evidence, rows))
+                "The child event's area is larger than the area above it, in the same unit.", evidence, rows))
         else:
-            checks.append(_check(child, parent, ancestor, kind, 'compatible', 'No area conflict in the same supplied unit.', evidence, rows))
+            checks.append(_check(child, parent, ancestor, kind, 'compatible', "The child event's area is not larger than the area above it.", evidence, rows))
     return checks
 
 
@@ -318,8 +318,8 @@ def audit_hierarchy(nodes, links, event_values, surveys):
                         high[1] if high and dates[child][2] > high[0] else None)
             if offender is not None:
                 checks.append(_check(child, parent, offender, 'temporal-ancestor', 'contradiction',
-                    'As supplied in eventDate, the child cannot lie within a more distant ancestor. '
-                    'Check whether that ancestor date records only a start.',
+                    "The child event's date falls outside the date of an event further up the hierarchy. "
+                    "Check whether that event's eventDate gives only a start date.",
                     {'child': values[child][DWC + 'eventDate'], 'ancestor': values[offender][DWC + 'eventDate']}))
         status, reason, evidence = _spatial(values, child, place_anc[child])
         checks.append(_check(child, parent, place_anc[child], 'spatial', status, reason, evidence))

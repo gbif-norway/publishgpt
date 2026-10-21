@@ -1,7 +1,7 @@
 // Plain-language summaries of a conversion plan (docs/dwca-conversion/ai-review-and-chat.md §10–11).
 // Everything here is derived from the saved plan and decisions; nothing creates a second decision state.
 
-export const shortTerm = term => String(term || '').split('/').pop()
+export const shortTerm = term => String(term || '').split(/[/#]/).pop()
 
 const plural = (count, singular, pluralForm = `${singular}s`) => `${count.toLocaleString()} ${count === 1 ? singular : pluralForm}`
 
@@ -90,10 +90,10 @@ export function automaticSummary(state, selected, hidden = new Set()) {
     const materialAnswer = materialEntry ? selected(materialId) : null
     if (materialEntry && (materialAnswer == null || materialAnswer === '')) {
       title = `${shortTerm(item.term)} → waiting for your answer`
-      text = `This goes to the specimen record once you answer “${materialEntry.title}”: if specimen records are created, ${decided(value)}; if not, the values stay in your original files.`
+      text = `This goes to the specimen record once you answer “${materialEntry.title}”: if specimen records are created, ${decided(value)}; if not, the values are left out of the Data Package.`
     } else if (materialEntry && !['per_row', 'by_id'].includes(materialAnswer)) {
-      title = `${shortTerm(item.term)} → kept in your original files`
-      text = `${changed ? `You chose “${optionLabel(item, value)}”, but` : 'This goes to the specimen record, but'} no specimen records are created, so the values stay in your original files. Choose another option, or create specimen records.`
+      title = `${shortTerm(item.term)} → left out of the Data Package`
+      text = `${changed ? `You chose “${optionLabel(item, value)}”, but` : 'This goes to the specimen record, but'} no specimen records are created, so the values are left out of the Data Package. Choose another option, or create specimen records.`
     } else if (!changed && unsaved) {
       // The server recomputes this default from an answer that is still being saved.
       title = `${shortTerm(item.term)} → updating to follow your answer`
@@ -135,7 +135,7 @@ export function automaticSummary(state, selected, hidden = new Set()) {
     if (!count && !overridden.length) continue
     const title = formatTemplate(details[specimenState], count) || {
       stored: `${count} specimen ${count === 1 ? 'detail' : 'details'} stored on specimen records`,
-      kept: `${count} specimen ${count === 1 ? 'detail' : 'details'} kept in your original files`,
+      kept: `${count} specimen ${count === 1 ? 'detail' : 'details'} left out of the Data Package`,
       pending: `${count} specimen ${count === 1 ? 'detail' : 'details'} waiting for your choice`,
     }[specimenState]
     const why = formatTemplate(details[`${specimenState}_why`], count) || {
@@ -163,11 +163,12 @@ const eventDetailsMapped = choice => choice === null || choice === 'patch' || ch
 
 const hasTarget = column => (column.options || []).some(option => !['preserve', 'join'].includes(option.value))
 
-// How a column that stays in the original files got there. The backend marks columns with `unmapped`
-// ("no-target": the Data Package has no field for it; "unsupported": the converter does not map it yet).
-// Without it, a column that offers no target is reported neutrally.
+// How a column that is not copied as it stands got there. The backend marks columns with `unmapped`
+// ("no-target": the Data Package has no field for it; "unsupported": the converter does not map it yet;
+// "derived": its values fill other fields instead, as individualCount does; "unavailable": its values rule out
+// every target). Without it, a column that offers no target is reported neutrally.
 export function unmappedReason(column) {
-  if (column.unmapped === 'no-target' || column.unmapped === 'unsupported') return column.unmapped
+  if (['no-target', 'unsupported', 'derived', 'unavailable'].includes(column.unmapped)) return column.unmapped
   if (column.review || hasTarget(column)) return 'chosen'
   return 'no-mapping'
 }
@@ -229,7 +230,7 @@ export function summariseColumns(state, selected) {
 const nameList = (names, limit) => names.length > limit
   ? `${names.slice(0, limit).join(', ')}, and ${names.length - limit} more` : names.join(', ')
 
-const GROUP_ORDER = ['no-target', 'unsupported', 'no-mapping', 'chosen']
+const GROUP_ORDER = ['derived', 'no-target', 'unsupported', 'unavailable', 'no-mapping', 'chosen']
 
 export function summaryLines(summary, limit = 6) {
   const lines = []
@@ -243,14 +244,16 @@ export function summaryLines(summary, limit = 6) {
     const names = nameList(group.names, limit)
     const columns = plural(group.count, 'column')
     lines.push({
-      'no-target': `${columns} ${group.count === 1 ? 'has' : 'have'} no Darwin Core Data Package field and ${group.count === 1 ? 'stays' : 'stay'} in your original files: ${names}.`,
-      unsupported: `${columns} can't be mapped by ChatIPT yet and ${group.count === 1 ? 'stays' : 'stay'} in your original files: ${names}.`,
-      'no-mapping': `${columns} ${group.count === 1 ? 'has' : 'have'} no mapping and ${group.count === 1 ? 'stays' : 'stay'} in your original files: ${names}.`,
-      chosen: `${columns} ${group.count === 1 ? 'is' : 'are'} kept in your original files by choice: ${names}.`,
+      derived: `${columns} ${group.count === 1 ? 'is' : 'are'} not copied as ${group.count === 1 ? 'it stands' : 'they stand'}, but ${group.count === 1 ? 'is' : 'are'} used to fill other fields: ${names}.`,
+      unavailable: `${columns} can't be converted because of ${group.count === 1 ? 'its' : 'their'} values, so ${group.count === 1 ? 'it is' : 'they are'} left out of the Data Package (see the notices): ${names}.`,
+      'no-target': `${columns} ${group.count === 1 ? 'has' : 'have'} no Darwin Core Data Package field, so ${group.count === 1 ? 'it is' : 'they are'} left out of the Data Package: ${names}.`,
+      unsupported: `${columns} can't be converted by ChatIPT yet, so ${group.count === 1 ? 'it is' : 'they are'} left out of the Data Package: ${names}.`,
+      'no-mapping': `${columns} ${group.count === 1 ? 'has' : 'have'} no place in the Data Package, so ${group.count === 1 ? 'it is' : 'they are'} left out: ${names}.`,
+      chosen: `${columns} ${group.count === 1 ? 'is' : 'are'} left out of the Data Package, as you chose: ${names}.`,
     }[key])
   }
   if (summary.retainedTables.length) {
-    lines.push(`${plural(summary.retainedTables.length, 'additional table')} kept in your original files: ${nameList(summary.retainedTables.map(item => item.name), limit)}.`)
+    lines.push(`${plural(summary.retainedTables.length, 'additional table')} left out of the Data Package: ${nameList(summary.retainedTables.map(item => item.name), limit)}.`)
   }
   return lines
 }
@@ -268,10 +271,10 @@ export function columnDetails(state, selected) {
     const value = retained || eventsKept || (specimen && specimen !== 'stored') ? 'preserve' : chosen
     const option = (column.options || []).find(item => item.value === value)
     let outcome
-    if (retained) outcome = 'Kept in your original files with its table'
+    if (retained) outcome = 'Left out of the Data Package with its table'
     else if (specimen === 'pending') outcome = 'Waiting for your choice about specimen records'
-    else if (specimen === 'kept') outcome = 'Kept in your original files: no specimen records are created'
-    else if (eventsKept) outcome = events === '' ? 'Waiting for your choice about event details on these rows' : 'Kept in your original files; event details on these rows are not copied'
+    else if (specimen === 'kept') outcome = 'Left out of the Data Package: no specimen records are created'
+    else if (eventsKept) outcome = events === '' ? 'Waiting for your choice about event details on these rows' : 'Left out of the Data Package; event details on these rows are not copied'
     else if (value === 'preserve' && column.verbatim_role === 'qualifier') outcome = partialCopy(state, column, selected)
       ? `Added after the name text in ${column.verbatim_copy.split('.').pop()} where your file leaves it empty`
       : `Added after the name text in ${column.verbatim_copy.split('.').pop()}`
@@ -279,10 +282,12 @@ export function columnDetails(state, selected) {
       ? `The text goes to ${column.verbatim_copy.split('.').pop()} where your file leaves it empty; scientificName comes from the name check or stays empty`
       : `The text goes to ${column.verbatim_copy.split('.').pop()}; scientificName comes from the name check or stays empty`
     else if (value === 'preserve') outcome = {
-      'no-target': 'No Darwin Core Data Package field; kept in your original files',
-      unsupported: "Can't be mapped yet; kept in your original files",
-      'no-mapping': 'No mapping; kept in your original files',
-      chosen: 'Kept in your original files',
+      derived: option?.label || 'Used to fill other fields',
+      unavailable: column.unavailable_options?.[0]?.reason || "Can't be converted because of its values; left out of the Data Package",
+      'no-target': 'No Darwin Core Data Package field; left out of the Data Package',
+      unsupported: "Can't be converted yet; left out of the Data Package",
+      'no-mapping': 'No place in the Data Package; left out',
+      chosen: 'Left out of the Data Package',
     }[unmappedReason(column)]
     else outcome = option?.label || value
     return { id: column.id, table: table?.name || '', name: shortTerm(column.term), outcome, mapped: value !== 'preserve' && !retained }

@@ -28,30 +28,42 @@ _SHARED_MEDIA_TERMS = {DCT + name for name in ('identifier', 'type', 'format', '
                                               'bibliographicCitation', 'creator')} | {
     AC + 'accessURI', AC + 'furtherInformationURL', AC + 'derivedFrom', XMP + 'CreateDate', XMP + 'Rating',
     XMP + 'rights/UsageTerms', XMP + 'rights/Owner'}
+_MIXED = 'This column mixes web links (IRIs) and text. Split it into two columns to convert it; until then it is left out of the Data Package.'
 _MEDIA_PRESERVED = {
-    'http://rs.tdwg.org/dwc/terms/taxonID': 'A taxonID marks a taxon-page item. No identification or occurrence is inferred; originals retain it.',
-    'http://eol.org/schema/media/thumbnailURL': 'A thumbnail would be a second media resource; adding it is a modelling decision. Originals retain it.',
-    'http://eol.org/schema/agent/agentID': 'EOL agent identifiers point to records outside this archive and state no role; no agent is created.',
-    'http://eol.org/schema/reference/referenceID': 'The pinned schema has no media-reference table; the value is not used as any relationship key.',
+    'http://rs.tdwg.org/dwc/terms/taxonID': ('A taxonID means the item belongs on a species page, not to a particular occurrence. It is '
+                                             'left out of the Data Package, and no identification or occurrence is made from it.'),
+    # Adding a thumbnail as a second media resource would be a modelling decision.
+    'http://eol.org/schema/media/thumbnailURL': 'A thumbnail would be a second media file, so it is left out of the Data Package.',
+    'http://eol.org/schema/agent/agentID': ('These EOL agent identifiers point to records outside your archive and do not say what the '
+                                            'person did, so no person record is made from them.'),
+    # The pinned schema has no media-reference table; the value is never used as a relationship key.
+    'http://eol.org/schema/reference/referenceID': 'The Data Package cannot link media to references, so this column is left out of the Data Package.',
 }
 _EXACT_REFERENCE = {DCT + 'title': 'title', BIBO + 'pages': 'pages', BIBO + 'volume': 'volume', BIBO + 'edition': 'edition'}
-_FULL_REFERENCE_NOTE = (' EOL states that full_reference makes the structured fields be ignored; decide whether structured '
-                        'title/pages/volume/edition values are still copied when both are supplied.')
+_FULL_REFERENCE_NOTE = (' EOL says a full citation replaces the separate citation parts (title, pages, volume, edition), so '
+                        'decide whether those parts should still be copied when both are given.')
 _REFERENCE_ALIASES = {
-    DCT + 'identifier': ('referenceID', 'Target is dwc:referenceID. EOL defines the identifier of the referenced work; '
-                                        'confirm the alias. No DOI or URI substitutes for it.'),
-    'http://eol.org/schema/reference/publicationType': ('referenceType', 'Target is dwc:referenceType; confirm the EOL-namespace alias.'),
-    'http://eol.org/schema/reference/full_reference': ('bibliographicCitation', 'Target is dcterms:bibliographicCitation; '
-                                                                              'confirm the EOL-namespace alias.' + _FULL_REFERENCE_NOTE),
-    BIBO + 'authorList': ('author', 'Target is dc:creator. bibo:authorList is an ordered list with unknown separators; confirm the alias.'),
-    BIBO + 'editorList': ('editor', 'Target is bibo:editor (single property); the source is the ordered bibo:editorList.'),
+    # Source -> target: dcterms:identifier -> dwc:referenceID, publicationType -> dwc:referenceType, full_reference ->
+    # dcterms:bibliographicCitation, bibo:authorList -> dc:creator, bibo:editorList -> bibo:editor (single property).
+    DCT + 'identifier': ('referenceID', 'Saved as the identifier of the publication, which is what EOL means by it. Confirm '
+                                        'this; a DOI or web link is never used in its place.'),
+    'http://eol.org/schema/reference/publicationType': ('referenceType', 'Saved as the kind of publication. Confirm that this EOL column means that.'),
+    'http://eol.org/schema/reference/full_reference': ('bibliographicCitation', 'Saved as the full citation. Confirm that this '
+                                                                              'EOL column means that.' + _FULL_REFERENCE_NOTE),
+    BIBO + 'authorList': ('author', 'Saved as the authors of the reference, copied as written, because ChatIPT cannot tell how the '
+                                    'names are separated. Confirm this.'),
+    BIBO + 'editorList': ('editor', 'Saved as the editors of the reference, copied as written. Confirm this.'),
 }
 _REFERENCE_PRESERVED = {
-    DCT + 'created': 'Creation is not formal issuance; dcterms:created is never copied to issued.',
-    BIBO + 'doi': 'There is no DOI field; a DOI is never substituted for referenceID.',
-    BIBO + 'uri': 'There is no URI field; a URI is never substituted for referenceID.',
-    BIBO + 'pageStart': 'There is no pageStart field. Composing pages from a range is a reformatting decision; originals retain it.',
-    BIBO + 'pageEnd': 'There is no pageEnd field. Composing pages from a range is a reformatting decision; originals retain it.',
+    DCT + 'created': 'The date a work was created is not its publication date, so it is left out of the Data Package.',
+    BIBO + 'doi': ('The Data Package has no DOI field for references, and ChatIPT does not use a DOI as the identifier of the '
+                   'reference, so it is left out.'),
+    BIBO + 'uri': ('The Data Package has no web link field for references, and ChatIPT does not use a link as the identifier of '
+                   'the reference, so it is left out.'),
+    BIBO + 'pageStart': ('The Data Package has a single pages field, and ChatIPT does not combine first and last pages into it, '
+                         'so this is left out of the Data Package.'),
+    BIBO + 'pageEnd': ('The Data Package has a single pages field, and ChatIPT does not combine first and last pages into it, '
+                       'so this is left out of the Data Package.'),
 }
 # Which registered source terms may supply each bibliographic-resource field.
 _REFERENCE_SOURCES = {field: {term} for term, field in _EXACT_REFERENCE.items()}
@@ -66,7 +78,7 @@ def _shape(values):
 def _split(values, literal, iri, alias_reason):
     all_iris, any_iris = _shape(values)
     if any_iris and not all_iris:
-        return [], 'This column mixes identifiers and literals. Split it before mapping; originals retain every value.'
+        return [], _MIXED
     return [iri if all_iris else literal], alias_reason
 
 
@@ -78,15 +90,16 @@ def _media_targets(term, values):
         if all_iris:
             return ['media.languageIRI'], None
         if any_iris:
-            return [], 'This column mixes identifiers and literals. Split it before mapping; originals retain every value.'
-        return ['media.language'], 'EOL defines ISO 639 codes. Confirm the alias to the dc:language literal field.'
+            return [], _MIXED
+        return ['media.language'], 'EOL expects language codes such as en or nb. Confirm they should be saved as the language of the media.'
     if term == LEGACY_SUBTYPE:
         return _split(values, 'media.subtypeLiteral', 'media.subtypeIRI',
-                      'Legacy audubon_core namespace, not ac:subtype. Confirm the alias.')
+                      'This is the older Audubon Core subtype column. Confirm it should be saved as the media subtype.')
     if term == IPTC + 'CVterm':
         if _shape(values)[0]:
-            return ['media.subjectCategoryIRI'], 'Iptc4xmpExt:CVterm is not ac:CVterm. Confirm the alias.'
-        return [], 'Iptc4xmpExt:CVterm literals have no audited target; originals retain them.'
+            return ['media.subjectCategoryIRI'], ('This IPTC subject term is the closest match for the subject category of the '
+                                                  'media, but not an exact one. Confirm it.')
+        return [], 'Subject terms written as text have no place in the Data Package, so they are left out.'
     return [], _MEDIA_PRESERVED.get(term)
 
 
@@ -98,7 +111,8 @@ def _reference_targets(term, values):
         return [f'bibliographic-resource.{field}'], reason
     if term == DCT + 'publisher':
         return _split(values, 'bibliographic-resource.publisher', 'bibliographic-resource.publisherID',
-                      'Target is dc:publisher (literal) or dwc:agentID (IRI). Confirm the alias; no agent is created.')
+                      "Saved as the publisher (or, for web links, the publisher's identifier). Confirm this; no organization "
+                      'record is made from it.')
     return [], _REFERENCE_PRESERVED.get(term)
 
 
@@ -120,14 +134,14 @@ def eol_media_row_review(source):
     reasons = []
     kind = (source.get(DCT + 'type') or '').strip().lower()
     if kind in TEXT_TYPES:
-        reasons.append('This is a Text item (a taxon text account), not a media resource; preserve the row.')
+        reasons.append('This is a text account about a taxon, not a media file, so leave the row out of the Data Package.')
     for term, label in ((DCT + 'identifier', 'dcterms:identifier'), (DCT + 'type', 'dcterms:type'),
                         (XMP + 'rights/UsageTerms', 'xmpRights:UsageTerms')):
         if not _filled(source.get(term)):
-            reasons.append(f'The source requires {label}, but it is empty; no usage policy or media type is invented.')
+            reasons.append(f'EOL requires {label}, but it is empty here; ChatIPT does not make up a licence or media type.')
     if _filled(source.get('http://rs.tdwg.org/dwc/terms/taxonID')) or (source.get(IPTC + 'CVterm') or '').strip().startswith(SPM_INFO_ITEMS):
-        reasons.append('Taxon-page signals (taxonID or an SPMInfoItems subject) mean the item may depict the taxon generally, '
-                       'not this occurrence or event. Confirm the subject link.')
+        reasons.append('This item has a taxonID or a species-page subject, so it may show the species in general rather than '
+                       'this occurrence or event. Confirm what it shows.')
     return ' '.join(reasons) or None
 
 
@@ -168,9 +182,9 @@ def emit_eol_records(family, source, mapped, subject_table, subject_key, record_
         raise ImportFailure('An EOL reference row requires a deterministic record key.')
     values = _reference_values(source, mapped)
     if not _filled(source.get(DCT + 'identifier')):
-        raise ImportFailure('EOL reference rows require a nonempty dcterms:identifier.')
+        raise ImportFailure('Each EOL reference needs an identifier.')
     if not values:
-        raise ImportFailure('An EOL reference row has no mapped bibliographic value; keep it in the originals.')
+        raise ImportFailure('An EOL reference row has no value that can be converted, so leave it out of the Data Package.')
     # One record per source row; supplied identifiers never become keys and relationshipType is never inferred.
     return [('bibliographic-resource', {'reference_pk': record_key, **values}),
             (f'{subject_table}-reference', {'reference_fk': record_key, REFERENCE_SUBJECTS[subject_table]: subject_key})]

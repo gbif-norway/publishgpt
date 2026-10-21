@@ -10,12 +10,21 @@ from collections import defaultdict
 
 MAX_REPORTED_PROBLEMS = 50
 PROBLEM_REASONS = {
-    'missing': 'No source Event row has this persistent eventID.',
-    'ambiguous': 'Several source Event rows share this persistent eventID; none is selected.',
+    'missing': 'No event in your files has this eventID.',
+    'ambiguous': 'Several events in your files share this eventID, so ChatIPT cannot tell which one is meant.',
     'self': 'The event names itself as its parent.',
-    'cycle': 'Parent links form a cycle.',
-    'inconsistent': 'Rows combined into one event supply different parentEventID values.',
-    'no-event-id': 'A row with a parentEventID has no eventID, so its event identity is not established.',
+    'cycle': 'The parent links go round in a loop.',
+    'inconsistent': 'Rows combined into one event give different parentEventID values.',
+    'no-event-id': 'The row has a parentEventID but no eventID of its own.',
+}
+# How many links have each problem, after "Some parent event links cannot be made: " (one, several).
+PROBLEM_COUNTS = {
+    'missing': ('{count} points to an eventID that is not in your files', '{count} point to eventIDs that are not in your files'),
+    'ambiguous': ('{count} points to an eventID that several events share', '{count} point to eventIDs that several events share'),
+    'self': ('{count} names its own event as the parent', '{count} name their own event as the parent'),
+    'cycle': ('{count} goes round in a loop', '{count} go round in a loop'),
+    'inconsistent': ('{count} combined event has different parentEventID values', '{count} combined events have different parentEventID values'),
+    'no-event-id': ('{count} row has a parentEventID but no eventID', '{count} rows have a parentEventID but no eventID'),
 }
 
 # These are common empty-cell tokens in exported archives. A match to an ID
@@ -67,7 +76,8 @@ def resolve_parents(nodes, archive_keys=()):
         if not targets:
             problem = {**base, 'problem': 'missing'}
             if parent in archive_keys:
-                problem['note'] = 'The value matches a meta.xml core id. Archive join keys are not persistent eventIDs and are never used as parents.'
+                problem['note'] = ('The value matches a row ID that meta.xml uses to link the files, but those IDs are not '
+                                   'eventIDs, so they are never used as parents.')
             problems.append(problem)
         elif len(targets) > 1:
             problems.append({**base, 'problem': 'ambiguous',
@@ -146,7 +156,9 @@ def _kinds(problems):
 def describe_problems(result):
     kinds = _kinds(result['problems'])
     first = result['problems'][0]
-    example = f" First: {first['problem']} at source row(s) {', '.join(map(str, first['rows'][:5]))}"
-    example += f" (parentEventID {first['parentEventID']!r})." if first.get('parentEventID') else '.'
-    return (('Some parent event links cannot be made faithfully: ' if result['links'] else 'Parent events cannot be linked faithfully: ')
-            + ', '.join(f'{count} {kind}' for kind, count in sorted(kinds.items())) + '.' + example)
+    rows = first['rows'][:5]
+    example = f" For example, row{'s' if len(rows) > 1 else ''} {', '.join(map(str, rows))}"
+    example += f" (parentEventID {first['parentEventID']!r})" if first.get('parentEventID') else ''
+    example += ': ' + PROBLEM_REASONS[first['problem']][:1].lower() + PROBLEM_REASONS[first['problem']][1:]
+    return (('Some parent event links cannot be made: ' if result['links'] else 'No parent event links can be made: ')
+            + ', '.join(PROBLEM_COUNTS[kind][count != 1].format(count=count) for kind, count in sorted(kinds.items())) + '.' + example)

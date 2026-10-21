@@ -5,7 +5,7 @@ import config from '../config'
 import { getCsrfToken } from '../utils/csrf'
 import { useDataset } from '../contexts/DatasetContext'
 import { attentionItems, chatVisible, conflictsFor, optionState, shownRecommendation, unresolvedIssues } from '../utils/conversionReview.mjs'
-import { AGENT_NAMES_ID, automaticSummary, conversionTitle, dedupeNotices, glossaryEntry, isColumnId, makeSelector } from '../utils/conversionPlan.mjs'
+import { AGENT_NAMES_ID, automaticSummary, conversionTitle, dedupeNotices, glossaryEntry, isColumnId, makeSelector, shortTerm } from '../utils/conversionPlan.mjs'
 import { focusDecision } from '../utils/focusDecision'
 import ConversionAiDecisions from './ConversionAiDecisions'
 import ConversionAutomaticSummary from './ConversionAutomaticSummary'
@@ -59,6 +59,12 @@ export function ConversionUpload({ onDatasetCreated }) {
 }
 
 const PAGE = 50
+// Plain names for the statuses of parent and child event checks.
+const CHECK_STATUS = {
+  compatible: 'agree', contradiction: 'disagree', 'conflict-signal': 'may disagree',
+  'not-demonstrated': 'could not be confirmed', incomparable: 'could not be compared',
+  'reporting-gap': 'detail given only above',
+}
 
 function GroupExceptions({ item, decisions, disabled, onChoose }) {
   const [page, setPage] = useState(0)
@@ -94,8 +100,8 @@ function ChoiceCard({ item, state, decisions, disabled, onChoose, selected, numb
   return <div data-decision-id={item.id} className={`card card-body choice-card mb-3 ${conflicts.length || !current.available ? 'border-warning' : ''}`}>
     {number !== undefined && <div className="d-flex align-items-center justify-content-between mb-2"><span className="choice-number mb-0">Question {number}</span>{!state.unresolved?.includes(item.id) && decisions[item.id] && <span className="answer-saved"><i className="bi bi-check-circle me-1" aria-hidden="true" />Answer saved</span>}</div>}
     {item.table !== undefined && <small className="text-muted mb-1">{state.plan.tables[item.table]?.name}</small>}
-    {guided ? <h3 id={`title-${item.id}`} className="choice-title fw-semibold">{eventLinks ? 'How should these records link to events?' : item.title || item.term?.split('/').pop()}</h3>
-      : <label id={`title-${item.id}`} htmlFor={item.id} className="choice-title fw-semibold">{item.title || item.term?.split('/').pop()}</label>}
+    {guided ? <h3 id={`title-${item.id}`} className="choice-title fw-semibold">{eventLinks ? 'How should these records link to events?' : item.title || shortTerm(item.term)}</h3>
+      : <label id={`title-${item.id}`} htmlFor={item.id} className="choice-title fw-semibold">{item.title || shortTerm(item.term)}</label>}
     {eventLinks ? <><p className="small mb-2">In a Data Package, dates and locations belong to events. Choose how to keep the details recorded on these occurrence rows.</p><details className="small mb-2"><summary>See what we found in your files</summary><p className="mt-2 mb-0">{reason}</p></details></> : recommendation?.user_question
       ? <><p className="small mb-2">{recommendation.user_question}</p>{reason && <details className="small mb-2"><summary>More about this question</summary><p className="mt-2 mb-0">{reason}</p></details>}</>
       : reason && <p className="small mb-2">{reason}</p>}
@@ -110,8 +116,8 @@ function ChoiceCard({ item, state, decisions, disabled, onChoose, selected, numb
           <input type="radio" name={item.id} value={option.value} checked={value === option.value} disabled={disabled || !availability.available}
             onChange={() => onChoose(item.id, option.value, suggested ? { accepted_recommendations: [item.id] } : {})} aria-describedby={!availability.available ? `reason-${item.id}-${index}` : undefined} />
           <span>{option.label}{suggested && <small className="suggested-label"><i className="bi bi-stars me-1" aria-hidden="true" />Suggested by ChatIPT</small>}
-            {(option.value !== 'preserve' || (isColumnId(item.id) && option.label === 'Keep in original files only')) && glossaryEntry(state, option.value)?.gloss && <small className="d-block text-body-secondary">{glossaryEntry(state, option.value).gloss}</small>}
-            {(option.value !== 'preserve' || (isColumnId(item.id) && option.label === 'Keep in original files only')) && glossaryEntry(state, option.value)?.consequence && <small className="d-block text-body-secondary">{glossaryEntry(state, option.value).consequence}</small>}
+            {(option.value !== 'preserve' || (isColumnId(item.id) && option.label === glossaryEntry(state, 'preserve')?.label)) && glossaryEntry(state, option.value)?.gloss && <small className="d-block text-body-secondary">{glossaryEntry(state, option.value).gloss}</small>}
+            {(option.value !== 'preserve' || (isColumnId(item.id) && option.label === glossaryEntry(state, 'preserve')?.label)) && glossaryEntry(state, option.value)?.consequence && <small className="d-block text-body-secondary">{glossaryEntry(state, option.value).consequence}</small>}
             {item.option_notes?.[option.value] && <small className="d-block"><em>{item.option_notes[option.value]}</em></small>}
             {option.technical && <small className="d-block text-body-secondary">{option.technical}</small>}
             {automatic && option.value === (state.conditional_defaults?.[item.id]?.value ?? item.default) && <small className="d-block text-body-secondary">Our choice</small>}
@@ -281,7 +287,7 @@ export default function DwcConversion() {
       <h2 className="h5">Unable to process this archive</h2>
       <p className="mb-2">{(state.error || '').replace(/^Unable to process this archive(?: because|:)?\s*/i, '')}</p>
       {unlinkedExtensionConflict ? <>
-        <p className="small">First three unlinked records from each extension table:</p>
+        <p className="small">The first three unlinked records from each additional table:</p>
         {unlinkedExtensionTables.map((table, tableIndex) => <section className="mb-3" key={`${table.name}:${tableIndex}`}>
           <h3 className="h6 mb-1">{table.name}</h3>
           <p className="small mb-1">{table.count.toLocaleString()} unlinked {table.count === 1 ? 'record' : 'records'}</p>
@@ -289,7 +295,7 @@ export default function DwcConversion() {
             <table className="table table-sm table-bordered small mb-0">
               <thead><tr>
                 <th scope="col">Record</th>
-                <th scope="col">Core link</th>
+                <th scope="col">Link to the main table</th>
                 {table.columns.map(field => <th scope="col" key={field}>{field}</th>)}
               </tr></thead>
               <tbody>{(table.records || []).map((record, recordIndex) => <tr key={`${record.file}:${record.data_record}:${recordIndex}`}>
@@ -354,10 +360,10 @@ export default function DwcConversion() {
       </details>}
       <details className="review-disclosure conversion-choices">
         <summary><i className="bi bi-sliders me-2" aria-hidden="true" /><span>All mapping choices</span><small>Advanced</small></summary>
-        <p className="small text-body-secondary mt-3">Review or change the choices already made for your data. Values kept in the original files remain in your download.</p>
+        <p className="small text-body-secondary mt-3">Review or change the choices already made for your data. Anything left out of the Data Package is still in the copy of your original files in the download.</p>
         {(state.plan.issues || []).filter(issue => !needsInput.has(issue.id) && !guidedItems.some(item => item.id === issue.id) && !nameQuestionIds.has(issue.id) && (!retainedIssue(issue) || issue.id === `table:${issue.table}`) && !(state.review?.applied || []).includes(issue.id))
           .map(issue => <ChoiceCard key={issue.id} item={issue} {...cardProps} />)}
-        {state.plan.columns.filter(column => !column.review && !guidedItems.some(item => item.id === column.id) && selected(`table:${column.table}`) !== 'preserve').map(column => <div className="row align-items-center my-3" key={column.id} data-decision-id={column.id}><label htmlFor={column.id} className="col-md-6 small">{state.plan.tables[column.table].name} · {column.term.split('/').pop()}</label><div className="col-md-6"><select id={column.id} className="form-select form-select-sm" disabled={disabled} value={selected(column.id, column.default)} onChange={event => choose(column.id, event.target.value)}>{column.options.map(option => <option key={option.value} value={option.value}>{option.label}{optionState(state, column.id, option.value).available ? '' : ' (not available with your other choices)'}</option>)}</select></div></div>)}
+        {state.plan.columns.filter(column => !column.review && !guidedItems.some(item => item.id === column.id) && selected(`table:${column.table}`) !== 'preserve').map(column => <div className="row align-items-center my-3" key={column.id} data-decision-id={column.id}><label htmlFor={column.id} className="col-md-6 small">{state.plan.tables[column.table].name} · {shortTerm(column.term)}</label><div className="col-md-6"><select id={column.id} className="form-select form-select-sm" disabled={disabled} value={selected(column.id, column.default)} onChange={event => choose(column.id, event.target.value)}>{column.options.map(option => <option key={option.value} value={option.value}>{option.label}{optionState(state, column.id, option.value).available ? '' : ' (not available with your other choices)'}</option>)}</select></div></div>)}
       </details>
       <div className="conversion-action-bar">
         <div role="status" aria-live="polite"><strong>{pendingSaves ? 'Saving your answer…' : outstanding > 0 ? `${outstanding} ${outstanding === 1 ? 'choice' : 'choices'} remaining` : blockers.length ? `${blockers.length} AI ${blockers.length === 1 ? 'choice' : 'choices'} to check` : 'Ready for the next step'}</strong>
@@ -367,15 +373,15 @@ export default function DwcConversion() {
     </section>}
     {state?.status === 'complete' && <div className="card card-body">
       <h2>Your converted package is ready</h2>
-      <p>All checks passed. The download contains the connected tables, a mapping report showing where each source row went, and every original file.</p>
+      <p>All checks passed. The download contains the connected tables, a report showing where each row of your files went, and a copy of every original file.</p>
       {state.report.output_format === 'taxonomy-data-package' && <p>This is a taxonomy data package containing your checklist and its attached tables. It has none of the standard Darwin Core Data Package tables.</p>}
       {state.report.output_format === 'dwc-dp' && state.report.taxonomy && <p>This Data Package has the standard occurrence tables, plus additional taxonomy tables that preserve your original checklist and its attached tables.</p>}
       <ul>{Object.entries(state.report.resources || {}).map(([name, count]) => <li key={name}>{name}: {count.toLocaleString()} {count === 1 ? 'row' : 'rows'}</li>)}</ul>
-      <p className="small">{state.report.columns?.filter(column => column.disposition === 'retained-unmapped' && column.nonempty).length || 0} columns that contain data stay in your original files because they have no Darwin Core Data Package field.</p>
+      <p className="small">{state.report.columns?.filter(column => column.disposition === 'retained-unmapped' && column.nonempty).length || 0} columns with data are left out of the Data Package because it has no field for them. They are still in the copy of your original files.</p>
       {!!state.report.withheld_values?.length && <p className="small">{state.report.withheld_values.length.toLocaleString()} values were left out of the mapped tables because they did not meet the conversion rules. The report explains each one, and your original files still hold them.</p>}
       {semanticFindings.length > 0 && <details className="small mb-3"><summary>Source values that need a closer look ({semanticFindings.length})</summary>
         <ul className="mt-2">{semanticFindings.map(finding => <li key={finding.source_term}>
-          <strong>{finding.source_term.split('/').pop()}</strong>: {finding.count.toLocaleString()} values. {finding.guidance}
+          <strong>{shortTerm(finding.source_term)}</strong>: {finding.count.toLocaleString()} values. {finding.guidance}
           {finding.examples?.length > 0 && <span className="text-muted"> Examples: {finding.examples.slice(0, 3).map(example => `${example.source_table} row ${example.source_row}: ${example.value}`).join(' · ')}</span>}
         </li>)}</ul>
       </details>}
@@ -384,17 +390,17 @@ export default function DwcConversion() {
           {route.source_table}: <strong>{route.source_value}</strong> ({route.count.toLocaleString()} source rows) → {route.target}
         </li>)}</ul>
       </details>}
-      {agentRoles && (agentRoleLinks || agentRoles.unlinked_name_only) && <details className="small mb-3"><summary>People and organizations in Agent roles ({agentRoleLinks.toLocaleString()} links)</summary>
-        <p className="mt-2 mb-1">Each exact name without an identifier became one Agent, linked to every record that mentions it, unless you kept that name (or all names) as text only. Names with an identifier are linked by that identifier. Placeholders such as “unknown” and composite names stay in the mapped text field and are listed in the report.</p>
-        <p className="mb-0">New Agents: {(agentRoles.agents_created?.name || 0).toLocaleString()} names, {(agentRoles.agents_created?.explicit_id || 0).toLocaleString()} explicit IDs. Name mentions kept as text only: {(agentRoles.unlinked_name_only || 0).toLocaleString()}. Skipped mentions: {Object.values(agentRoles.skipped || {}).reduce((sum, count) => sum + count, 0).toLocaleString()}.</p>
+      {agentRoles && (agentRoleLinks || agentRoles.unlinked_name_only) && <details className="small mb-3"><summary>People and organizations ({agentRoleLinks.toLocaleString()} links)</summary>
+        <p className="mt-2 mb-1">Each exact name without an identifier was listed once as a person or organization and linked to every record that mentions it, unless you kept that name (or all names) as text only. Names with an identifier are linked by that identifier. Placeholders such as “unknown” and names that combine several people stay as text and are listed in the report.</p>
+        <p className="mb-0">People and organizations listed: {(agentRoles.agents_created?.name || 0).toLocaleString()} by name, {(agentRoles.agents_created?.explicit_id || 0).toLocaleString()} by identifier. Name mentions kept as text only: {(agentRoles.unlinked_name_only || 0).toLocaleString()}. Mentions skipped: {Object.values(agentRoles.skipped || {}).reduce((sum, count) => sum + count, 0).toLocaleString()}.</p>
       </details>}
-      {valueLedger.length > 0 && <details className="small mb-3"><summary>Where each source column's values went ({valueLedger.length})</summary>
-        <p className="text-muted mt-2">Counts refer to source values. Mapped and derived values can share a target row. Your download has the complete report and original files.</p>
-        <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Source</th><th>Mapped</th><th>Derived</th><th>Originals only</th><th>Withheld</th><th>Unverified</th></tr></thead><tbody>
-          {valueLedger.map(row => <tr key={`${row.source_table_index}:${row.source_column}`}><td>{row.source_table} · {row.source_term.split('/').pop()}</td><td>{row.mapped_values.toLocaleString()}</td><td>{row.derived_values.toLocaleString()}</td><td>{row.originals_only_values.toLocaleString()}</td><td>{row.withheld_invalid_values.toLocaleString()}</td><td>{row.unverified_values.toLocaleString()}</td></tr>)}
+      {valueLedger.length > 0 && <details className="small mb-3"><summary>Where the values of each column went ({valueLedger.length})</summary>
+        <p className="text-muted mt-2">Counts are of values in your files. A value can be both copied and used to fill another field (for example a scientific name also kept as written). Your download has the full report and a copy of your original files.</p>
+        <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Column</th><th>Copied</th><th>Used for another field</th><th>Left out</th><th>Not valid</th><th>Not traced</th></tr></thead><tbody>
+          {valueLedger.map(row => <tr key={`${row.source_table_index}:${row.source_column}`}><td>{row.source_table} · {shortTerm(row.source_term)}</td><td>{row.mapped_values.toLocaleString()}</td><td>{row.derived_values.toLocaleString()}</td><td>{row.originals_only_values.toLocaleString()}</td><td>{row.withheld_invalid_values.toLocaleString()}</td><td>{row.unverified_values.toLocaleString()}</td></tr>)}
         </tbody></table></div>
       </details>}
-      {!!state.report.preserved_extension_rows?.length && <p className="small">{state.report.preserved_extension_rows.length.toLocaleString()} rows from additional tables stay in your original files. The report records the reason and any choice you made.</p>}
+      {!!state.report.preserved_extension_rows?.length && <p className="small">{state.report.preserved_extension_rows.length.toLocaleString()} rows from additional tables are left out of the Data Package. The report records why, and any choice you made.</p>}
       {state.report.archive_validation?.warnings?.map(warning => <p key={warning} className="small text-muted">{warning}</p>)}
       <p className="small text-muted">{state.report.metadata?.eml}. The check covers structure and values; it cannot confirm that the meaning is unchanged.</p>
       <div className="d-flex flex-wrap gap-2">
@@ -414,7 +420,7 @@ export default function DwcConversion() {
         <summary>Files and tables found ({state.plan.tables.length})</summary>
         <p className="small text-body-secondary mt-2 mb-2">An archive has one main table, plus optional additional tables linked to it (for example measurements or media).</p>
         <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Source table</th><th>What it is</th><th>Linked to the main table by</th><th>Rows</th><th>Columns</th></tr></thead><tbody>
-          {state.plan.tables.map((table, index) => <tr key={index}><td>{table.name}</td><td>{table.core ? 'Main table' : 'Additional table'} · {table.row_type.split('/').pop() || 'Unrecognised type'}</td><td>{table.join_basis?.split('/').pop()}</td><td>{table.rows.toLocaleString()}</td><td>{table.columns.length}</td></tr>)}
+          {state.plan.tables.map((table, index) => <tr key={index}><td>{table.name}</td><td>{table.core ? 'Main table' : 'Additional table'} · {shortTerm(table.row_type) || 'Unrecognised type'}</td><td>{table.join_basis?.split('/').pop()}</td><td>{table.rows.toLocaleString()}</td><td>{table.columns.length}</td></tr>)}
         </tbody></table></div>
         <p className="small text-muted">{state.plan.taxonomy ? 'Taxonomy data package; converting occurrence records uses' : 'Target:'} Darwin Core Data Package (DwC-DP) version {state.plan.schema.version}. {state.plan.files.length} original files are kept.</p>
       </details>
@@ -427,13 +433,13 @@ export default function DwcConversion() {
       <p className="fw-semibold mb-1">Do parent events and their child events agree?</p>
       {index !== 'core' && <p className="small mb-1">Source occurrence table: {state.plan.tables[index]?.name}</p>}
       <p className="small mb-1">ChatIPT compared what your files say about dates, locations and survey details for each child event with its parent event, including fields kept without mapping. If information is missing or cannot be compared, the link between parent and child is left unchecked.</p>
-      <ul className="small mb-2">{Object.entries(scientific.counts || {}).map(([status, count]) => <li key={status}>{status.replaceAll('-', ' ')}: {count.toLocaleString()}</li>)}</ul>
+      <ul className="small mb-2">{Object.entries(scientific.counts || {}).map(([status, count]) => <li key={status}>{CHECK_STATUS[status] || status.replaceAll('-', ' ')}: {count.toLocaleString()}</li>)}</ul>
       {scientific.has_findings && <p className="small mb-1">Some parent and child events disagree or cannot be compared. These findings are listed in the report and do not stop the conversion. Keeping your parent-child links does not confirm that they are correct.</p>}
       {scientificFindings.length > 0 && <details className="small mb-2"><summary>Findings in your files (up to 10 shown)</summary><ul>{scientificFindings.map((finding, index) => <li key={index}>{finding.child_eventID} → {finding.ancestor_eventID || finding.parent_eventID}: {finding.reason}</li>)}</ul></details>}
       <p className="small mb-0">No survey scopes, completeness flags or other values are copied from parent to child or repaired. The package check covers structure and values only. <a href="https://eco.tdwg.org/hierarchy/" target="_blank" rel="noreferrer">TDWG guidance on event hierarchies</a></p>
     </div>})}
     {notices.length > 0 && <div className="alert alert-info">
-      <p className="mb-1">{notices.length} {notices.length === 1 ? 'notice' : 'notices'} about this conversion. Your original files keep every source value; the report explains what could not be mapped and which values were left out of the mapped tables.</p>
+      <p className="mb-1">{notices.length} {notices.length === 1 ? 'notice' : 'notices'} about this conversion. The copy of your original files in the download keeps every value; the report explains what could not be converted and which values were left out.</p>
       <details className="small"><summary>View notices</summary><ul>{notices.map((notice, index) => <li key={`${notice.id}:${index}`}><strong>{notice.title}:</strong> {notice.reason}{notice.id === AGENT_NAMES_ID && inReview && <> <button type="button" className="btn btn-link btn-sm p-0 align-baseline" onClick={() => focusDecision(AGENT_NAMES_ID)}>Change</button></>}</li>)}</ul></details>
     </div>}
       </div>
@@ -445,7 +451,7 @@ export default function DwcConversion() {
         <h2 className="h5">A new home for your data</h2>
         <p className="small text-body-secondary">{state.plan.taxonomy ? 'Your checklist is kept in additional taxonomy tables. Occurrence records, if included, can also fill standard Data Package tables.' : 'We’ll turn your archive into connected tables in a Darwin Core Data Package.'}</p>
         <ul className="source-file-list">{state.plan.tables.map((table, index) => <li key={index}><i className="bi bi-file-earmark-spreadsheet" aria-hidden="true" /><span><strong>{table.name}</strong><small>{table.rows.toLocaleString()} rows · {table.columns.length} columns</small></span></li>)}</ul>
-        <div className="originals-note"><i className="bi bi-shield-check" aria-hidden="true" /><div><strong>Your originals stay safe</strong><p className="small mb-0">Every original file is included in your download, even when a column can’t be mapped.</p></div></div>
+        <div className="originals-note"><i className="bi bi-shield-check" aria-hidden="true" /><div><strong>Your original files stay safe</strong><p className="small mb-0">A copy of every original file is included in your download. Anything that can’t be converted is still there, though not in the Data Package itself.</p></div></div>
       </section>
       <p className="small text-body-secondary sidebar-help">You can leave and come back at any time. Your saved choices will be here.</p>
     </aside>

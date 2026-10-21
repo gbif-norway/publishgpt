@@ -49,8 +49,42 @@ class ExtensionIntegrationTests(SimpleTestCase):
         self.assertEqual(len(frames['event-assertion']), 1)
         self.assertEqual(len(frames['protocol']), 1)
         self.assertEqual(len(report['preserved_extension_rows']), 2)
-        self.assertIn('supplied measurement', next(r for r in report['preserved_extension_rows'] if r['source_table'] == 'measurement_score.csv')['reason'])
+        self.assertIn('no value, or no measurement type', next(r for r in report['preserved_extension_rows'] if r['source_table'] == 'measurement_score.csv')['reason'])
         self.assertEqual(next(c for c in report['columns'] if c['term'] == DWC + 'measurementType')['retained_only_rows'], 1)
+
+    def test_repeated_measurement_ids_never_become_assertion_ids(self):
+        # A placeholder such as "none" is copied as written, so it repeats too.
+        rows = [['e1', 'none', 'Height', '7'], ['e1', 'none', 'Mass', '2'], ['e1', 'TOP69', 'Width', '3']]
+        archive = source('measurement_score.csv', [DWC + 'measurementID', DWC + 'measurementType', DWC + 'measurementValue'], rows)
+        plan, choices = review(archive)
+        column = next(item for item in plan['columns'] if item['term'] == DWC + 'measurementID')
+        self.assertEqual(column['default'], 'preserve')
+        blocked = next(option for option in column['unavailable_options'] if option['value'] == 'occurrence-assertion.assertionID')
+        self.assertIn('1 value in measurementID is used on more than one row (for example none)', blocked['reason'])
+        self.assertIn('each measurement identifier must be different', blocked['reason'])
+        automatic = next(item for item in plan['automatic_choices'] if item['id'] == column['id'])
+        self.assertEqual(automatic['reason'], blocked['reason'])
+        frames, report = convert(archive, plan, choices)
+        self.assertTrue(report['validation']['valid'])
+        self.assertNotIn('assertionID', frames['event-assertion'])
+        distinct = source('measurement_score.csv', [DWC + 'measurementID', DWC + 'measurementType', DWC + 'measurementValue'],
+                          [['e1', 'm1', 'Height', '7'], ['e1', 'm2', 'Mass', '2']])
+        column = next(item for item in build_plan(distinct)['columns'] if item['term'] == DWC + 'measurementID')
+        self.assertEqual(column['default'], 'occurrence-assertion.assertionID')
+
+    def test_trait_table_question_says_what_trait_rows_are(self):
+        archive = source('measurement_trait.csv', [G + 'measurementTraitID', G + 'measurementTraitName'], [['e1', 'trait:1', 'Height']])
+        plan = build_plan(archive)
+        table = next(item for item in [*plan['issues'], *plan['automatic_choices']] if item['id'] == 'table:1')
+        self.assertIn('defines the traits that were measured', table['reason'])
+        column = next(item for item in [*plan['issues'], *plan['automatic_choices']] if item.get('term') == G + 'measurementTraitName')
+        self.assertIn("The trait's name, kept as the name of its method description.", column['reason'])
+        self.assertNotIn('Proposal', json.dumps(plan))
+        self.assertNotIn('different trait definitions', table['reason'])
+        repeated = source('measurement_trait.csv', [G + 'measurementTraitName'], [['e1', 'Height'], ['e2', 'Height'], ['e3', 'Mass']],
+                          core=('event.csv', b'eventID,eventCategory\ne1,survey\ne2,survey\ne3,survey\n'))
+        table = next(item for item in [*build_plan(repeated)['issues'], *build_plan(repeated)['automatic_choices']] if item['id'] == 'table:1')
+        self.assertIn('3 rows, one row for each record it is attached to, but only 2 different trait definitions', table['reason'])
 
     def test_eol_media_subject_and_missing_details_are_explicit(self):
         archive = source('eol_media.csv', [DCT + 'identifier', DCT + 'type', XMP + 'rights/UsageTerms', DWC + 'taxonID'],
@@ -100,7 +134,7 @@ class ExtensionIntegrationTests(SimpleTestCase):
         archive = source('germplasm_accession.csv', [G + 'germplasmID', G + 'biologicalStatus', G + 'purdyPedigree', GEO + 'lat'],
                          [['o1', 'acc:1', 'Landrace', 'A/B', '60']], OCCURRENCE)
         plan, choices = review(archive)
-        with self.assertRaisesMessage(ImportFailure, 'Accessions attach to approved core material'):
+        with self.assertRaisesMessage(ImportFailure, 'Passport details are attached to specimen records'):
             convert(archive, plan, choices)
         choices['material:0'] = 'per_row'
         frames, report = convert(archive, plan, choices)
@@ -171,7 +205,7 @@ class ExtensionIntegrationTests(SimpleTestCase):
                      ('event.csv', b'eventID,eventCategory,eventDate\ne1,survey,2024-03-01\n')):
             archive = source('measurement_trial.csv', [GEO + 'lat', GEO + 'lon', G + 'measurementTrailYear'], [['e1', '59.6', '10.7', '2025']], core)
             plan, choices = review(archive)
-            with self.assertRaisesMessage(ImportFailure, 'conflicts'):
+            with self.assertRaisesMessage(ImportFailure, "the event's"):
                 convert(archive, plan, choices)
 
     def test_bmde_groups_unpivot_without_merging_and_event_values_patch(self):
@@ -231,7 +265,7 @@ class ExtensionIntegrationTests(SimpleTestCase):
         plan, choices = review(archive)
         # Found before conversion, so the event date or the NBN columns can be kept in the originals instead.
         self.assertFalse(option_status(plan, choices)['table:1']['nbn-context']['available'])
-        with self.assertRaisesMessage(ImportFailure, 'different event.eventDate values for the same event'):
+        with self.assertRaisesMessage(ImportFailure, 'different eventDate values for the same event'):
             convert(archive, plan, choices)
 
     def test_preserving_extension_disposes_all_fields_and_suppresses_its_reviews(self):

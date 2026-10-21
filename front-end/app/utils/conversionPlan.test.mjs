@@ -120,11 +120,11 @@ test('automatic summary groups glance choices, hides retained or empty entries, 
 
   // A follower the user moved elsewhere is listed apart, not counted as stored.
   const overriddenState = summaryState({ 'material:0': 'per_row', 'column:0:2': 'preserve' })
-  overriddenState.plan.columns[0].options = [{ value: 'material.catalogNumber', label: 'Catalogue number' }, { value: 'preserve', label: 'Keep in original files only' }]
+  overriddenState.plan.columns[0].options = [{ value: 'material.catalogNumber', label: 'Catalogue number' }, { value: 'preserve', label: 'Leave out of the Data Package' }]
   const overridden = automaticSummary(overriddenState, makeSelector(overriddenState, overriddenState.decisions)).specimen[0]
   assert.equal(overridden.count, 1)
   assert.deepEqual(overridden.names, ['institution'])
-  assert.deepEqual(overridden.overridden, ['catalogue number (Keep in original files only)'])
+  assert.deepEqual(overridden.overridden, ['catalogue number (Leave out of the Data Package)'])
   // An unsaved local change counts at once.
   const unsaved = automaticSummary(overriddenState, makeSelector(overriddenState, { ...overriddenState.decisions, 'column:0:3': 'preserve' })).specimen[0]
   assert.equal(unsaved.count, 0)
@@ -150,7 +150,7 @@ test('automatic summary groups glance choices, hides retained or empty entries, 
   // A specimen target without specimen records says the values stay in the originals.
   const declined = summaryState({ 'material:0': 'preserve', 'column:0:0': 'material.collectedBy' })
   const declinedLine = automaticSummary(declined, makeSelector(declined, declined.decisions)).glance.find(line => line.id === 'column:0:0')
-  assert.equal(declinedLine.title, 'recordedBy → kept in your original files')
+  assert.equal(declinedLine.title, 'recordedBy → left out of the Data Package')
   assert.match(declinedLine.text, /no specimen records are created/)
 
   // A specimen target chosen before the specimen question is answered waits for that answer.
@@ -179,10 +179,10 @@ test('columns are summarised by how they are handled, using column.unmapped when
   assert.deepEqual(summary.retainedTables.map(item => item.name), ['media.txt'])
   assert.deepEqual(summaryLines(summary), [
     '4 columns mapped automatically. 1 more column is covered by the choices below.',
-    '1 column has no Darwin Core Data Package field and stays in your original files: basisOfRecord.',
-    "1 column can't be mapped by ChatIPT yet and stays in your original files: dynamicProperties.",
-    '1 column has no mapping and stays in your original files: remarks.',
-    '1 additional table kept in your original files: media.txt.',
+    '1 column has no Darwin Core Data Package field, so it is left out of the Data Package: basisOfRecord.',
+    "1 column can't be converted by ChatIPT yet, so it is left out of the Data Package: dynamicProperties.",
+    '1 column has no place in the Data Package, so it is left out: remarks.',
+    '1 additional table left out of the Data Package: media.txt.',
   ])
 })
 
@@ -190,7 +190,7 @@ test('long name lists are shortened and plurals agree', () => {
   const columns = Array.from({ length: 8 }, (_, index) => ({ id: `c${index}`, table: 0, term: term(`field${index}`), default: 'preserve', unmapped: 'no-target', options: [] }))
   const big = { plan: { tables: [{ name: 't', core: true, rows: 1 }], columns, automatic_choices: [] } }
   const [line] = summaryLines(summariseColumns(big, makeSelector(big, {})))
-  assert.equal(line, '8 columns have no Darwin Core Data Package field and stay in your original files: field0, field1, field2, field3, field4, field5, and 2 more.')
+  assert.equal(line, '8 columns have no Darwin Core Data Package field, so they are left out of the Data Package: field0, field1, field2, field3, field4, field5, and 2 more.')
 })
 
 test('summaries are empty without a plan, and unmapped falls back gracefully', () => {
@@ -344,7 +344,7 @@ test('event details on an occurrence table follow the occurrence-events choice i
   assert.deepEqual(edgesOf(kept.diagram), ['0>event:1', '1>occurrence:1'])
   assert.equal(kept.summary.mapped, 2)
   assert.deepEqual(kept.summary.groups.chosen.names, ['eventDate', 'locality'])
-  assert.deepEqual(summaryLines(kept.summary).at(-1), '2 columns are kept in your original files by choice: eventDate, locality.')
+  assert.deepEqual(summaryLines(kept.summary).at(-1), '2 columns are left out of the Data Package, as you chose: eventDate, locality.')
   assert.match(kept.details.find(item => item.id === 'column:1:1').outcome, /not copied/)
   assert.equal(kept.details.find(item => item.id === 'column:1:1').mapped, false)
   assert.equal(kept.details.find(item => item.id === 'column:1:2').mapped, true)
@@ -414,7 +414,7 @@ test('nested Taxon-core choices are recognised by their local ids', () => {
 test('column summaries follow the specimen answer for specimen fields', () => {
   const columns = [
     { id: 'column:0:0', table: 0, term: term('catalogNumber'), default: 'material.catalogNumber', follows: 'material:0', nonempty: 2,
-      options: [{ value: 'material.catalogNumber', label: 'Catalogue number, on the specimen record' }, { value: 'preserve', label: 'Keep in original files only' }] },
+      options: [{ value: 'material.catalogNumber', label: 'Catalogue number, on the specimen record' }, { value: 'preserve', label: 'Leave out of the Data Package' }] },
     { id: 'column:0:1', table: 0, term: term('locality'), default: 'event.locality', nonempty: 2, options: [{ value: 'event.locality', label: 'Locality' }] },
   ]
   const build = decisions => ({ decisions, plan: { tables: [{ name: 'occurrence.txt', core: true, rows: 2 }], columns,
@@ -423,7 +423,7 @@ test('column summaries follow the specimen answer for specimen fields', () => {
   const summary = summariseColumns(declined, makeSelector(declined, declined.decisions))
   assert.equal(summary.mapped, 1)
   assert.deepEqual(summary.groups.chosen.names, ['catalogNumber'])
-  assert.equal(columnDetails(declined, makeSelector(declined, declined.decisions))[0].outcome, 'Kept in your original files: no specimen records are created')
+  assert.equal(columnDetails(declined, makeSelector(declined, declined.decisions))[0].outcome, 'Left out of the Data Package: no specimen records are created')
   assert.ok(!planDiagram(declined, makeSelector(declined, declined.decisions)).targets.some(target => target.name === 'material'))
   const open = build({})
   assert.equal(summariseColumns(open, makeSelector(open, {})).review, 1)

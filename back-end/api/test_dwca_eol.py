@@ -56,7 +56,7 @@ class EolTargetTests(SimpleTestCase):
 
     def test_legacy_and_iptc_aliases_need_review(self):
         targets, reason = eol_targets(EOL_MEDIA, LEGACY_SUBTYPE, ['Photograph'])
-        self.assertEqual(targets, ['media.subtypeLiteral']); self.assertIn('Legacy', reason)
+        self.assertEqual(targets, ['media.subtypeLiteral']); self.assertIn('older Audubon Core', reason)
         targets, reason = eol_targets(EOL_MEDIA, IPTC + 'CVterm', ['http://rs.tdwg.org/ontology/voc/SPMInfoItems#Habitat'])
         self.assertEqual(targets, ['media.subjectCategoryIRI']); self.assertTrue(reason)
         self.assertEqual(eol_targets(EOL_MEDIA, IPTC + 'CVterm', ['Habitat'])[0], [])
@@ -85,7 +85,7 @@ class EolTargetTests(SimpleTestCase):
             targets, reason = eol_targets(EOL_REFERENCE, term, ['x'])
             self.assertEqual(targets, [f'bibliographic-resource.{field}']); self.assertTrue(reason)
         targets, reason = eol_targets(EOL_REFERENCE, EOL + 'reference/full_reference', ['Doe J. (2012) Birds.'])
-        self.assertEqual(targets, ['bibliographic-resource.bibliographicCitation']); self.assertIn('ignored', reason)
+        self.assertEqual(targets, ['bibliographic-resource.bibliographicCitation']); self.assertIn('replaces the separate citation parts', reason)
         self.assertEqual(eol_targets(EOL_REFERENCE, DCT + 'publisher', ['Press'])[0], ['bibliographic-resource.publisher'])
         self.assertEqual(eol_targets(EOL_REFERENCE, DCT + 'publisher', ['https://ror.org/01xtthb56'])[0],
                          ['bibliographic-resource.publisherID'])
@@ -105,7 +105,7 @@ class EolMediaRowReviewTests(SimpleTestCase):
 
     def test_text_rows_are_preserved(self):
         for kind in ('Text', 'http://purl.org/dc/dcmitype/Text', ' text '):
-            self.assertIn('Text item', eol_media_row_review({**self.row, DCT + 'type': kind}))
+            self.assertIn('text account about a taxon', eol_media_row_review({**self.row, DCT + 'type': kind}))
 
     def test_missing_source_required_values(self):
         for term in (USAGE, DCT + 'identifier', DCT + 'type'):
@@ -113,8 +113,8 @@ class EolMediaRowReviewTests(SimpleTestCase):
             self.assertIn('requires', eol_media_row_review({k: v for k, v in self.row.items() if k != term}))
 
     def test_taxon_page_signals(self):
-        self.assertIn('Taxon-page', eol_media_row_review({**self.row, DWC + 'taxonID': 'taxon9876'}))
-        self.assertIn('Taxon-page', eol_media_row_review(
+        self.assertIn('species-page subject', eol_media_row_review({**self.row, DWC + 'taxonID': 'taxon9876'}))
+        self.assertIn('species-page subject', eol_media_row_review(
             {**self.row, IPTC + 'CVterm': 'http://rs.tdwg.org/ontology/voc/SPMInfoItems#GeneralDescription'}))
 
 

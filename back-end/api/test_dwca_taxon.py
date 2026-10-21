@@ -135,9 +135,9 @@ class TaxonConversionTests(SimpleTestCase):
         self.assertTrue(report['validation']['valid'])
 
     def test_archive_join_ids_and_dangling_extension_links_are_checked(self):
-        with self.assertRaisesMessage(ImportFailure, 'nonempty and unique'):
+        with self.assertRaisesMessage(ImportFailure, 'some are empty or repeated'):
             read_inputs([('taxon.csv', b'taxonID,scientificName\nt1,Apus apus\nt1,Hirundo apus\n')])
-        with self.assertRaisesMessage(ImportFailure, 'not found in the core'):
+        with self.assertRaisesMessage(ImportFailure, 'not linked to a row of the main table'):
             read_inputs([('taxon.csv', b'taxonID,scientificName\nt1,Apus apus\n'),
                          ('distribution.csv', b'taxonID,countryCode\nmissing,NO\n')])
 

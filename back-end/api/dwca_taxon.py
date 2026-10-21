@@ -137,6 +137,18 @@ def _prefixed_condition(condition, prefix):
     return {**condition, **{key: prefix + condition[key] for key in ('id', 'column') if key in condition}}
 
 
+def _in_taxonomy(entry):
+    """A nested occurrence choice as worded in a checklist package.
+
+    The taxonomy tables keep every value whatever is chosen, so "left out" there means left out of the
+    standard Data Package tables.
+    """
+    def words(text):
+        return (text.replace('out of the Data Package', 'out of the standard Data Package tables')
+                .replace('so it is left out.', 'so it is left out of the standard tables.'))
+    return {**entry, **{key: words(entry[key]) for key in ('title', 'reason', 'question_reason') if isinstance(entry.get(key), str)}}
+
+
 def _outer(entry, prefix, keep_conditions=False, **changes):
     """A nested plan entry as the outer plan lists it, with its references to nested decisions prefixed.
 
@@ -161,14 +173,14 @@ def _outer(entry, prefix, keep_conditions=False, **changes):
 def build_taxon_plan(archive):
     from api.dwca_conversion import RULE_VERSION, PRESERVE, _issue, build_plan
     from api.dwca_review import apply_policy
-    taxonomy_preserve = {**PRESERVE, 'label': 'Keep in taxonomy tables and original files only'}
-    issues = [_issue('taxonomy-package', 'Preserve the checklist as taxonomy tables',
-        'The target has no standalone Taxon table. Checklist fields and extension links remain verbatim in additional taxonomy tables. A checklist alone produces a generic taxonomy Data Package, not a standard DwC-DP.',
-        [{'value': 'confirm', 'label': 'Include the full checklist and its extensions as taxonomy tables'}])]
+    taxonomy_preserve = {**PRESERVE, 'label': 'Keep only in the extra taxonomy tables'}
+    issues = [_issue('taxonomy-package', 'Keep the checklist as taxonomy tables',
+        'The Darwin Core Data Package has no table for a checklist of taxa. Your checklist and its attached tables are copied exactly as written into extra taxonomy tables. A checklist on its own becomes a general taxonomy data package, not a standard Darwin Core Data Package.',
+        [{'value': 'confirm', 'label': 'Include the whole checklist and its attached tables as taxonomy tables'}])]
     if not archive.has_meta:
-        issues.append(_issue('loose-links', 'Confirm the Taxon-core loose-file layout',
-            'Known filenames identify roles. Extensions join by supplied taxonID, never by row position.',
-            [{'value': 'confirm', 'label': 'Confirm these table roles and taxonID joins'}]))
+        issues.append(_issue('loose-links', 'Check how your files fit together',
+            'There is no meta.xml, so ChatIPT worked out what each file is from its name. Tables are linked by taxonID, never by row order.',
+            [{'value': 'confirm', 'label': 'Yes, these file roles and links are right'}]))
     columns, profiles, nested, conflicts, automatic, warnings, row_issues = [], [], {}, [], [], dropped_extension_warnings(archive), []
     for t, table in enumerate(archive.tables):
         profile = {'name': table.name, 'row_type': table.row_type, 'core': table.is_core,
@@ -177,7 +189,7 @@ def build_taxon_plan(archive):
             values = [row[c] for row in table.rows if row[c]]
             target = resource_name(table, t) + '.' + field
             column = {'id': f'column:{t}:{c}', 'table': t, 'column': c, 'term': term,
-                      'default': target, 'review': False, 'options': [{'value': target, 'label': 'Copy verbatim into taxonomy table'}],
+                      'default': target, 'review': False, 'options': [{'value': target, 'label': 'Copy as written into the taxonomy table'}],
                       'nonempty': len(values), 'distinct': len(set(values)), 'samples': [value[:500] for value in list(dict.fromkeys(values))[:3]]}
             columns.append(column); profile['columns'].append({key: column[key] for key in ('term', 'nonempty', 'distinct', 'samples')})
         profiles.append(profile)
@@ -186,11 +198,11 @@ def build_taxon_plan(archive):
         proxy, differences = occurrence_proxy(archive, t)
         inner = build_plan(proxy); nested[str(t)] = inner; conflicts.extend(differences)
         issues.append(_issue(f'table:{t}', f'{table.name}: convert actual occurrence records?',
-            'Confirm that these are actual occurrence records, not taxon distribution statements. Empty classification fields use the exact linked Taxon row only when overlapping classifications agree. Conflicting occurrence classifications remain separate, with no Taxon values filled in. '
-            + (f'{len(differences)} classification differences are recorded in the report. ' if differences else '')
-            + 'Taxonomy tables retain every original value regardless of this choice.',
-            [{'value': 'convert', 'label': 'Convert the supplied occurrence records to standard DwC-DP tables'},
-            {**PRESERVE, 'label': 'Keep these records in additional taxonomy tables only'}], table=t, kind='taxon-occurrences'))
+            'Confirm that these are real occurrence records, not statements about where a taxon is found. Empty classification fields (such as family) are filled from the linked taxon only where the classifications agree; where they differ, nothing is filled in. '
+            + (f'{len(differences)} differences in classification are listed in the report. ' if differences else '')
+            + 'Whatever you choose, the taxonomy tables keep every original value.',
+            [{'value': 'convert', 'label': 'Convert them to standard Data Package occurrence tables'},
+            {**PRESERVE, 'label': 'Keep them only in the extra taxonomy tables'}], table=t, kind='taxon-occurrences'))
         prefix = f'taxon-occurrence:{t}:'
         for column in inner['columns']:
             outer = _outer(column, prefix, table=t)
@@ -200,21 +212,21 @@ def build_taxon_plan(archive):
                                for row in proxy.tables[0].rows if row[column['column']])
                 outer.update(review=True, default=column['default'] if external else 'preserve',
                              options=outer['options'] if external else [taxonomy_preserve])
-                issues.append(_issue(outer['id'], 'taxonID: external identifier required for DwC-DP',
-                    'DwC-DP taxonID refers to a globally resolvable external taxon record. Local checklist identifiers remain in taxonomy tables and their explicit attachment links. Confirm external meaning before copying an IRI.',
+                issues.append(_issue(outer['id'], 'taxonID: does it link to an outside taxon record?',
+                    'In a Darwin Core Data Package, taxonID must point to a taxon record that anyone can look up online, such as a GBIF or Catalogue of Life page. Identifiers that exist only in your checklist stay in the taxonomy tables. Confirm these links point to outside taxon records before copying them.',
                     outer['options'], table=t, kind='external-identifier'))
             columns.append(outer)
-        issues.extend({**_outer(issue, prefix, table=t),
+        issues.extend({**_in_taxonomy(_outer(issue, prefix, table=t)),
                        'options': [taxonomy_preserve if option['value'] == 'preserve' else option for option in issue['options']],
                        **({'members': [prefix + member for member in issue['members']]} if issue.get('members') else {})}
                       for issue in inner['issues'])
         row_issues.extend({**member, 'id': prefix + member['id'], 'group': prefix + member['group'], 'table': t}
                           for member in inner.get('row_issues', []))
-        automatic.extend({**_outer(choice, prefix, keep_conditions=True, table=t),
+        automatic.extend({**_in_taxonomy(_outer(choice, prefix, keep_conditions=True, table=t)),
                           'options': [taxonomy_preserve if option['value'] == 'preserve' else option for option in choice['options']],
                           **({'members': [prefix + member for member in choice['members']]} if choice.get('members') else {})}
                          for choice in inner.get('automatic_choices', []))
-        warnings.extend({**notice, 'id': prefix + notice['id'], 'table': t,
+        warnings.extend({**_in_taxonomy(notice), 'id': prefix + notice['id'], 'table': t,
                          'source_table': table.name} for notice in inner.get('warnings', []))
     plan = {'version': RULE_VERSION, 'source_sha256': archive.fingerprint, 'schema': dwc_dp_schema_snapshot(),
             'tables': profiles, 'columns': columns, 'issues': apply_policy(issues),

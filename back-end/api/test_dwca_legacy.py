@@ -62,8 +62,8 @@ class LegacyTargetTests(SimpleTestCase):
     def test_invalid_hours_and_unknown_date_codes_are_flagged_in_planning(self):
         self.assertEqual(legacy_targets(BMDE_ROW_TYPE, TIMES[0], ["6.5", "noon"])[0], [])
         self.assertEqual(legacy_targets(BMDE_ROW_TYPE, TIMES[0], ["6.5", "12."])[0], ["event.eventTime"])
-        self.assertIn("Codes present here", legacy_targets(NBN_ROW_TYPE, NBN_DATE[0], ["Y", "U"])[1])
-        self.assertNotIn("Codes present here", legacy_targets(NBN_ROW_TYPE, NBN_DATE[0], ["Y", "DD"])[1])
+        self.assertIn("Some rows use other codes", legacy_targets(NBN_ROW_TYPE, NBN_DATE[0], ["Y", "U"])[1])
+        self.assertNotIn("Some rows use other codes", legacy_targets(NBN_ROW_TYPE, NBN_DATE[0], ["Y", "DD"])[1])
 
 
 class BmdeEmitTests(SimpleTestCase):
@@ -110,7 +110,7 @@ class BmdeEmitTests(SimpleTestCase):
 
     def test_subminute_time_is_never_rounded(self):
         self.assertEqual(legacy_targets(BMDE_ROW_TYPE, TIMES[0], ['6.123'])[0], [])
-        with self.assertRaisesMessage(ImportFailure, 'rather than round'):
+        with self.assertRaisesMessage(ImportFailure, 'does not round'):
             emit_legacy_records('bmde', dict(zip(TIMES, ('6.123', ''))), {}, 'event', 'event-key', 'row-key')
 
     def test_event_values_are_not_attached_to_occurrence_subjects(self):
@@ -132,8 +132,8 @@ class BmdeEmitTests(SimpleTestCase):
                                                             BMDE + "ObservationDescriptor": "TotalCount", **group(1, "mass", "7")}))
         for source, text in (({BMDE + "RecordPermissions": "3"}, "RecordPermissions"), ({BMDE + "LastModifiedAction": "DELETE"}, "DELETE"),
                              ({BMDE + "NoObservations": "NoObs"}, "absence"), ({BMDE + "RecordReviewStatus": "pending review"}, "pending"),
-                             ({DWC + "individualCount": "1", BMDE + "ObservationDescriptor": "Presence/Absence"}, "presence"),
-                             (group(2, "", "7"), "group 2")):
+                             ({DWC + "individualCount": "1", BMDE + "ObservationDescriptor": "Presence/Absence"}, "means present"),
+                             (group(2, "", "7"), "measurement 2")):
             self.assertIn(text, legacy_row_review(BMDE_ROW_TYPE, source))
 
 
@@ -182,5 +182,5 @@ class NbnEmitTests(SimpleTestCase):
         valid = nbn_date("D", "2015-06-03", "2015-06-03")
         self.assertIsNone(legacy_row_review(NBN_ROW_TYPE, {**valid, NXF + "sensitiveOccurrence": "false"}))
         self.assertIn("sensitive", legacy_row_review(NBN_ROW_TYPE, {**valid, NXF + "sensitiveOccurrence": "true"}))
-        self.assertIn("true/false", legacy_row_review(NBN_ROW_TYPE, {**valid, NXF + "sensitiveOccurrence": ""}))
+        self.assertIn("is not true or false", legacy_row_review(NBN_ROW_TYPE, {**valid, NXF + "sensitiveOccurrence": ""}))
         self.assertIsNone(legacy_row_review(DWC + "Occurrence", {NXF + "sensitiveOccurrence": "true"}))

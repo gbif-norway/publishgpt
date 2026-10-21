@@ -34,12 +34,29 @@ TABLES = {
               'gloss': 'A person or organization, listed once and linked to every record that mentions them.'},
     'provenance': {'label': 'provenance record', 'gloss': 'Where a media file comes from and who made it.'},
     'usage-policy': {'label': 'usage policy', 'gloss': 'The rights and licence that apply to a media file.'},
+    'occurrence-assertion': {'label': 'occurrence measurement',
+                             'gloss': 'A measurement or fact about an occurrence, such as a length, a count or a trait value.'},
+    'event-assertion': {'label': 'event measurement',
+                        'gloss': 'A measurement or fact about an event, such as water temperature or habitat.'},
+    'material-assertion': {'label': 'specimen measurement',
+                           'gloss': 'A measurement or fact about a specimen, such as its weight or a passport detail.'},
+    'protocol': {'label': 'method description',
+                 'gloss': 'A description of a method, such as how a trait was measured, with its name and sources.'},
+    'bibliographic-resource': {'label': 'literature reference', 'gloss': 'A publication, report or other reference.'},
+    'survey': {'label': 'survey description',
+               'gloss': 'How a survey was carried out: its scope, effort, targets and completeness.'},
+    'resource-relationship': {'label': 'relationship record', 'gloss': 'A stated relationship between two records.'},
+    'molecular-protocol': {'label': 'DNA method description', 'gloss': 'How DNA was extracted, amplified and sequenced.'},
+    'nucleotide-sequence': {'label': 'DNA sequence', 'gloss': 'A DNA sequence.'},
+    'nucleotide-analysis': {'label': 'DNA analysis', 'gloss': 'One DNA sequence read from a sample, with its method.'},
 }
 
+# "Preserve" never converts anything: the values reach no Data Package table, and survive only in the
+# copy of the uploaded files (source-originals.zip) that every download includes.
 PRESERVE = {
-    'label': 'Keep only in my original files',
-    'gloss': 'The column is not copied into the Data Package tables.',
-    'consequence': 'Nothing is lost: your download keeps every original file, including this column.',
+    'label': 'Leave out of the Data Package',
+    'gloss': 'The values are not converted, so they are not in any Data Package table and tools that read the package will not see them.',
+    'consequence': 'They are not deleted: your download also includes a copy of your original files, which still has them.',
     'choose_when': 'Choose this if none of the other options describes the column.',
 }
 
@@ -74,6 +91,15 @@ FIELD_LABELS = {
     'materialEntityRemarks': 'specimen remarks', 'objectQuantity': 'number of objects',
     'objectQuantityType': 'kind of objects counted', 'typeOfType': 'kind of type', 'verbatimLabel': 'label text',
     'derivedFromMaterialEntityID': 'taken from specimen', 'isPartOfMaterialEntityID': 'part of specimen',
+    'assertionID': 'measurement identifier', 'verbatimAssertionType': 'measurement type (as written)',
+    'assertionType': 'measurement type', 'assertionTypeIRI': 'measurement type identifier',
+    'assertionValue': 'value', 'assertionValueIRI': 'value identifier', 'assertionUnit': 'unit',
+    'assertionUnitIRI': 'unit identifier', 'assertionError': 'accuracy', 'assertionMadeDate': 'date measured',
+    'assertionEffectiveDate': 'date the value applies to', 'assertionBy': 'measured by',
+    'assertionByID': 'measured by (identifier)', 'assertionProtocols': 'method', 'assertionReferences': 'references',
+    'assertionRemarks': 'remarks', 'protocolID': 'method identifier', 'protocolType': 'kind of method',
+    'protocolName': 'method name', 'protocolDescription': 'method description', 'protocolReferences': 'method sources',
+    'protocolRemarks': 'remarks', 'bibliographicCitation': 'citation',
 }
 
 # Targets that need their own explanation: the options of agent-role, type-status and
@@ -163,6 +189,27 @@ TARGETS = {
         'choose_when': 'Choose when each row is a subsample and the column names its source specimen.',
         'decided': 'saved as the specimen each one was taken from',
     },
+    'material-identifier.identifier': {
+        'label': 'Another identifier of the specimen',
+        'gloss': 'An extra identifier of the specimen, such as a gene bank accession number.',
+        'consequence': 'Listed with the specimen record, beside its own identifier.',
+        'choose_when': 'Choose when the column identifies the specimen on this row.',
+        'decided': 'saved as another identifier of each specimen record',
+    },
+    'occurrence-identifier.identifier': {
+        'label': 'Another identifier of the occurrence',
+        'gloss': 'An extra identifier of the occurrence, for example one used by another database.',
+        'consequence': 'Listed with the occurrence record, beside its occurrenceID.',
+        'choose_when': 'Choose when the column identifies the linked occurrence.',
+        'decided': 'saved as another identifier of each occurrence',
+    },
+    'event-identifier.identifier': {
+        'label': 'Another identifier of the event',
+        'gloss': 'An extra identifier of the event, for example a trial or sampling code.',
+        'consequence': 'Listed with the event record, beside its eventID.',
+        'choose_when': 'Choose when the column identifies the linked event.',
+        'decided': 'saved as another identifier of each event',
+    },
     'material.isPartOfMaterialEntityID': {
         'label': 'Identifier of the larger specimen this one belongs to',
         'gloss': 'The larger specimen this one is part of, for example one sheet of a specimen mounted on several sheets.',
@@ -208,7 +255,7 @@ FAMILIES = {
                 'label': '{field}, on the specimen record',
                 'gloss': 'Stored with the physical specimen, as the identification that belongs to the specimen itself '
                          '(for example the name on its label).',
-                'consequence': 'Used only when specimen records are created; otherwise kept in your original files.',
+                'consequence': 'Used only when specimen records are created; otherwise left out of the Data Package.',
                 'choose_when': 'Choose when the identification describes the specimen rather than the observation.',
             },
         },
@@ -242,7 +289,7 @@ FAMILIES = {
             'material': {
                 'label': '{field}, about the specimen record',
                 'gloss': 'Describes the physical specimen or its record in the collection.',
-                'consequence': 'Used only when specimen records are created; otherwise kept in your original files.',
+                'consequence': 'Used only when specimen records are created; otherwise left out of the Data Package.',
                 'choose_when': 'Choose when the value is about the kept specimen.',
             },
         },
@@ -274,17 +321,17 @@ FAMILIES = {
     },
 }
 GENERIC_QUESTION = 'Where does {column} belong?'
-GENERIC_REASON = ('This column fits more than one kind of record. Choose the record it describes, or keep it only in '
-                  'your original files.')
+GENERIC_REASON = ('This column fits more than one kind of record. Choose the record it describes, or leave it out of '
+                  'the Data Package.')
 
 # Lines for the "What we decided for you" summary of columns that follow the specimen answer.
 SPECIMEN_DETAILS_STORED = '{count} specimen details stored on the specimen records'
 SPECIMEN_DETAILS_STORED_WHY = 'Why: specimen records are created for these rows, and these details describe the specimen.'
-SPECIMEN_DETAILS_KEPT = '{count} specimen details kept in your original files'
+SPECIMEN_DETAILS_KEPT = '{count} specimen details left out of the Data Package'
 SPECIMEN_DETAILS_KEPT_WHY = 'Why: no specimen records are created for these rows, so there is no record to hold them.'
 SPECIMEN_DETAILS_PENDING = '{count} specimen details follow your answer about specimen records'
-SPECIMEN_DETAILS_PENDING_WHY = ('If specimen records are created, these details are stored on them; if not, they stay in your '
-                                'original files.')
+SPECIMEN_DETAILS_PENDING_WHY = ('If specimen records are created, these details are stored on them; if not, they are left '
+                                'out of the Data Package.')
 
 
 def field_label(field):
@@ -332,7 +379,7 @@ def decided(target):
     if target in TARGETS:
         return TARGETS[target]['decided']
     if '.' not in target:
-        return 'kept in your original files' if target == 'preserve' else target
+        return 'left out of the Data Package' if target == 'preserve' else target
     table, field = target.split('.', 1)
     record = TABLES.get(table, {}).get('label', table.replace('-', ' '))
     return f'saved as {field_label(field)}, on each {record}'

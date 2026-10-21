@@ -95,7 +95,7 @@ class SurveyTargetPropertyTests(SimpleTestCase):
             self.assertEqual(item['default'], 'preserve')
             if item['nonempty']:
                 issue = next(issue for issue in [*plan['issues'], *plan.get('automatic_choices', [])] if issue['id'] == item['id'])
-                self.assertIn('SurveyTarget', issue['reason'])
+                self.assertIn('survey targets', issue['reason'])
         frames, report = convert(source, plan, choices(plan))
         self.assertNotIn('survey-target', frames)
         self.assertNotIn('survey-target-descriptor', frames)
@@ -138,7 +138,7 @@ class IriScopeTests(SimpleTestCase):
         self.assertEqual(frames['survey-target-descriptor']['surveyTargetValue'].tolist(), ['Aves'])
         self.assertNotIn('surveyTargetValueIRI', frames['survey-target-descriptor'])
         withheld = {item['term']: item['reason'] for item in report['withheld_values']}
-        self.assertIn('not paired', withheld[ECOIRI + 'targetTaxonomicScope'])
+        self.assertIn('keeps only the text one', withheld[ECOIRI + 'targetTaxonomicScope'])
 
     def test_iri_lists_and_literals_are_not_split_or_converted(self):
         for value in (f'{GBIF_AVES} | https://www.gbif.org/species/359', 'Aves'):
@@ -159,7 +159,7 @@ class IriScopeTests(SimpleTestCase):
         self.assertNotIn('survey-target', frames)
         self.assertNotIn('survey-target-descriptor', frames)
         withheld = {item['term']: item['reason'] for item in report['withheld_values']}
-        self.assertIn('not paired', withheld[ECOIRI + 'targetTaxonomicScope'])
+        self.assertIn('keeps only the text one', withheld[ECOIRI + 'targetTaxonomicScope'])
         self.assertTrue(report['validation']['valid'])
 
 

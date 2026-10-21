@@ -18,13 +18,32 @@ from api.dwca_hierarchy import missing_reference
 from api.dwca_legacy import NBN_DATE, TIMES, UTM, emit_legacy_records
 
 EXAMPLES = 5
+NOT_SURVEY = 'Some of these events have an eventCategory other than survey in your files, and ChatIPT does not overwrite it.'
+SURVEY_KEPT = 'Your eventCategory column says survey, so it must stay the category of the events.'
 # Columns sharing one target are evaluated in every combination up to this size; beyond it only alone.
 MAX_SHARED = 6
 SEQUENCE = 'http://rs.gbif.org/terms/dna_sequence'
 
 
 def _short(term):
-    return term.rsplit('/', 1)[-1]
+    return re.split(r'[/#]', term)[-1]
+
+
+def _plain(target):
+    """A mapping target as people say it: 'event.eventDate' -> 'event date on the event record'."""
+    from api import dwca_glossary
+    table, field = target.split('.', 1)
+    record = dwca_glossary.TABLES.get(table, {}).get('label', table.replace('-', ' '))
+    return f'{dwca_glossary.field_label(field)} on the {record}'
+
+
+def _n(count, one, many):
+    """'1 row has' / '3 rows have': the count with the matching words."""
+    return f'{count} {one if count == 1 else many}'
+
+
+def _examples(values):
+    return ', '.join(str(value) for value in values[:EXAMPLES])
 
 
 def _requirement(conditions, reason, evidence=None, when=None):
@@ -130,13 +149,14 @@ class Preflight:
                     names = ', '.join(_short(column['term']) for column in columns)
                     self.require(decision, value, _requirement(
                         [{'type': 'unsatisfiable'}],
-                        f'{names} values for {target} disagree within {len(bad)} {label} groups; change this mapping or keep '
-                        'the column in the originals.',
+                        f'Rows with the same {label} give different values in {names} ({len(bad)} group{"s" if len(bad) != 1 else ""}), so they cannot all be '
+                        f'saved as the {_plain(target)}. Choose another place for the column, or leave it out of the Data Package.',
                         {'groups': len(bad), 'examples': bad[:EXAMPLES]}, when=[*when, *selected]))
 
     # Checks ------------------------------------------------------------------
     def run(self):
         self.duplicate_targets()
+        self.unique_targets()
         self.event_grain()
         self.legacy_event_patches()
         self.parent_link()
@@ -164,6 +184,63 @@ class Preflight:
                 self.germplasm_material(t)
         return self
 
+    def unique_targets(self):
+        """A field that must differ on every record (assertionID) is unavailable to a column whose copied values repeat.
+
+        Each row of an additional table becomes one record. Rows are pooled by the table they reach under each
+        role: declared assertions with a usable occurrenceID become occurrence assertions, the others event
+        assertions. Placeholders such as "none" are copied as written and count too. Two source tables writing
+        the same output table are not compared here; the package validation still catches that.
+        """
+        from api.dwc_dp_specs import TABLE_SPECS
+        unique = {f"{name}.{field['name']}" for name, spec in TABLE_SPECS.items() for field in spec.schema['fields']
+                  if field.get('constraints', {}).get('unique') and not field['name'].endswith(('_pk', '_fk'))}
+        for t, table in enumerate(self.archive.tables):
+            if table.is_core:
+                continue
+            decision = f'table:{t}'
+            roles = [role for role in self.options(decision) if role != 'preserve']
+            explicit = self.column(t, DWC + 'occurrenceID')
+
+            def reaches(role, row):
+                if role != 'declared-assertions':
+                    return role
+                value = row[explicit['column']] if explicit else ''
+                return 'occurrence' if value and not missing_reference(value) else 'event'
+
+            for column in self.by_table[t]:
+                for target in self.targets(column):
+                    if target not in unique:
+                        continue
+                    repeats = {}
+                    for role in roles or [None]:
+                        seen, repeated = defaultdict(set), {}
+                        for n, row in enumerate(table.rows):
+                            value = self.copied(t, target, row[column['column']])
+                            if not value or self.preserved_row(t, n):
+                                continue
+                            key = reaches(role, row)
+                            if value in seen[key]:
+                                repeated[value] = None
+                            seen[key].add(value)
+                        if repeated:
+                            repeats[role] = list(repeated)
+                    if not repeats:
+                        continue
+                    repeated = next(iter(repeats.values()))
+                    shown = ', '.join(value if len(value) <= 40 else value[:39] + '…' for value in repeated[:EXAMPLES])
+                    reason = (f'{len(repeated)} {"value" if len(repeated) == 1 else "values"} in {_short(column["term"])} '
+                              f'{"is" if len(repeated) == 1 else "are"} used on more than one row (for example {shown}), but '
+                              f'each {_plain(target).split(" on the ")[0]} must be different, so the column is left out of the Data Package.')
+                    evidence = {'values': len(repeated), 'examples': repeated[:EXAMPLES]}
+                    fine = [role for role in roles if role not in repeats]
+                    if fine:
+                        # Only some ways of reading the table repeat a value: those choices make this mapping unavailable.
+                        self.require(column['id'], target, _requirement(
+                            [{'type': 'decision_in', 'id': decision, 'values': [*fine, 'preserve']}], reason, evidence))
+                    else:
+                        self.block(column['id'], target, reason, evidence)
+
     def duplicate_targets(self):
         """Two columns copied to one field conflict when both supply different values."""
         skipped = {'preserve', 'join', 'derive', self.conversion.PARENT_LINK}
@@ -188,8 +265,8 @@ class Preflight:
                         for this, other in ((first, second), (second, first)):
                             self.require(this['id'], target, _requirement(
                                 [{'type': 'target_not_in', 'column': other['id'], 'targets': [target]}],
-                                f'{names[0]} and {names[1]} supply different values for {target} '
-                                f'in {len(bad)} rows. Map only one of them to this field.', evidence))
+                                f'{names[0]} and {names[1]} give different values for the {_plain(target)} '
+                                f'in {_n(len(bad), "row", "rows")}. Use only one of them for it.', evidence))
 
     def event_grain(self):
         if self.core.row_type != DWC + 'Occurrence':
@@ -203,11 +280,11 @@ class Preflight:
                        if identifier is None or not row[identifier['column']]
                        or missing_reference(row[identifier['column']], ())]
             if missing:
-                self.block('event-grain', value, f'{len(missing)} occurrences supply no usable eventID.', {'source_rows': missing[:EXAMPLES]})
+                self.block('event-grain', value, f'{_n(len(missing), "occurrence has", "occurrences have")} no usable eventID.', {'source_rows': missing[:EXAMPLES]})
                 continue
             self.require('event-grain', value, _requirement(
                 [{'type': 'target_in', 'column': identifier['id'], 'targets': ['event.eventID']}],
-                'Combining events by eventID requires eventID mapped to the event identifier.'))
+                "To combine events by eventID, the eventID column must be kept as the event's identifier."))
             groups = defaultdict(list)
             for n, row in enumerate(self.core.rows):
                 groups[row[identifier['column']]].append(n)
@@ -222,7 +299,7 @@ class Preflight:
                 self.require('event-grain', value, _requirement(
                     [{'type': 'any', 'conditions': [{'type': 'target_in', 'column': column['id'], 'targets': sorted(depth_targets)}
                                                     for column in depths]}],
-                    'A child event per depth requires a depth column mapped to an event depth field.'))
+                    'A child event for each depth needs a depth column saved as a depth of the event.'))
 
     def occurrence_events(self, t):
         """Copying event details from Occurrence rows onto their linked event needs agreement (convert's event patch)."""
@@ -329,7 +406,7 @@ class Preflight:
                     {'type': 'target_not_in', 'column': category['id'], 'targets': ['event.eventCategory']}])
                 self.require(decision, 'patch', _requirement(
                     [{'type': 'decision_in', 'id': 'event-category', 'values': values}] if len(values) == 1 else [{'type': 'unsatisfiable'}],
-                    f'Occurrence rows give the event category {" or ".join(values)} for events without one; the missing-category choice must agree.',
+                    f'Occurrence rows give the event category {" or ".join(values)} for events that have none, so your answer about events with no category must agree.',
                     {'events': len(filled), 'categories': values}, when=when))
         # A year must agree with the eventDate it ends up beside, wherever each comes from.
         years = [(origin, column) for origin, column in sources if 'event.year' in self.targets(column)]
@@ -357,7 +434,7 @@ class Preflight:
                 mixed.append(event)
         if mixed:
             self.require(decision, 'patch', _requirement([{'type': 'unsatisfiable'}],
-                f'For {len(mixed)} events, the occurrence rows and the event each supply only part of the coordinate pair.',
+                f'For {len(mixed)} events, the occurrence rows give only the latitude or only the longitude and the event gives the other, so they cannot be combined into one location.',
                 {'events': len(mixed), 'examples': mixed[:EXAMPLES]},
                 when=[{'type': 'any', 'conditions': [chosen(column, target) for column, target in coordinates[origin]]} for origin in (t, self.ci)]))
 
@@ -368,7 +445,7 @@ class Preflight:
         if column and self.conversion.PARENT_LINK in self.targets(column):
             self.require(column['id'], self.conversion.PARENT_LINK, _requirement(
                 [{'type': 'decision_in', 'id': 'event-grain', 'values': list(self.conversion.COMBINED_GRAINS)}],
-                'Parent links on an Occurrence core require events combined by supplied eventID.'))
+                'Parent links on occurrence rows need the occurrences with the same eventID combined into one event.'))
 
     def material(self, t):
         decision = f'material:{t}'
@@ -389,15 +466,16 @@ class Preflight:
                 groups[value].append(n)
             groups = {key: members for key, members in groups.items() if len(members) > 1}
             if missing:
-                reason = f'With {names} as the identifier, {len(missing)} rows have no usable material identifier (e.g. {missing[:EXAMPLES]}).'
+                reason = f'With {names} as the specimen identifier, {len(missing)} rows have no usable identifier (for example rows {_examples(missing)}).'
             elif table.is_core:
                 spans = [key for key, members in groups.items() if event_column is None or
                          len({table.rows[n][event_column['column']] for n in members}) > 1]
-                reason = (f'{len(spans) or len(groups)} {names} values occur in more than one collection event '
-                          f'(e.g. {(spans or list(groups))[:EXAMPLES]}).') if spans or (groups and not can_combine_events) else None
+                reason = (f'{len(spans) or len(groups)} {names} values are used in more than one collecting event '
+                          f'(for example {_examples(spans or list(groups))}), so each cannot stand for one specimen.') if spans or (groups and not can_combine_events) else None
             else:
                 spans = [key for key, members in groups.items() if len({table.ids[n] for n in members}) > 1]
-                reason = f'{len(spans)} {names} values occur in more than one core event (e.g. {spans[:EXAMPLES]}).' if spans else None
+                reason = (f'{len(spans)} {names} values are used in more than one event of the main table (for example {_examples(spans)}), '
+                          'so each cannot stand for one specimen.') if spans else None
             if reason:
                 reasons.append(reason)
                 self.require(decision, 'by_id', _requirement([{'type': 'unsatisfiable'}], reason, when=selected))
@@ -410,16 +488,16 @@ class Preflight:
                 self.require(decision, 'by_id', _requirement(
                     [{'type': 'decision_in', 'id': 'event-grain',
                       'values': ['by_id', *([self.conversion.DEPTH_SPLIT] if within_depth else [])]}],
-                    'Rows sharing a material identifier must share one combined event'
+                    'Rows that share a specimen identifier must belong to one combined event'
                     + ('.' if within_depth else ' and depth.'), when=selected))
-            self.mapping_conflicts(decision, 'by_id', t, groups, 'material.', {identifier_target}, 'material identifier', when=selected)
+            self.mapping_conflicts(decision, 'by_id', t, groups, 'material.', {identifier_target}, 'specimen identifier', when=selected)
         if not valid:
-            self.block(decision, 'by_id', ' '.join(reasons) or 'No column supplies a material identifier.')
+            self.block(decision, 'by_id', ' '.join(reasons) or 'No column gives a specimen identifier.')
             return
         self.require(decision, 'by_id', _requirement(
             [{'type': 'any', 'conditions': [{'type': 'target_in', 'column': column['id'], 'targets': [identifier_target]}
                                             for column in identifiers]}],
-            'Combining material requires a material identifier mapped to materialEntityID.'))
+            'To combine specimen records by identifier, a column must be kept as the specimen identifier.'))
 
     def humboldt(self, t):
         table = self.archive.tables[t]
@@ -436,12 +514,12 @@ class Preflight:
                 by_event[source_id].add(tuple(row[c] for c in signature))
             bad = [key for key, values in by_event.items() if len(values) > 1]
             if bad:
-                self.block(decision, 'humboldt-merge', f'{len(bad)} events have differing survey rows; only identical rows can be combined.',
+                self.block(decision, 'humboldt-merge', f'{len(bad)} events have survey rows that differ; only identical rows can be combined.',
                            {'events': len(bad), 'examples': bad[:EXAMPLES]})
         if 'humboldt-grouped' in roles:
             self.require(decision, 'humboldt-grouped', _requirement(
                 [{'type': 'decision_in', 'id': 'event-grain', 'values': ['by_id']}],
-                'Occurrence-core survey grouping requires events combined by supplied eventID.'))
+                'One survey per eventID needs the occurrences with the same eventID combined into one event.'))
             expected, attached, signatures = defaultdict(set), defaultdict(set), defaultdict(set)
             for source_id in self.core.ids:
                 expected[core_event[source_id]].add(source_id)
@@ -450,7 +528,7 @@ class Preflight:
                 signatures[core_event[source_id]].add(tuple(row[c] for c in signature))
             bad = [key for key in attached if attached[key] != expected[key] or len(signatures[key]) != 1]
             if bad:
-                self.block(decision, 'humboldt-grouped', f'{len(bad)} eventIDs lack complete identical survey coverage of their occurrences.',
+                self.block(decision, 'humboldt-grouped', f'For {len(bad)} eventIDs, not every occurrence has a survey row, or the rows differ.',
                            {'events': len(bad), 'examples': bad[:EXAMPLES]})
         survey = self.column(t, ECO + 'surveyID')
         if survey is not None:
@@ -467,8 +545,8 @@ class Preflight:
                 if repeated:
                     self.require(decision, role, _requirement(
                         [{'type': 'target_not_in', 'column': survey['id'], 'prefixes': ['survey.']}],
-                        f'{len(repeated)} surveyID values would identify several separate surveys. Keep surveyID in the '
-                        'originals, or combine identical survey rows.', {'surveyIDs': len(repeated), 'examples': repeated[:EXAMPLES]}))
+                        f'{len(repeated)} surveyID values would be used for several separate surveys. Leave surveyID out of '
+                        'the Data Package, or combine identical survey rows.', {'surveyIDs': len(repeated), 'examples': repeated[:EXAMPLES]}))
         self.survey_category(t)
 
     def survey_category(self, t):
@@ -482,25 +560,25 @@ class Preflight:
         if self.core.row_type == DWC + 'Event':
             if any(value and value != 'survey' for value in supplied):
                 for value in ('require', 'confirm'):
-                    self.block(decision, value, 'A supplied non-survey eventCategory cannot be overwritten.')
+                    self.block(decision, value, NOT_SURVEY)
                 return
             fill = {'type': 'decision_in', 'id': 'event-category', 'values': ['survey']}
             if any(not value for value in supplied):
-                self.require(decision, 'require', _requirement([fill], 'Some linked events have no category; '
-                             'requiring survey events needs survey as the missing-category choice.'))
+                self.require(decision, 'require', _requirement([fill], 'Some linked events have no category, so this needs '
+                             '"survey" as your answer for events with no category.'))
             if category and 'survey' in supplied:
                 for value in ('require', 'confirm'):
                     self.require(decision, value, _requirement([{'type': 'any', 'conditions': [*mapped, fill]}],
-                                 'Supplied survey categories must stay mapped to eventCategory.'))
+                                 SURVEY_KEPT))
             return
         if any(value != 'survey' for value in supplied):
-            self.block(decision, 'require', 'Occurrence-core events are occurrence context events unless every linked row supplies survey.')
+            self.block(decision, 'require', 'Events made from occurrence rows count as surveys only when every linked row has eventCategory survey.')
         elif mapped:
-            self.require(decision, 'require', _requirement(mapped, 'Supplied survey categories must stay mapped to eventCategory.'))
+            self.require(decision, 'require', _requirement(mapped, SURVEY_KEPT))
         if any(value and value != 'survey' for value in supplied):
-            self.block(decision, 'confirm', 'A supplied non-survey eventCategory cannot be overwritten.')
+            self.block(decision, 'confirm', NOT_SURVEY)
         elif mapped and 'survey' in supplied:
-            self.require(decision, 'confirm', _requirement(mapped, 'Supplied survey categories must stay mapped to eventCategory.'))
+            self.require(decision, 'confirm', _requirement(mapped, SURVEY_KEPT))
 
     def assertions(self, t):
         table = self.archive.tables[t]
@@ -522,14 +600,14 @@ class Preflight:
             explicit = [(n, value) for n, value in supplied if not missing_reference(value, matches)]
             bad = [n + 1 for n, value in explicit if len(matches[value]) != 1 or matches[value][0] != table.ids[n]]
             if explicit and (core_column is None or bad):
-                self.block(decision, 'occurrence-assertion', 'Supplied assertion occurrenceIDs must identify exactly one '
-                           'occurrence, which must be the attached core row.',
+                self.block(decision, 'occurrence-assertion', 'The occurrenceID on each measurement row must match exactly one '
+                           'occurrence: the one the row is attached to.',
                            {'source_rows': (bad or [n + 1 for n, _ in explicit])[:EXAMPLES],
                             'rows': len(bad) if bad else len(explicit)})
             elif explicit:
                 self.require(decision, 'occurrence-assertion', _requirement(
                     [{'type': 'target_in', 'column': core_column['id'], 'targets': ['occurrence.occurrenceID']}],
-                    'Supplied assertion occurrenceIDs resolve through the core occurrenceID, which must stay mapped.'))
+                    "Measurements find their occurrence through the main table's occurrenceID, so that column must stay the occurrence identifier."))
         if 'declared-assertions' in roles:
             matches = defaultdict(list)
             columns = {}
@@ -553,17 +631,17 @@ class Preflight:
                 else:
                     needed.add(found[0][0])
             if ambiguous:
-                self.block(decision, 'declared-assertions', 'An assertion occurrenceID uses a common missing-value token '
-                           'that also occurs as a source occurrenceID. Its subject cannot be chosen automatically.',
+                self.block(decision, 'declared-assertions', 'Some measurement rows have a placeholder such as NA as their occurrenceID, '
+                           'and the same placeholder is also used as an occurrenceID, so ChatIPT cannot tell what they describe.',
                            {'source_rows': ambiguous[:EXAMPLES], 'rows': len(ambiguous)})
             elif bad:
-                self.block(decision, 'declared-assertions', 'Supplied assertion occurrenceIDs must identify exactly one converted '
-                           'occurrence in the archive, within the attached event.', {'source_rows': bad[:EXAMPLES], 'rows': len(bad)})
+                self.block(decision, 'declared-assertions', 'The occurrenceID on each measurement row must match exactly one '
+                           'converted occurrence in the event the row is attached to.', {'source_rows': bad[:EXAMPLES], 'rows': len(bad)})
             for o in sorted(needed):
                 self.require(decision, 'declared-assertions', _requirement(
                     [{'type': 'decision_in', 'id': f'table:{o}', 'values': ['occurrence']},
                      {'type': 'target_in', 'column': columns[o]['id'], 'targets': ['occurrence.occurrenceID']}],
-                    f'Assertion occurrenceIDs resolve to {self.archive.tables[o].name}, which must convert with occurrenceID mapped.'))
+                    f'Measurements name occurrences in {self.archive.tables[o].name}, so that table must be converted with its occurrenceID column.'))
 
     def media(self, t):
         table = self.archive.tables[t]
@@ -591,27 +669,27 @@ class Preflight:
                                                           for n in retainable]}
                 evidence = {'rows': len(members), 'source_rows': [n + 1 for n in members[:EXAMPLES]]}
                 if not supplied and fixed:
-                    self.block(decision, role, f'{len(fixed)} media rows have no mappable media value.', evidence)
+                    self.block(decision, role, f'{_n(len(fixed), "media row has", "media rows have")} no value that can be converted.', evidence)
                 elif not supplied:
-                    self.require(decision, role, _requirement([retained], f'{len(members)} media rows have no mappable media value '
-                                 'and must be retained in originals.', evidence))
+                    self.require(decision, role, _requirement([retained], f'{_n(len(members), "media row has", "media rows have")} no value that can be '
+                                 f'converted, so {"it" if len(members) == 1 else "they"} must be left out of the Data Package.', evidence))
                 elif fixed:
-                    self.require(decision, role, _requirement([mapped], f'{len(members)} media rows have values only in columns '
-                                 'that must stay mapped to media fields.', evidence))
+                    self.require(decision, role, _requirement([mapped], f'{_n(len(members), "media row has", "media rows have")} values only in columns '
+                                 'that must stay saved as media details.', evidence))
                 else:
                     self.require(decision, role, _requirement([{'type': 'any', 'conditions': [mapped, retained]}],
-                                 f'{len(members)} media rows need their media columns mapped, or the rows retained in originals.', evidence))
+                                 f'{_n(len(members), "media row needs", "media rows need")} their media columns converted, or the rows left out of the Data Package.', evidence))
 
     def molecular(self, t):
         table = self.archive.tables[t]
         column = self.column(t, SEQUENCE)
         missing = [n + 1 for n, row in enumerate(table.rows) if column is None or not row[column['column']]]
         if missing:
-            self.block(f'table:{t}', 'molecular', f'{len(missing)} rows supply no DNA sequence.', {'source_rows': missing[:EXAMPLES]})
+            self.block(f'table:{t}', 'molecular', f'{_n(len(missing), "row has", "rows have")} no DNA sequence.', {'source_rows': missing[:EXAMPLES]})
         else:
             self.require(f'table:{t}', 'molecular', _requirement(
                 [{'type': 'target_in', 'column': column['id'], 'targets': ['nucleotide-sequence.sequence']}],
-                'Each analysis needs its DNA sequence mapped.'))
+                'Each DNA row needs its DNA sequence column converted.'))
 
     def trait_link(self, t):
         decision = f'trait-link:{t}'
@@ -649,12 +727,16 @@ class Preflight:
             else:
                 condition = options[0] if len(options) == 1 else {'type': 'any', 'conditions': options}
                 alternatives[json.dumps(condition, sort_keys=True)] = condition
-        if bad or not columns:
-            self.block(decision, 'exact', f'{len(bad)} trait IDs do not match exactly one converted Trait Descriptor.',
+        if not columns:
+            self.block(decision, 'exact', 'No trait table has a measurementTraitID column to match these IDs against.',
                        {'examples': bad[:EXAMPLES]})
             return
+        if bad:
+            self.block(decision, 'exact', f'{_n(len(bad), "measurementTraitID value does", "measurementTraitID values do")} not match exactly one row of a converted '
+                       f'trait table (for example {_examples(bad)}).', {'examples': bad[:EXAMPLES]})
+            return
         self.require(decision, 'exact', _requirement(list(alternatives.values()),
-                     'Each score trait ID must match exactly one converted Trait Descriptor.'))
+                     'Each measurementTraitID must match exactly one row of a converted trait table.'))
 
     def germplasm_material(self, t):
         table = self.archive.tables[t]
@@ -673,12 +755,12 @@ class Preflight:
                     sharing[value].append(n)
                 usable.append(({'type': 'all', 'conditions': selected}, values, sharing))
         if not usable:
-            self.block(decision, role, 'Linked core rows need a supplied material identifier.')
+            self.block(decision, role, 'Every linked row of the main table needs a specimen identifier.')
             return
         conditions = [{'type': 'decision_in', 'id': material, 'values': ['per_row', 'by_id']},
                       {'type': 'any', 'conditions': [selected for selected, _, _ in usable]}]
         if role == 'germplasm-accession':
-            self.require(decision, role, _requirement(conditions, 'Accessions attach to approved core material with a mapped identifier.'))
+            self.require(decision, role, _requirement(conditions, 'Passport details are attached to specimen records, so the main table needs specimen records with an identifier.'))
             return
         germplasm = self.column(t, G + 'germplasmID')
         accessions = defaultdict(lambda: defaultdict(list))
@@ -714,11 +796,11 @@ class Preflight:
                 condition = options[0] if len(options) == 1 else {'type': 'any', 'conditions': options}
                 alternatives[json.dumps(condition, sort_keys=True)] = condition
         if bad:
-            self.block(decision, role, 'Score germplasmIDs must exactly match an identifier of their linked core material.',
+            self.block(decision, role, "Each measurement's germplasmID must exactly match the accession number of its specimen record.",
                        {'source_rows': bad[:EXAMPLES], 'rows': len(bad)})
             return
         self.require(decision, role, _requirement([*conditions, *alternatives.values()],
-                                                  'Score germplasmIDs resolve through approved material identifiers.'))
+                                                  "Measurements find their specimen record through its accession number, so the specimen identifiers must be converted."))
 
     def legacy_event_patches(self):
         """Extension event values must agree with their event (convert's add_extension conflict and year checks).
@@ -817,9 +899,9 @@ class Preflight:
                 {'type': 'any', 'conditions': [{'type': 'all', 'conditions': conditions} for conditions in
                                                {json.dumps(conditions, sort_keys=True): conditions for conditions, _ in found}.values()]}]
             field = found[0][1]['field']
-            reason = (f'{first} and {second} supply different {field} values for the same event ({len(found)} case{"s" if len(found) != 1 else ""}). '
-                      'Keep one of them in the originals' + (', keep events separate' if any(c.get('id') == 'event-grain' for c in when) else '')
-                      + ', or correct the source.')
+            reason = (f'{first} and {second} give different {field.split(".", 1)[-1]} values for the same event ({len(found)} case{"s" if len(found) != 1 else ""}). '
+                      'Leave one of them out of the Data Package' + (', keep events separate' if any(c.get('id') == 'event-grain' for c in when) else '')
+                      + ', or correct your files.')
             evidence = {'conflicts': len(found), 'examples': [item for _, item in found[:EXAMPLES]]}
             # The requirement sits on every choice that applies it, conditioned on the others.
             for condition in when:
@@ -837,10 +919,10 @@ class Preflight:
                 continue
             self.require(column['id'], 'derive', _requirement(
                 [{'type': 'target_in', 'column': other['id'], 'targets': ['derive']} for other in others],
-                'NBN vague date columns must be approved together.'))
+                'The NBN date columns belong together, so convert all of them.'))
             self.require(column['id'], 'preserve', _requirement(
                 [{'type': 'target_not_in', 'column': other['id'], 'targets': ['derive']} for other in others],
-                'NBN vague date columns must be retained together.'))
+                'The NBN date columns belong together, so leave all of them out of the Data Package.'))
 
 
 def preflight(archive, core, columns, issues, row_issues):

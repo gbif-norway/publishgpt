@@ -201,7 +201,7 @@ class UserFileSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if validated_data.get('dataset') and validated_data['dataset'].workflow_type == Dataset.WorkflowType.DWCA_CONVERSION:
-            raise serializers.ValidationError('Conversion source files are immutable. Start a new conversion to use different files.')
+            raise serializers.ValidationError('The files of a conversion cannot be changed. Start a new conversion to use different files.')
         user_file = None
         try:
             with transaction.atomic():
@@ -413,7 +413,7 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         if instance.workflow_type == Dataset.WorkflowType.DWCA_CONVERSION:
-            raise serializers.ValidationError('Conversion inputs are immutable. Start a new conversion to use different inputs.')
+            raise serializers.ValidationError('The files and settings of a conversion cannot be changed. Start a new conversion to use different ones.')
         return super().update(instance, validated_data)
 
     def _create_conversion(self, validated_data, uploads):

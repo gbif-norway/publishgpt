@@ -23,11 +23,11 @@ def semantic_target_rejection(target: str, value: str) -> str | None:
     if not value:
         return None
     if target.endswith('.countryCode') and value.strip() not in _ISO_ALPHA_2_COUNTRY_CODES:
-        return 'countryCode is not an exact ISO 3166-1 alpha-2, XZ, or ZZ code; original retained.'
+        return 'Not a two-letter ISO country code, so it was not copied. Your original files keep it.'
     if target.endswith('.dateIdentified') and value.strip() == '0-0-0':
-        return 'dateIdentified is the 0-0-0 placeholder, not a calendar date; original retained.'
+        return 'The date 0-0-0 is a placeholder, not a real date, so it was not copied. Your original files keep it.'
     if target.endswith(ASSERTION_IRI_FIELDS) and not _ABSOLUTE_IRI.fullmatch(value.strip()):
-        return f"{target.rsplit('.', 1)[1]} needs an absolute IRI; this value is not one, so the original is retained."
+        return f"{target.rsplit('.', 1)[1]} needs a full web link (IRI), and this value is not one, so it was not copied. Your original files keep it."
     return None
 
 
@@ -57,23 +57,23 @@ def audit_semantic_values(archive, *, example_limit: int = 5) -> dict:
     specs = {
         DWC + 'countryCode': (
             'country_code_not_iso_alpha2',
-            'Values must be exact uppercase ISO 3166-1 alpha-2 codes, XZ, or ZZ.',
+            'countryCode should be a two-letter ISO code in capitals, such as NO or FR (or XZ for the high seas and ZZ for unknown).',
             lambda value: value not in _ISO_ALPHA_2_COUNTRY_CODES,
         ),
         DWC + 'dateIdentified': (
             'placeholder_identification_date',
-            'The value 0-0-0 is commonly a placeholder; verify against the source before treating it as a date.',
+            'The date 0-0-0 is usually a placeholder. Check your files before treating it as a date.',
             lambda value: value == '0-0-0',
         ),
         DWC + 'eventRemarks': (
             'age_like_event_remarks',
-            'These remarks resemble organism life stages. Review each distinct value before routing it to occurrence.lifeStage or occurrence.occurrenceRemarks.',
+            'These remarks look like life stages of the organism. Check each one to decide whether it is a life stage or an occurrence remark.',
             is_age_like_remark,
         ),
         **{
             DWC + term: (
                 'zero_elevation_or_depth',
-                'Zero can be a valid elevation or depth. Review in context; this audit does not reject or change it.',
+                'Zero can be a real elevation or depth. Check these in context; ChatIPT does not reject or change them.',
                 _is_zero,
             )
             for term in _ZERO_PROFILE_TERMS

@@ -690,7 +690,7 @@ class UserFile(models.Model):
         if detection_errors:
             detail = "; ".join(f"{label}: {message}" for label, message in detection_errors)
             raise ValueError(
-                f"Unable to determine the delimiter for {self.filename}. Tried {detail}."
+                f"Could not tell how the columns in {self.filename} are separated. Tried {detail}."
             )
 
         raise ValueError(f"{self.filename} appears to be empty or could not be parsed as tabular data.")

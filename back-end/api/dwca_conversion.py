@@ -30,7 +30,7 @@ from api.dwca_review import (apply_policy, effective_decisions, failed_requireme
 from api.dwca_semantic_audit import ASSERTION_IRI_FIELDS, is_age_like_remark, semantic_target_rejection
 from api.dwca_agents import ROLE_FIELDS, agent_name, build_agent_roles, composite_name_reason, split_agent_ids
 
-RULE_VERSION = "27"
+RULE_VERSION = "28"
 DERIVED_VALUE_EXAMPLE_LIMIT = 20
 ECO_SURVEY_ID = 'http://rs.tdwg.org/eco/terms/surveyID'
 REGISTERED_TERMS = {term for terms in REGISTRY['terms'].values() for term in terms}
@@ -62,8 +62,19 @@ ROLE_DESCRIPTIONS = {
     'reference': 'Each row of {table} becomes a literature reference of its linked record in {core}.',
     'humboldt-survey': 'Each row of {table} becomes a survey description of its linked event in {core}.',
 }
+COUNT_REASON = ('individualCount is not copied as a column of its own. Each whole-number count becomes the number of individuals '
+                'of the occurrence (its organism quantity); where the row already gives a different quantity, the count is kept as a '
+                'measurement of the occurrence instead. Other values stay only in your original files.')
+# What an unfamiliar additional table holds, said before its "what do these rows describe?" question.
+TABLE_REASONS = {
+    'germplasm-accession': 'This table holds gene bank passport details, such as accession numbers, pedigrees and donors.',
+    'germplasm-score': 'This table holds measured or scored trait values, one value per row.',
+    'germplasm-trait': ('This table defines the traits that were measured: their names, methods and sources. ChatIPT can keep each row '
+                        'as a method description for the whole dataset, not attached to any particular record.'),
+    'germplasm-trial': 'This table describes the field trial each event belongs to, such as its year, location and report.',
+}
 NAMESPACE = uuid.UUID("7750ccce-e9f9-4fd1-b9d8-a02a9747cae9")
-PRESERVE = {"value": "preserve", "label": "Keep in original files only"}
+PRESERVE = {"value": "preserve", "label": dwca_glossary.PRESERVE['label']}
 PARENT = DWC + "parentEventID"
 PARENT_LINK = "parent-link"
 # event-grain value: events combined by eventID, each distinct depth of a group becoming a child event.
@@ -85,6 +96,18 @@ SUPPORTED_EXTENSIONS = {
     **GERMPLASM_FAMILIES,
     **LEGACY_FAMILIES,
 }
+
+
+def _target_words(target):
+    """A mapping target in words: 'event.eventDate' -> 'event date on the event record'."""
+    table, field = target.split('.', 1)
+    record = dwca_glossary.TABLES.get(table, {}).get('label', table.replace('-', ' '))
+    return f'{dwca_glossary.field_label(field)} on the {record}'
+
+
+def short_term(term):
+    """A term's name as people know it from their column headers: '.../germplasmTerm#measurementTraitName' -> 'measurementTraitName'."""
+    return re.split(r'[/#]', term)[-1]
 
 
 def _column_id(t, c):
@@ -110,10 +133,11 @@ def _agent_names_warnings(warnings, roles):
             if not linked:
                 continue
             warning = {**warning, 'count': linked, 'names': names, 'reason': (
-                f"Linked {linked:,} {'mention' if linked == 1 else 'mentions'} of {names:,} "
-                f"{'name' if names == 1 else 'names'} without identifiers to one agent per exact name"
-                + (f"; {kept:,} {'mention was' if kept == 1 else 'mentions were'} kept as text only by your choices" if kept else '')
-                + '. Names with identifiers are linked by their identifier.')}
+                f"{names:,} {'name' if names == 1 else 'names'} without an identifier "
+                f"{'was' if names == 1 else 'were each'} listed once as a person or organization and linked to "
+                f"{linked:,} {'mention' if linked == 1 else 'mentions'}"
+                + (f"; {kept:,} {'mention was' if kept == 1 else 'mentions were'} kept as text only, as you chose" if kept else '')
+                + '. Names with an identifier are linked by that identifier.')}
         restated.append(warning)
     return restated
 
@@ -137,9 +161,9 @@ def _candidates(term, tables):
 
 def _choice(target):
     if target == PARENT_LINK:
-        return {"value": target, "label": "Link to the source event with this persistent eventID"}
+        return {"value": target, "label": "Link each row to the event with this eventID"}
     if target == 'derive':
-        return {"value": target, "label": 'Use reviewed extension rules'}
+        return {"value": target, "label": 'Convert as described above'}
     explanation = dwca_glossary.explain(target)
     if explanation is None or 'technical' not in explanation:
         return {"value": target, "label": target.replace(".", " → ")}
@@ -209,7 +233,7 @@ def _copy_rejection(row_type, target, value):
         return semantic_reason
     descriptor = _typed_field(target)
     if value and descriptor is not None and SUPPORTED_EXTENSIONS.get(row_type) != 'humboldt' and not valid_value(descriptor, value):
-        return 'Value fails the approved target type or bounds; retained without normalization.'
+        return 'Not a valid value for this field, so it was not copied. Your original files keep it unchanged.'
     return None
 
 
@@ -233,7 +257,8 @@ def _source(terms, row):
     for term, value in zip(terms, row):
         if value:
             if term in source and source[term] != value:
-                raise ImportFailure(f'Conflicting source columns use the same term IRI: {term}.')
+                raise ImportFailure(f'Two columns in one table both stand for {short_term(term)} but hold different values, '
+                                    'so ChatIPT cannot tell which one to use. Remove or rename one of them.')
             source[term] = value
     return source
 
@@ -413,8 +438,9 @@ def _event_nodes(archive, core):
     if PARENT not in core.terms:
         return None, None
     if DWC + "eventID" not in core.terms:
-        return None, ("The core declares no dwc:eventID field, so parent values have no persistent identifiers to resolve against. "
-                      "Archive row keys are never used as parents. The column stays in the originals.")
+        # Archive row keys are never used as parents.
+        return None, ("The main table has no eventID column, so the events named in parentEventID cannot be found. "
+                      "The column is left out of the Data Package.")
     id_column, parent_column = core.terms.index(DWC + "eventID"), core.terms.index(PARENT)
     known_ids = {row[id_column] for row in core.rows if row[id_column]}
     def parent_value(row):
@@ -480,7 +506,7 @@ def _scientific_hierarchy(archive, core, nodes, hierarchy):
                         'dataGeneralizations', 'informationWithheld', 'coordinatePrecision')}:
                 ambiguous.append({'child': position, 'parent': hierarchy['links'].get(position),
                     'kind': 'event-source-ambiguity', 'status': 'incomparable',
-                    'reason': 'Source rows grouped into this event disagree; no representative value is selected.',
+                    'reason': 'The rows combined into this event disagree on this detail, so it could not be compared.',
                     'evidence': {'term': term, 'values': supplied}})
                 if term != DWC + 'eventDate':
                     spatial_ambiguities[position].append({'term': term, 'values': supplied})
@@ -499,7 +525,7 @@ def _scientific_hierarchy(archive, core, nodes, hierarchy):
                          (check['child'], check['ancestor']) if position in spatial_ambiguities}
             if conflicts:
                 check['status'] = 'incomparable'
-                check['reason'] = 'Grouped source location values disagree; no spatial claim is made.'
+                check['reason'] = 'The rows combined into one of these events give different locations, so the locations could not be compared.'
                 check['evidence'].pop('calculated', None)
                 check['evidence']['group_ambiguities'] = [
                     {'event_index': position, 'fields': fields} for position, fields in sorted(conflicts.items())]
@@ -608,8 +634,23 @@ def _specimen_presence(table):
     bases = ', '.join(sorted({row[basis].strip() for row in table.rows}))
     return {'default': 'present', 'title': f'{table.name}: specimen records are recorded as present', 'reason': (
         f'Every row of {table.name} is a specimen or sample record ({bases}) and none says whether the organism was present. '
-        'No count is zero and no row uses absence wording, so occurrenceStatus is filled with present, as GBIF '
-        'would interpret these records. Change this to absent if the records report organisms that were not found.')}
+        'No count is zero and no row says "absent" or "not found", so occurrenceStatus is set to present, which is how GBIF '
+        'reads these records anyway. Change this to absent if the records report organisms that were looked for but not found.')}
+
+
+def _repeated_traits(table):
+    """A note when a trait table repeats its definitions, since each row becomes its own method description."""
+    if SUPPORTED_EXTENSIONS.get(table.row_type) != 'germplasm-trait':
+        return ''
+    # A column that only repeats each row's link to the main table does not make a definition different.
+    links = {c for c in range(len(table.terms)) if table.ids and all(row[c] == key for row, key in zip(table.rows, table.ids))}
+    distinct = len({tuple(value for c, value in enumerate(row) if c not in links) for row in table.rows})
+    if distinct == len(table.rows):
+        return ''
+    per_record = ', one row for each record it is attached to,' if len(set(table.ids)) == len(table.rows) else ''
+    return (f'Here the table has {len(table.rows):,} rows{per_record} but only {distinct:,} different trait '
+            f'{"definition" if distinct == 1 else "definitions"}. Each row becomes its own method description, so the '
+            'repeated ones would appear many times. ')
 
 
 def _issue(id, title, reason, options, **extra):
@@ -635,8 +676,9 @@ def _streamline_plan(archive, core, plan, warnings):
                 continue
             table = archive.tables[issue['table']]
             if table.row_type in HUMBOLDT_FAMILIES and any(categories.get(source_id) not in {None, '', 'survey'} for source_id in table.ids):
-                reason = ('A supplied non-survey event category cannot be overwritten. The Humboldt table is retained in originals; '
-                          'correct the source classification before converting these survey rows.')
+                reason = ('Some events these survey rows describe have an eventCategory other than survey, and ChatIPT does not '
+                          'overwrite a category from your files. The survey table is left out of the Data Package. To convert it, '
+                          'correct eventCategory in your files and upload them again.')
                 issue.update(options=[PRESERVE], reason=reason)
                 plan['tables'][issue['table']]['conversion_unavailable'] = reason
     retained_tables = {issue['table'] for issue in plan['issues'] if issue['id'].startswith('table:')
@@ -654,50 +696,54 @@ def _streamline_plan(archive, core, plan, warnings):
                 continue
             issue = {**issue, 'options': [PRESERVE]}
             default = 'preserve'
-            reason = 'The whole extension is retained in originals because its subject cannot be represented by this converter.'
+            reason = 'This whole table is left out of the Data Package, because ChatIPT cannot convert what its rows describe.'
         elif {option['value'] for option in issue['options']} == {'preserve'}:
             default = 'preserve'
-            reason = issue['reason'] if not issue['id'].startswith('table:') else (
+            # When every other option was ruled out by the data, saying why is the explanation.
+            ruled_out = ' '.join(dict.fromkeys(option['reason'] for option in issue.get('unavailable_options', []) if option.get('reason')))
+            reason = (ruled_out or issue['reason']) if not issue['id'].startswith('table:') else (
                 plan['tables'][issue['table']].get('conversion_unavailable') or
                 archive.tables[issue['table']].unplaced_reason or
-                'This extension has no supported subject or row-grain mapping for the declared core. It is retained in originals without creating target records.')
+                f'ChatIPT cannot yet convert this kind of table when it is attached to {core.name}, so it is left out of the Data Package.')
         elif issue['id'] == 'event-grain' and (event_ids is None or any(not row[event_ids] or
                 missing_reference(row[event_ids], ()) for row in core.rows)):
             default = 'per_row'
-            reason = 'Not every occurrence supplies a usable eventID. Separate context events keep each row; no event identities are merged.'
+            reason = 'Some occurrences have no usable eventID, so each occurrence row gets its own event and no events are combined.'
             issue = {**issue, 'options': [option for option in issue['options'] if option['value'] == 'per_row']}
             supplied = [row[event_ids] for row in core.rows if row[event_ids] and
                         not missing_reference(row[event_ids], ())] if event_ids is not None else []
             if len(set(supplied)) != len(supplied):
                 # Splitting a repeated persistent identity is an interpretation,
                 # even when missing IDs make complete grouping unavailable.
-                required.append({**issue, 'reason': reason + ' Some supplied IDs repeat. Confirm separate row contexts, each inside one event for its repeated ID, or retain eventID in originals using the automatic mappings below.'})
+                required.append({**issue, 'reason': reason + ' Some eventIDs are shared by several rows. Confirm that each row gets its own event, '
+                                 'grouped inside one event for each shared eventID, or leave eventID out of the Data Package in the mapping choices.'})
                 continue
         elif issue['id'] == 'event-grain' and len({row[event_ids] for row in core.rows}) == len(core.rows):
             default = 'by_id'
-            reason = 'Every occurrence supplies a distinct eventID. Each row creates its own context event; no records are merged.'
+            reason = 'Every occurrence has a different eventID, so each row becomes its own event and nothing is combined.'
         elif issue.get('convention'):
             # A default GBIF infers anyway: applied visibly and changeable, never asked.
             default, reason = issue['convention']['default'], issue['convention']['reason']
         elif issue['id'].startswith('material:') and issue.get('strong_specimen_signal'):
             default = 'per_row'
-            reason = ('Every source row explicitly declares PreservedSpecimen and has a distinct, complete '
-                      'institutionCode, collectionCode, catalogNumber triple. One material entity is created '
-                      'for each source row; no persistent material identifier is inferred.')
+            # No persistent material identifier is inferred.
+            reason = ('Every row is a PreservedSpecimen with its own complete institutionCode, collectionCode and '
+                      'catalogNumber, so each row becomes one specimen record.')
             if issue.get('followers') and ' If yes,' in issue['reason']:
                 reason += ' If yes,' + issue['reason'].split(' If yes,', 1)[1]
         elif issue['id'] == AGENT_NAMES_ID:
             default = 'shared'
             # Other choices (a column kept in the originals, a name kept as text) can lower these counts;
             # the conversion report restates the notice with what was linked.
-            reason = (f"Links up to {issue['count']:,} {'mention' if issue['count'] == 1 else 'mentions'} of "
-                      f"{issue['names']:,} {'name' if issue['names'] == 1 else 'names'} without identifiers to one agent per "
-                      "exact name. Choose 'Keep all names without identifiers as text only' if equal names may stand "
-                      "for different people or organizations. Names with identifiers are linked by their identifier.")
+            reason = (f"Up to {issue['count']:,} {'mention' if issue['count'] == 1 else 'mentions'} of "
+                      f"{issue['names']:,} {'name' if issue['names'] == 1 else 'names'} {'has' if issue['count'] == 1 else 'have'} no identifier. Each exact name is "
+                      "listed once as a person or organization and linked to all its mentions. Choose 'Keep all names without "
+                      "identifiers as text only' if the same name may stand for different people or organizations. Names with an "
+                      "identifier are linked by that identifier.")
         elif issue['id'].startswith('agent-share:'):
             default = 'shared'
-            reason = (f"Linked the {issue['count']:,} mentions of {issue['source_value'][:100]!r} to one agent. Choose "
-                      "'Keep this name as text only' if these are different people or organizations.")
+            reason = (f"The {issue['count']:,} mentions of {issue['source_value'][:100]!r} are linked to one person or "
+                      "organization. Choose 'Keep this name as text only' if they are different people or organizations.")
         elif issue['id'].startswith('table:'):
             table = archive.tables[issue['table']]
             family = SUPPORTED_EXTENSIONS.get(table.row_type)
@@ -732,10 +778,11 @@ def _streamline_plan(archive, core, plan, warnings):
             table = archive.tables[issue['table']]
             if all(categories.get(source_id) == 'survey' for source_id in table.ids):
                 default = 'require'
-                reason = 'Every linked source event is already explicitly classified as a survey.'
+                reason = 'Every event these rows describe already has eventCategory survey in your files.'
             elif category_choice and all(categories.get(source_id, '') in {'', 'survey'} for source_id in table.ids):
                 default = 'require'
-                reason = 'Categories come from the source or your missing-event-category choice. This step requires survey categories and never fills or changes them.'
+                reason = ('Event categories come from your files or from your answer about events with no category. Survey '
+                          'descriptions are converted only for survey events; this step never fills in or changes a category.')
                 issue = {**issue, 'depends_on_event_category': True}
         if default is None:
             required.append(issue)
@@ -773,7 +820,7 @@ def build_plan(archive):
     scientific = _scientific_hierarchy(archive, core, nodes, hierarchy)
     if not archive.has_meta:
         issues.append(_issue("loose-links", "Check how your files fit together",
-            "There is no meta.xml, so file roles were recognised from the file names, and rows are linked by their shared identifiers (never by row order). Confirm that the table above is right.",
+            "There is no meta.xml, so ChatIPT worked out what each file is from its name, and links rows between files by their shared identifiers (never by row order). Check the files and links under Conversion details, then confirm.",
             [{"value": "confirm", "label": "Yes, these file roles and links are right"}]))
     if core.row_type == DWC + "Occurrence":
         supplied_events = [row[core.terms.index(DWC + 'eventID')] for row in core.rows
@@ -805,52 +852,53 @@ def build_plan(archive):
             if family == "occurrence" and core.row_type == DWC + "Event":
                 options.insert(0, {"value": "occurrence", "label": "Occurrences, each linked to its event"})
             elif family == "identification":
-                options.insert(0, {"value": "identification", "label": "Identification records of linked occurrences"}) if core.row_type == DWC + "Occurrence" else None
+                options.insert(0, {"value": "identification", "label": "Identifications of the linked occurrences"}) if core.row_type == DWC + "Occurrence" else None
             elif family == "assertion":
                 explicit_occurrences = DWC + 'occurrenceID' in table.terms and any(row[table.terms.index(DWC + 'occurrenceID')] for row in table.rows)
                 if core.row_type == DWC + 'Event' and explicit_occurrences:
-                    options.insert(0, {'value': 'event-assertion', 'label': 'Assertions about linked events'})
-                    options.insert(0, {'value': 'declared-assertions', 'label': 'Use supplied occurrenceID; otherwise the linked core event'})
+                    options.insert(0, {'value': 'event-assertion', 'label': 'Measurements or facts about the linked events'})
+                    options.insert(0, {'value': 'declared-assertions', 'label': 'Measurements or facts about the occurrence named in occurrenceID, otherwise about the linked event'})
                 else:
-                    options.insert(0, {"value": "event-assertion", "label": "Assertions about linked events"})
+                    options.insert(0, {"value": "event-assertion", "label": "Measurements or facts about the linked events"})
                 if core.row_type == DWC + "Occurrence":
-                    options.insert(0, {"value": "occurrence-assertion", "label": "Assertions about linked occurrences"})
+                    options.insert(0, {"value": "occurrence-assertion", "label": "Measurements or facts about the linked occurrences"})
             elif family == "relationship":
-                options.insert(0, {"value": "resource-relationship", "label": "Generic resource relationships, keeping supplied identifiers"})
+                options.insert(0, {"value": "resource-relationship", "label": "Relationships between the records they name, keeping their identifiers"})
             elif family == "molecular":
-                options.insert(0, {"value": "molecular", "label": "Sequence, protocol and analysis records in linked event context"})
+                options.insert(0, {"value": "molecular", "label": "DNA sequences, with their methods and analyses, linked to the event"})
             elif family in {'media', 'eol-media'}:
-                options.insert(0, {'value': 'media-unlinked', 'label': 'Media resources without an inferred subject link'})
-                options.insert(0, {'value': 'media-event', 'label': 'Media depicts the linked event context'})
+                options.insert(0, {'value': 'media-unlinked', 'label': 'Media files not linked to any record'})
+                options.insert(0, {'value': 'media-event', 'label': 'Each media file shows the linked event'})
                 if core.row_type == DWC + 'Occurrence':
-                    options.insert(0, {'value': 'media-occurrence', 'label': 'Media depicts the linked occurrence'})
+                    options.insert(0, {'value': 'media-occurrence', 'label': 'Each media file shows the linked occurrence'})
             elif family in {'identifier', 'reference', 'eol-reference'}:
-                options.insert(0, {'value': family, 'label': ('Alternative identifiers of the linked core record' if family == 'identifier' else 'Bibliographic references to the linked core record')})
+                options.insert(0, {'value': family, 'label': ('Other identifiers of the linked record' if family == 'identifier' else 'Literature references for the linked record')})
             elif family == 'humboldt':
                 if core.row_type == DWC + 'Event':
-                    options[:0] = [{'value': 'humboldt-survey', 'label': 'Each source row describes a separate survey of its event'},
-                                   {'value': 'humboldt-merge', 'label': 'One survey per event; require identical source rows'}]
+                    options[:0] = [{'value': 'humboldt-survey', 'label': 'Each row describes a separate survey of its event'},
+                                   {'value': 'humboldt-merge', 'label': 'One survey per event (only if all rows for an event are identical)'}]
                 elif DWC + 'eventID' in core.terms and all(
                         row[core.terms.index(DWC + 'eventID')] and
                         not missing_reference(row[core.terms.index(DWC + 'eventID')], ()) for row in core.rows):
-                    options.insert(0, {'value': 'humboldt-grouped', 'label': 'Survey of shared eventID; require complete identical coverage'})
+                    options.insert(0, {'value': 'humboldt-grouped', 'label': 'One survey for each shared eventID (only if every occurrence with that eventID has an identical row)'})
             elif family == 'germplasm-accession' and material_context:
-                options.insert(0, {'value': 'germplasm-accession', 'label': 'Accession identifiers and passport statements of reviewed core material'})
+                options.insert(0, {'value': 'germplasm-accession', 'label': 'Accession numbers and passport details of the specimen records'})
             elif family == 'germplasm-score':
-                options.insert(0, {'value': 'germplasm-score-event', 'label': 'Scores describe the linked event context'})
+                options.insert(0, {'value': 'germplasm-score-event', 'label': 'Measurements of the linked event'})
                 if core.row_type == DWC + 'Occurrence':
-                    options.insert(0, {'value': 'germplasm-score-occurrence', 'label': 'Scores describe the linked occurrence'})
+                    options.insert(0, {'value': 'germplasm-score-occurrence', 'label': 'Measurements of the linked occurrence'})
                 if material_context:
-                    options.insert(0, {'value': 'germplasm-score-material', 'label': 'Scores describe reviewed core material; require matching accession identifiers'})
+                    options.insert(0, {'value': 'germplasm-score-material', 'label': "Measurements of the specimen records (each row's germplasmID must match its specimen's accession number)"})
             elif family == 'germplasm-trait':
-                options.insert(0, {'value': 'germplasm-trait', 'label': 'Trait descriptors are dataset-level protocol descriptions'})
+                options.insert(0, {'value': 'germplasm-trait', 'label': 'Trait definitions, kept as method descriptions for the whole dataset'})
             elif family == 'germplasm-trial' and core.row_type == DWC + 'Event':
-                options.insert(0, {'value': 'germplasm-trial', 'label': 'Trial describes the linked core event; reject conflicting values'})
+                options.insert(0, {'value': 'germplasm-trial', 'label': 'Trial details added to the linked event, if they do not contradict it'})
             elif family in {'bmde', 'nbn'}:
-                options.insert(0, {'value': family + '-context', 'label': ('BMDE measurements of the occurrence and reviewed event context' if family == 'bmde' and core.row_type == DWC + 'Occurrence' else 'Reviewed values of the linked event context')})
+                options.insert(0, {'value': family + '-context', 'label': ('Measurements of the occurrence, with event details added to its event' if family == 'bmde' and core.row_type == DWC + 'Occurrence' else 'Details of the linked event')})
             media_signals = [term for term in table.terms if term in MEDIA_SUBJECT_TERMS and any(row[table.terms.index(term)] for row in table.rows)] if family == 'media' else []
             issues.append(_issue(f"table:{t}", f"{table.name}: what do these rows describe?",
-                table.unplaced_reason or ('Being attached to a record does not say what a picture or recording shows. Choose whether each media file shows the linked occurrence or its event, keep the media without a link, or keep the file only in your originals.' if family == 'media' else f"Choose what the rows of {table.name} describe and how they link to {core.name}. Anything not converted stays in your original files."), options,
+                table.unplaced_reason or ('Being attached to a record does not say what a picture or recording shows. Choose whether each media file shows the linked occurrence or its event, keep the media without a link, or leave it out of the Data Package.' if family == 'media' else
+                    (TABLE_REASONS.get(family, '') + ' ' if family in TABLE_REASONS else '') + _repeated_traits(table) + f"Choose what the rows of {table.name} describe and how they link to {core.name}, or leave the table out of the Data Package."), options,
                 **({'subject_review_signals': media_signals} if family == 'media' else {}),
                 table=t, row_type=table.row_type, rows=len(table.rows)))
         own = "event" if table.row_type == DWC + "Event" else "occurrence"
@@ -870,12 +918,12 @@ def build_plan(archive):
             for term in (DWC + 'materialSampleID', DWC + 'materialEntityID')) or specimen_context
         if has_material:
             issues.append(_issue(f'material:{t}', f'{table.name}: do these identify physical specimens or samples?',
-                ('Every row declares PreservedSpecimen and has a distinct institutionCode, collectionCode, catalogNumber triple. '
-                 if strong_specimen else 'The source declares preserved specimens with catalog fields, but some catalog identities repeat or are incomplete. '
-                 if specimen_context else 'Some rows have material sample identifiers. ') +
+                ('Every row is a PreservedSpecimen with its own institutionCode, collectionCode and catalogNumber. '
+                 if strong_specimen else 'The rows are preserved specimens with catalogue details, but some catalogue numbers repeat or are incomplete. '
+                 if specimen_context else 'Some rows have specimen or sample identifiers. ') +
                 'If these identify physical things, such as a specimen, tissue or soil sample, they can become specimen records: '
-                'one per row, or one per identifier when all of its rows agree. Otherwise keep the identifiers only in your original files.',
-                [PRESERVE, {'value': 'per_row', 'label': 'Yes: one specimen record per row'},
+                'one per row, or one per identifier when all of its rows agree. Otherwise the identifiers are left out of the Data Package.',
+                [{**PRESERVE, 'label': 'No: leave the identifiers out of the Data Package'}, {'value': 'per_row', 'label': 'Yes: one specimen record per row'},
                  {'value': 'by_id', 'label': 'Yes: one specimen record per identifier'}],
                 **({'strong_specimen_signal': True, 'table': t} if strong_specimen else {})))
         target_tables = [own] + (["event", "identification"] if own == "occurrence" else []) + (["material"] if has_material else []) if table.is_core or family == "occurrence" else {
@@ -899,14 +947,14 @@ def build_plan(archive):
             if family in {'eol-media', 'eol-reference'}:
                 options, media_reason = eol_targets(table.row_type, term, values)
                 if family == 'eol-reference' and options and any(source.get('http://eol.org/schema/reference/full_reference') for source in sources) and term != 'http://eol.org/schema/reference/full_reference':
-                    media_reason = (media_reason or '') + ' Full citations are supplied; EOL says structured fields are ignored in that case. Confirm this field should also be copied, or preserve it.'
+                    media_reason = (media_reason or '') + ' Your rows also have full citations, and EOL ignores the separate citation parts when a full citation is given. Confirm this column should be copied too, or leave it out of the Data Package.'
             if family == 'humboldt':
                 options, media_reason = humboldt_targets(term, sources, humboldt_blocked)
                 if term in DIRECT or term in IRI_DIRECT:
                     # Validation can withhold incompatible cells without guessing
                     # their meaning. A strict agent IRI keeps its identifier role.
                     if media_reason:
-                        warnings.append({'id': _column_id(t, c), 'title': term.rsplit('/', 1)[-1],
+                        warnings.append({'id': _column_id(t, c), 'title': short_term(term),
                             'reason': media_reason, 'table': t, 'nonempty': len(values)})
                     media_reason = None
             if family in GERMPLASM_FAMILIES.values():
@@ -918,7 +966,7 @@ def build_plan(archive):
                 if options and (table.row_type, term) in LEGACY_DERIVED_TERMS:
                     options = ['derive']
                 if family == 'bmde' and core.row_type == DWC + 'Event' and any(term in group for group in GROUPS):
-                    options = []; media_reason = 'BMDE measurements require an occurrence subject. Event-core attachment alone cannot establish one.'
+                    options = []; media_reason = 'BMDE measurements describe an occurrence, but this table is attached to events, so ChatIPT cannot tell which occurrence each one belongs to.'
             if family in {'identifier', 'reference'}:
                 options = reference_targets(table.row_type, term)
                 if core.row_type == DWC + 'Event':
@@ -958,7 +1006,7 @@ def build_plan(archive):
                                               'http://purl.org/dc/terms/creator', 'http://purl.org/dc/elements/1.1/type'} and len(options) == 1:
                 target = options[0]
                 automatic_family, automatic_reason = 'media', (
-                    f'Values in {term.rsplit("/", 1)[-1]} are {dwca_glossary.decided(target)}, exactly as written. This is the standard match between the media vocabulary and the Data Package; choose "Keep in original files only" if the column means something else.')
+                    f'Values in {short_term(term)} are {dwca_glossary.decided(target)}, exactly as written. This is the standard match between the media vocabulary and the Data Package; choose "{PRESERVE['label']}" if the column means something else.')
             if term == NAME and occurrence_context:
                 options = [target for target in options if target.startswith('occurrence.')]
             if term == DWC + 'recordedBy' and has_material and occurrence_context and 'material.collectedBy' in options:
@@ -1056,24 +1104,25 @@ def build_plan(archive):
             if term == PARENT and (table.is_core or family == 'occurrence'):
                 # Parent links are resolved from persistent eventIDs of source Event identities, never copied as keys.
                 if not table.is_core:
-                    parent_blocked = ('parentEventID in an Occurrence extension describes an event, not this occurrence row. '
-                                      'Parent links are resolved only from core Event identities; values stay in the originals.')
+                    parent_blocked = ('In an additional occurrence table, parentEventID describes an event, not the occurrence on the row. '
+                                      'ChatIPT links parent events only from the main table, so this column is left out of the Data Package.')
                 elif hierarchy_unsupported or not hierarchy['links']:
-                    parent_blocked = (hierarchy_unsupported or (describe_problems(hierarchy) if hierarchy['problems'] else 'No supplied parentEventID identifies a source event.')
-                                      + ' No supplied links can be resolved; keep the column in the originals.')
+                    parent_blocked = hierarchy_unsupported or ((describe_problems(hierarchy) if hierarchy['problems'] else
+                                                                'None of the values in parentEventID matches an eventID in your files.')
+                                                               + ' The column is left out of the Data Package.')
                 elif own == 'occurrence' and any(not row[core.terms.index(DWC + 'eventID')] or
                         missing_reference(row[core.terms.index(DWC + 'eventID')], ()) for row in core.rows):
-                    parent_blocked = ('Not every source occurrence supplies an eventID. Parent links require established event identities; '
-                                      'values remain in the originals without inferring missing events.')
+                    parent_blocked = ('Some occurrences have no eventID, so their events cannot be identified and no parent links can be made. '
+                                      'The column is left out of the Data Package; ChatIPT does not make up the missing events.')
                 options, media_reason = ([], parent_blocked) if parent_blocked else ([PARENT_LINK], None)
                 if not parent_blocked and hierarchy['problems']:
                     media_reason = (describe_problems(hierarchy)
-                                    + ' Only independently resolvable links are created; unresolved values stay in the originals and report.')
+                                    + ' The other links are made; these are listed in the report and left out of the Data Package.')
                 if not parent_blocked and own == 'occurrence' and len({row[core.terms.index(DWC + 'eventID')] for row in core.rows}) != len(core.rows):
                     parent_default = 'preserve'
-                    media_reason = (media_reason + ' ' if media_reason else '') + ('Occurrence rows do not establish events by themselves. Parent links are available only when events are '
-                                    'combined by supplied eventID, and each parent eventID is itself such a combined event. '
-                                    'No parent event is created or inferred.')
+                    media_reason = (media_reason + ' ' if media_reason else '') + ('Parent links on occurrence rows work only when occurrences with the same '
+                                    'eventID are combined into one event, and each parentEventID names one of those combined events. '
+                                    'ChatIPT does not create parent events.')
             chosen = parent_default or special_chosen or (options[0] if options else "preserve")
             join_only = (table.loose and not table.is_core and term == DWC + ('eventID' if core.row_type == DWC + 'Event' else 'occurrenceID') and bool(table.ids)) or (family == 'assertion' and term == DWC + 'occurrenceID')
             if join_only:
@@ -1083,9 +1132,10 @@ def build_plan(archive):
                             if not (target.endswith(ASSERTION_IRI_FIELDS) and missing_reference(value)))
                 for target in options if '.' in target}
             incompatible = {target: count for target, count in incompatible.items() if count}
-            typed_reason = (f"Some source values fail the target's type, bounds, or semantic constraints: "
-                            + ', '.join(f'{target} ({count} values)' for target, count in incompatible.items())
-                            + '. Mapping copies compatible cells only; invalid values stay in originals and the report. Preserve the column if its meaning needs clarification.') if incompatible else None
+            typed_reason = ("Some values do not fit where they would go: "
+                            + ', '.join(f"{_target_words(target)} ({count} {'value' if count == 1 else 'values'})" for target, count in incompatible.items())
+                            + '. Only the values that fit are copied; the others are listed in the report and stay only in your original files. '
+                            'Leave the column out of the Data Package if you are not sure what it means.') if incompatible else None
             # Prefer an exact field on the declared subject over duplicate annotations
             # on identification/material fields. A different subject still needs review.
             exact_subject_default = False
@@ -1101,7 +1151,8 @@ def build_plan(archive):
             date_ambiguity = bool(options) and term == DWC + 'eventDate' and any(
                 re.fullmatch(r'[+-]?[0-9]{4}\.[0-9]+', value.strip()) or
                 value.strip().lower() in {'na', 'n/a', 'null', 'none', 'unknown', 'not recorded'} for value in values)
-            date_reason = ('Some event dates are float-shaped years or unknown-value tokens. The original text is copied without repair or interpreting these tokens as empty. Their meaning remains unverified.') if date_ambiguity else None
+            date_reason = ('Some event dates look like decimal years (such as 2015.5) or say the date is unknown (such as NA). They are copied '
+                           'exactly as written, not corrected or treated as empty, so check what they mean.') if date_ambiguity else None
             review = bool(not join_only and values and (not options or (len(options) > 1 and not exact_subject_default) or media_reason or name_ambiguity or chosen.startswith('molecular-protocol.env_')) and automatic_family is None)
             non_preserve_options = [target for target in options if target != 'preserve']
             first_field = non_preserve_options[0].split('.', 1)[1] if non_preserve_options and '.' in non_preserve_options[0] else None
@@ -1115,9 +1166,9 @@ def build_plan(archive):
                 if not event_values or len(set(nonempty_event_ids)) == len(nonempty_event_ids):
                     option_notes = {'event.eventConductedBy': 'Each of your rows has its own event, so here this works like "Who saw or recorded the organism".'}
             generic_reason = ('This column could describe more than one thing, for example the occurrence or its identification. '
-                              'Choose where it belongs, or keep it only in your original files.')
+                              'Choose where it belongs, or leave it out of the Data Package.')
             item = {"id": _column_id(t, c), "table": t, "column": c, "term": term,
-                    "default": chosen, "review": review, "options": ([{'value': 'join', 'label': 'Used to join source rows to the core'}] if join_only else [_choice(value) for value in options] + ([] if chosen in {'occurrence.occurrenceStatus', 'event.eventCategory'} else [PRESERVE])),
+                    "default": chosen, "review": review, "options": ([{'value': 'join', 'label': 'Used to link these rows to the main table'}] if join_only else [_choice(value) for value in options] + ([] if chosen in {'occurrence.occurrenceStatus', 'event.eventCategory'} else [PRESERVE])),
                     "nonempty": len(values), "distinct": len(set(values)), "samples": [value[:500] for value in list(dict.fromkeys(values))[:3]],
                     **({'family': glossary_family} if glossary_family else {}),
                     **({'option_notes': option_notes} if option_notes else {}),
@@ -1143,8 +1194,17 @@ def build_plan(archive):
                 item['options'] = [{**option, 'label': label} if option['value'] == 'preserve' else option for option in item['options']]
             qualifier_copy = (term == QUALIFIER and NAME in table.terms and not options and
                               ((own == 'occurrence' and (table.is_core or family == 'occurrence')) or family == 'identification'))
+            # individualCount has no column of its own, but convert() turns each whole-number count into the
+            # occurrence's quantity (or a count assertion), whatever is chosen for the column.
+            count_column = term == DWC + 'individualCount' and occurrence_context and not options and not join_only
+            if count_column:
+                item['unmapped'] = 'derived'
+                item['options'] = [{**option, 'label': 'Used for the organism quantity'} if option['value'] == 'preserve' else option
+                                   for option in item['options']]
             if qualifier_copy:
                 # The qualifier follows the name text wherever verbatimIdentification is filled from scientificName.
+                item['options'] = [{**option, 'label': 'Added after the name text in verbatimIdentification'} if option['value'] == 'preserve'
+                                   else option for option in item['options']]
                 item.pop('unmapped', None)
                 item.update(verbatim_copy=('identification' if family == 'identification' else 'occurrence') + '.verbatimIdentification',
                             verbatim_role='qualifier')
@@ -1153,11 +1213,11 @@ def build_plan(archive):
             item.update(column_note(archive, t, c) or {})
             columns.append(item); profile["columns"].append({key: item[key] for key in ("term", "nonempty", "distinct", "samples")})
             if typed_reason or date_reason:
-                warnings.append({'id': item['id'], 'title': term.rsplit('/', 1)[-1],
+                warnings.append({'id': item['id'], 'title': short_term(term),
                     'reason': ' '.join(filter(None, (typed_reason, date_reason))), 'table': t,
                     'nonempty': len(values), 'samples': item['samples']})
             if review:
-                title = term.rsplit('/', 1)[-1]
+                title = short_term(term)
                 reason = media_reason or (
                         "Some names look like they include an author, a qualifier such as 'cf.', or another unusual form. In a Darwin Core Data Package, scientificName holds only the name, without its author. "
                         + ("The full text fills verbatimIdentification wherever that would otherwise be empty, and your original files keep everything. "
@@ -1166,11 +1226,12 @@ def build_plan(archive):
                         if name_ambiguity else ("Darwin Core Data Packages have no identificationQualifier field, and scientificName excludes qualifiers. "
                         "Each qualifier is added after the name text in verbatimIdentification wherever that is filled from scientificName, "
                         "so the uncertainty stays visible; your original files keep the column too.") if qualifier_copy
+                        else COUNT_REASON if count_column
                         else generic_reason if options
-                        else "Darwin Core Data Packages have no field for this term, so the values stay in your original files." if term not in SCHEMA_TERMS
-                        else "This converter does not map this term yet, so the values stay in your original files.")
+                        else "The Darwin Core Data Package has no field for this column, so it is left out. Your download still has it in the copy of your original files." if term not in SCHEMA_TERMS
+                        else "ChatIPT cannot convert this column yet, so it is left out of the Data Package. Your download still has it in the copy of your original files.")
                 if reason == generic_reason and len(non_preserve_options) > 1:
-                    title, family_reason = dwca_glossary.question(first_field, term.rsplit('/', 1)[-1])
+                    title, family_reason = dwca_glossary.question(first_field, short_term(term))
                     reason = family_reason + ' ' + dwca_glossary.COPY_NOTE
                     item['family'] = glossary_family or 'other'
                 issue = _issue(item["id"], title,
@@ -1183,7 +1244,7 @@ def build_plan(archive):
                     issue['ask_when'] = [{'type': 'decision_in', 'id': f'material:{t}', 'values': ['per_row', 'by_id']}]
                 issues.append(issue)
             if automatic_family and values:
-                proposed_automatic.append({'id': item['id'], 'title': f"{table.name}: {term.rsplit('/', 1)[-1]}",
+                proposed_automatic.append({'id': item['id'], 'title': f"{table.name}: {short_term(term)}",
                     'reason': automatic_reason, 'options': item['options'], 'default': chosen,
                     'default_when': default_when,
                     'table': t, 'term': term, 'family': automatic_family, 'glance': glance,
@@ -1197,9 +1258,9 @@ def build_plan(archive):
                         continue
                     issues.append(_issue(_reviewed_value_id('country-label', t, c, source_value),
                         f'{table.name}: where does {source_value[:100]!r} belong?',
-                        f'{count} source rows put {source_value[:200]!r} in countryCode, but it is not an ISO country code. '
-                        'Choose whether this exact label names a country, a water body, or belongs only in the originals. '
-                        'The selected target receives the source text unchanged; no ISO code is inferred.',
+                        f'{count} rows have {source_value[:200]!r} in countryCode, but it is not a two-letter ISO country code. '
+                        'Choose whether it is the name of a country or of a water body, or leave it out of the Data Package. '
+                        'The text is copied exactly as written; ChatIPT does not guess a country code.',
                         [PRESERVE, {'value': 'event.country', 'label': 'Country or territory name'},
                          {'value': 'event.waterBody', 'label': 'Water body name'}],
                         # Reading the supplier's own label into the field it names is an interpretation, not a new fact.
@@ -1213,12 +1274,12 @@ def build_plan(archive):
                             continue
                         issues.append(_issue(_reviewed_value_id('age-remark', t, c, source_value),
                             f'{table.name}: does {source_value[:100]!r} describe the organism?',
-                            f'{count} source rows use {source_value[:200]!r} as eventRemarks. '
-                            'Choose the subject for this exact text. Life stage keeps the text verbatim, including abbreviations; '
-                            'mixed count, sex, or egg notes may fit occurrenceRemarks better. No value is interpreted or normalized.',
+                            f'{count} rows have {source_value[:200]!r} in eventRemarks, which looks like it describes the organism rather than the event. '
+                            'Choose what this text describes. As a life stage it is copied exactly as written, including abbreviations; '
+                            'notes that mix counts, sex or eggs may fit better as an occurrence remark. The text itself is never changed.',
                             [{'value': 'event.eventRemarks', 'label': 'Keep as an event remark'},
-                             {'value': 'occurrence.lifeStage', 'label': 'Organism life stage (verbatim)'},
-                             {'value': 'occurrence.occurrenceRemarks', 'label': 'Occurrence remark (verbatim)'},
+                             {'value': 'occurrence.lifeStage', 'label': 'Life stage of the organism (as written)'},
+                             {'value': 'occurrence.occurrenceRemarks', 'label': 'Occurrence remark (as written)'},
                              PRESERVE],
                             # Choosing the subject of the supplier's own words interprets them; nothing new is asserted.
                             kind='column-mapping', table=t, source_column=c, source_value=source_value, count=count))
@@ -1227,7 +1288,7 @@ def build_plan(archive):
             event_columns = [column for column in columns if column['table'] == t and column['nonempty'] and column['default'] != 'join'
                              and any(option['value'].startswith('event.') for option in column['options'])]
             # Only columns that go to the event by default are described; others are listed if chosen later.
-            shown = [column['term'].rsplit('/', 1)[-1] for column in event_columns
+            shown = [short_term(column['term']) for column in event_columns
                      if column['term'] != DWC + 'eventID' and column['default'].startswith('event.')]
             if shown:
                 issues.append(_issue(f'occurrence-events:{t}', f'{table.name}: where and when details on occurrence rows',
@@ -1236,7 +1297,7 @@ def build_plan(archive):
                     f"inside the linked event.",
                     [{'value': 'patch', 'label': f'Copy them onto the linked event in {core.name}'},
                      {'value': 'per-row', 'label': 'Make each occurrence row its own event, inside the linked event'},
-                     {**PRESERVE, 'label': 'Keep these details only in your original files'}],
+                     {**PRESERVE, 'label': 'Leave these details out of the Data Package'}],
                     table=t, assertion_values=['per-row']))
         if table.is_core or family == 'occurrence':
             pair = [DWC + 'decimalLatitude', DWC + 'decimalLongitude']
@@ -1251,7 +1312,7 @@ def build_plan(archive):
                     invalid += any(value and not valid_value(field, value) for field, value in zip(fields, supplied))
             if partial:
                 warnings.append({'id': f'coordinate-pair:{t}', 'title': f'{table.name}: incomplete coordinate pairs',
-                    'reason': f'{partial} source rows have only one compatible coordinate. In {invalid} of those rows the other supplied coordinate is withheld as invalid under the automatic mapping; remaining rows omit it. The compatible coordinate is retained without constructing a point. Withheld values are identified by source row in the report.',
+                    'reason': f'{partial} {"row has" if partial == 1 else "rows have"} only one usable coordinate (a latitude without a longitude, or the reverse). In {invalid} of them the other coordinate is not a valid value, so it was left out; the rest have none. The usable coordinate is copied on its own, without making a location point. The report lists the rows.',
                     'table': t, 'terms': pair, 'rows': partial, 'invalid_pairs': invalid})
         if family in {'germplasm-score', 'germplasm-trait'}:
             for n, row in enumerate(table.rows):
@@ -1259,11 +1320,11 @@ def build_plan(archive):
                 if family == 'germplasm-score':
                     missing = not source.get(DWC + 'measurementValue', '').strip() or not (
                         source.get(DWC + 'measurementType', '').strip() or source.get(G + 'measurementTraitName', '').strip())
-                    reason = 'A Score row needs a supplied measurement value and type (or trait name). This incomplete row stays in originals.'
+                    reason = 'This measurement row has no value, or no measurement type or trait name, so it cannot be converted. It is left out of the Data Package.'
                 else:
                     missing = not any(source.get(term, '').strip() for term in (
                         G + 'measurementTraitName', DWC + 'measurementMethod', G + 'measurementTraitSource', G + 'measurementTraitRemarks'))
-                    reason = 'A Trait Descriptor needs a name, method, source or remarks. An identifier alone cannot create a protocol description.'
+                    reason = 'This trait row has no name, method, source or remarks, so there is nothing to describe the trait. It is left out of the Data Package.'
                 if missing:
                     row_issues.append(_issue(f'row:{t}:{n}', f'{table.name}, row {n + 1}: incomplete description', reason, [PRESERVE], table=t, row=n + 1))
         if family == 'eol-media':
@@ -1272,30 +1333,32 @@ def build_plan(archive):
                 if reason:
                     options = [PRESERVE]
                     if source.get(DCT + 'type', '').strip().lower() not in TEXT_TYPES:
-                        options.append({'value': 'convert', 'label': 'Convert with the chosen subject; retain missing or unsupported details'})
+                        options.append({'value': 'convert', 'label': 'Convert it as chosen for the table; details that cannot be converted stay only in your original files'})
                     row_issues.append(_issue(f'row:{t}:{n}', f'{table.name}, row {n + 1}: media meaning', reason, options, table=t, row=n + 1))
         if family == 'eol-reference':
             for n, source in enumerate(sources):
                 if not source.get(DCT + 'identifier', '').strip():
                     row_issues.append(_issue(f'row:{t}:{n}', f'{table.name}, row {n + 1}: reference identifier is missing',
-                        'EOL requires a supplied reference identifier; this row stays in originals.', [PRESERVE], table=t, row=n + 1))
+                        'This reference has no identifier, which EOL requires, so it is left out of the Data Package.', [PRESERVE], table=t, row=n + 1))
         if family in {'bmde', 'nbn'}:
             for n, source in enumerate(sources):
                 reason = legacy_row_review(table.row_type, source)
                 if reason:
                     options = [PRESERVE]
                     if family != 'bmde' or not (source.get(BMDE + 'LastModifiedAction', '').strip().upper() == 'DELETE' or source.get(BMDE + 'NoObservations', '').strip() == 'NoObs'):
-                        options.append({'value': 'convert', 'label': 'Confirm handling and convert approved values; retain invalid or unsupported dates'})
+                        options.append({'value': 'convert', 'label': 'Convert it as described; dates that are invalid or cannot be converted stay only in your original files'})
                     row_issues.append(_issue(f'row:{t}:{n}', f'{table.name}, row {n + 1}: record handling', reason, options, table=t, row=n + 1))
         if family == 'germplasm-score' and G + 'measurementTraitID' in table.terms:
-            issues.append(_issue(f'trait-link:{t}', f'{table.name}: link scores to trait protocols?',
-                'A trait ID may be an ontology identifier. Link only when each supplied ID exactly matches one converted Trait Descriptor protocol ID; no protocol is created from a score.',
-                [PRESERVE, {'value': 'exact', 'label': 'Link each supplied trait ID to exactly one converted protocol'}], table=t))
+            issues.append(_issue(f'trait-link:{t}', f'{table.name}: link measurements to their trait definitions?',
+                'measurementTraitID may refer to a row of your trait table, or to a trait in an outside vocabulary. Each measurement can be '
+                'linked to its trait definition only when its measurementTraitID matches exactly one row of a converted trait table.',
+                [{**PRESERVE, 'label': 'Do not link them'}, {'value': 'exact', 'label': 'Link each measurement to the trait definition with the same ID'}], table=t))
         if family == 'humboldt':
             issues.append(_issue(f'hum-category:{t}', f'{table.name}: confirm survey events',
-                'A Humboldt survey needs a survey event. Missing source categories may be filled only by explicit confirmation; supplied contradictory categories are never overwritten.',
-                [{'value': 'require', 'label': 'Events must already be classified as surveys'},
-                 {'value': 'confirm', 'label': 'Confirm these events are surveys; fill unsupplied categories'}], table=t))
+                'Survey descriptions (Humboldt) can only be attached to survey events. Events with no eventCategory can be marked as '
+                'surveys if you confirm it; a different category in your files is never overwritten.',
+                [{'value': 'require', 'label': 'Only if every linked event is already marked as a survey'},
+                 {'value': 'confirm', 'label': 'These are survey events: mark events with no category as surveys'}], table=t))
             for n, source in enumerate(sources):
                 review = scope_review(source)
                 if review:
@@ -1307,7 +1370,7 @@ def build_plan(archive):
             humboldt_present = any(extension.row_type in HUMBOLDT_FAMILIES for extension in archive.tables if not extension.is_core)
             issues.append(_issue("event-category", "What kind of events are these?", f"Some events in {table.name} don't say what kind of event they are. "
                 "Choose survey events if they are planned sampling or monitoring visits, or observation context if they only record where and when observations were made."
-                + (' The survey descriptions (Humboldt) can only be converted for survey events; otherwise they stay in your original files.' if humboldt_present else ''),
+                + (' The survey descriptions (Humboldt) can only be converted for survey events; otherwise they are left out of the Data Package.' if humboldt_present else ''),
                 [{"value": "survey", "label": "Survey events (planned sampling or monitoring)"}, {"value": "occurrence", "label": "Observation context (where and when records were made)"}]))
         if own == "occurrence" and (table.is_core or family == "occurrence"):
             quantity = DWC + 'organismQuantity'
@@ -1316,7 +1379,7 @@ def build_plan(archive):
                            for row in table.rows for source in [_source(table.terms, row)])
             if unpaired:
                 warnings.append({'id': f'quantity-pair:{t}', 'title': f'{table.name}: incomplete quantity descriptions',
-                    'reason': f'{unpaired} rows supply only a quantity or its type. Values remain as supplied; no unit, organism count or abundance interpretation is inferred.',
+                    'reason': f'{unpaired} {"row gives" if unpaired == 1 else "rows give"} an organismQuantity without an organismQuantityType, or the reverse. They are copied as they are; ChatIPT does not guess the missing part.',
                     'table': t, 'rows': unpaired})
             missing = DWC + "occurrenceStatus" not in table.terms or any(not row[table.terms.index(DWC + "occurrenceStatus")] for row in table.rows)
             if missing:
@@ -1352,28 +1415,28 @@ def build_plan(archive):
     if agent_names:
         issues.append(_issue(AGENT_NAMES_ID, 'People and organizations named without identifiers',
             f'{sum(agent_names.values())} mentions in name columns give a name without an identifier ({len(agent_names)} different names). '
-            'Each exact name can become one Agent linked to all its mentions, or every name can stay as text only.',
-            [{'value': 'shared', 'label': 'One Agent per exact name, linked to each mention'},
+            'Each exact name can be listed once as a person or organization and linked to all its mentions, or every name can stay as text only.',
+            [{'value': 'shared', 'label': 'List each exact name once and link it to every mention'},
              {'value': 'text', 'label': 'Keep all names without identifiers as text only'}],
             kind='agent-identity', count=sum(agent_names.values()), names=len(agent_names)))
     for name, count in sorted(agent_names.items()):
         if count < 2:
             continue
-        issues.append(_issue(_agent_name_id(name), f'Does {name[:100]!r} name one agent throughout?',
-            f'{count} source mentions use this exact name. By default they share one Agent. '
+        issues.append(_issue(_agent_name_id(name), f'Does {name[:100]!r} always mean the same person or organization?',
+            f'{count} mentions in your files use this exact name. By default they are all linked to one person or organization. '
             'Keep the name as text only if it covers different people or organizations.',
-            [{'value': 'shared', 'label': 'Use one Agent for this exact name'},
-             {'value': 'separate', 'label': 'Keep this name as text only, without an Agent'}],
+            [{'value': 'shared', 'label': 'Link every mention to one person or organization'},
+             {'value': 'separate', 'label': 'Keep this name as text only'}],
             kind='agent-identity', source_value=name, count=count))
     for t in range(len(archive.tables)):
         followers = [column['id'] for column in columns if column['table'] == t and column.get('follows') == f'material:{t}' and column['nonempty'] > 0]
         material_issue = next((issue for issue in issues if issue['id'] == f'material:{t}'), None)
         if material_issue:
             material_issue['followers'] = followers
-            names = [next(column['term'].rsplit('/', 1)[-1] for column in columns if column['id'] == identifier) for identifier in followers]
+            names = [next(short_term(column['term']) for column in columns if column['id'] == identifier) for identifier in followers]
             if names:
                 shown = ', '.join(names[:8]) + (f', and {len(names) - 8:,} more' if len(names) > 8 else '')
-                material_issue['reason'] += f' If yes, these details are stored on the specimen records: {shown}. If no, they stay in your original files.'
+                material_issue['reason'] += f' If yes, these details are stored on the specimen records: {shown}. If no, they are left out of the Data Package.'
     plan = {"version": RULE_VERSION, "source_sha256": archive.fingerprint, "schema": dwc_dp_schema_snapshot(),
             "tables": profiles, "columns": columns, "issues": issues,
             "files": [{"name": name, "sha256": hashlib.sha256(content).hexdigest(), "bytes": len(content)} for name, content in sorted(archive.files.items())]}
@@ -1388,12 +1451,20 @@ def build_plan(archive):
         plan['scientific_hierarchy'] = _scientific_summary(scientific)
     _preflight_plan(archive, core, plan, row_issues)
     for column in plan['columns']:
+        # A column that is not asked about and lost every target to the data says why, rather than looking unmapped.
+        if (not column.get('review') and column['nonempty'] and column.get('unavailable_options')
+                and not any(option['value'] not in {'preserve', 'join'} for option in column['options'])):
+            warnings.append({'id': column['id'], 'title': f"{archive.tables[column['table']].name}: {short_term(column['term'])}",
+                             'reason': ' '.join(dict.fromkeys(option['reason'] for option in column['unavailable_options'])),
+                             'table': column['table'], 'nonempty': column['nonempty']})
+            column['unmapped'] = 'unavailable'
+    for column in plan['columns']:
         # A name and its identifier stay on the same record: recordedByID may only go where recordedBy goes.
         for value, name_target in (column.get('follows_names') or {}).get('targets', {}).items():
             plan['requirements'].setdefault(column['id'], {}).setdefault(value, []).append({
                 'conditions': [{'type': 'target_in', 'column': column['follows_names']['column'], 'targets': [name_target, 'preserve']}],
-                'reason': f"recordedByID can only go where the names in recordedBy go ({name_target}), so each name keeps its identifier. "
-                          'Change where recordedBy goes, or keep recordedByID only in your original files.'})
+                'reason': f"recordedByID can only go where the names in recordedBy go ({_choice(name_target)['label'].lower()}), so each name "
+                          'keeps its identifier. Change where recordedBy goes, or leave recordedByID out of the Data Package.'})
     _streamline_plan(archive, core, plan, warnings)
     for choice in proposed_automatic:
         column = next(column for column in plan['columns'] if column['id'] == choice['id'])
@@ -1496,7 +1567,7 @@ def validate_decisions(plan, decisions, require_complete=True):
                               decision_ids=[identifier for item in found for identifier in item['decision_ids']],
                               evidence={'violations': found[:10]})
     if require_complete and unresolved:
-        raise ConversionError(f"Resolve {len(unresolved)} review decisions before converting.", category='decision',
+        raise ConversionError(f"Answer the {len(unresolved)} remaining {'question' if len(unresolved) == 1 else 'questions'} before converting.", category='decision',
                               decision_ids=unresolved)
     if require_complete:
         for prefix, inner, inner_decisions in active_nested:
@@ -1544,11 +1615,11 @@ def _link_parents(archive, core, core_index, plan, decisions, core_columns, even
     links = {}
     if decision == PARENT_LINK:
         if core.row_type == DWC + 'Occurrence' and decisions.get('event-grain') not in COMBINED_GRAINS:
-            raise ConversionError('Parent event links on an Occurrence core require events combined by supplied eventID; '
-                                  'separate per-row events have no established persistent identity. Preserve parentEventID instead.',
+            raise ConversionError('Parent event links on occurrence rows work only when occurrences with the same eventID are combined '
+                                  'into one event. With a separate event for each row, leave parentEventID out of the Data Package instead.',
                                   category='decision', decision_ids=['event-grain', column['id']])
         if unsupported or not result['links']:
-            raise ConversionError(unsupported or (describe_problems(result) if result['problems'] else 'No supplied parentEventID identifies a source event.'),
+            raise ConversionError(unsupported or (describe_problems(result) if result['problems'] else 'None of the values in parentEventID matches an eventID in your files.'),
                                   category='decision', decision_ids=[column['id']])
         for child, parent in result['links'].items():
             child_key, parent_key = event_keys[nodes[child]['join_ids'][0]], event_keys[nodes[parent]['join_ids'][0]]
@@ -1588,7 +1659,7 @@ def _link_parents(archive, core, core_index, plan, decisions, core_columns, even
 
 def convert(archive, plan, decisions):
     if build_plan(archive)["id"] != plan["id"]:
-        raise ConversionError("The mapping plan no longer matches these files or mapping rules. Inspect the upload again.", category='stale-plan')
+        raise ConversionError("The conversion rules or the tidy-up of your files changed after they were checked. Inspect them again to continue.", category='stale-plan')
     validate_decisions(plan, decisions)
     user_decisions = dict(decisions)
     decisions = effective_decisions(plan, decisions)
@@ -1641,7 +1712,7 @@ def convert(archive, plan, decisions):
                 typed_withheld[(t, column['column'])].add(n)
                 continue
             if field in result[table] and value and result[table][field] and result[table][field] != value:
-                raise ConversionError(f'Conflicting source values map to {target}; preserve one column or correct the source.', category='conflict',
+                raise ConversionError(f"Two columns give different values for the {_target_words(target)} on the same row. Leave one of them out of the Data Package, or correct your files.", category='conflict',
                                       decision_ids=([reviewed_issue['id']] if reviewed_issue else []) +
                                                    [item['id'] for item in columns_by_table[t] if decisions.get(item['id'], item['default']) == target],
                                       evidence={'source_table': archive.tables[t].name, 'source_row': n + 1})
@@ -1696,20 +1767,20 @@ def convert(archive, plan, decisions):
         record = {**record, 'event_pk': depth_parents.get(record['event_pk'], record['event_pk'])}
         event = events_by_key.get(record['event_pk'])
         if event is None:
-            raise ConversionError('An extension event patch must refer to an existing core event.', category='internal')
+            raise ConversionError('An additional table describes an event that is not in the main table.', category='internal')
         for field, value in record.items():
             if value and event.get(field) and event[field] != value:
-                raise ConversionError(f'Extension {archive.tables[t].name}, row {n + 1}, conflicts with existing event.{field}; preserve the field or correct the source.',
+                raise ConversionError(f"{archive.tables[t].name}, row {n + 1}: its {dwca_glossary.field_label(field)} differs from the event's. Leave that column out of the Data Package, or correct your files.",
                                       category='conflict', decision_ids=[f'table:{t}', *patch_columns(t, field)],
                                       evidence={'source_table': archive.tables[t].name, 'source_row': n + 1, 'field': field,
                                                 'event_value': event[field], 'extension_value': value})
         combined = {**event, **{field: value for field, value in record.items() if value}}
         if combined.get('year') and combined.get('eventDate'):
             if not re.fullmatch(r'-?\d{1,4}', combined['year']):
-                raise ConversionError('Mapped event.year is not an integer year.', category='conflict',
+                raise ConversionError('A year must be a whole number, such as 2015.', category='conflict',
                                       decision_ids=[f'table:{t}', *patch_columns(t, 'year')], evidence={'source_row': n + 1})
             if _year_disagrees(combined['year'], combined['eventDate']):
-                raise ConversionError('An extension year conflicts with the existing eventDate.', category='conflict',
+                raise ConversionError("A year in an additional table does not match the event's eventDate.", category='conflict',
                                       decision_ids=[f'table:{t}', *patch_columns(t, 'year')],
                                       evidence={'source_table': archive.tables[t].name, 'source_row': n + 1,
                                                 'year': combined['year'], 'eventDate': combined['eventDate']})
@@ -1785,13 +1856,13 @@ def convert(archive, plan, decisions):
             material = dict(mapped.get('material', {}))
             group = (t, source_id) if decisions[f'material:{t}'] == 'per_row' else (t, material.get('materialEntityID', ''))
             if not group[1] or (decisions[f'material:{t}'] == 'by_id' and missing_reference(group[1], ())):
-                raise ConversionError('Combining material rows requires a usable mapped material identifier on every row.', category='decision',
+                raise ConversionError('To combine specimen records by identifier, every row needs a specimen identifier. Choose one specimen record per row instead, or fill in the missing identifiers.', category='decision',
                                       decision_ids=[f'material:{t}'])
             # evidenceForOccurrenceID shares a source IRI with occurrenceID, but is a relationship, not a copied identifier.
             material.pop('evidenceForOccurrenceID', None)
             material.update(materialEntity_pk=_key(archive, 'material', *group), collectionEvent_fk=event_key)
             if group in material_groups and material_groups[group] != material:
-                raise ConversionError(f'Conflicting material values or collection events for {group[1]!r}; retain separate records or correct the source.',
+                raise ConversionError(f'Rows with specimen identifier {group[1]!r} disagree about the specimen or where it was collected. Choose one specimen record per row, or correct your files.',
                                       category='conflict', decision_ids=[f'material:{t}', 'event-grain'],
                                       evidence={'source_table': archive.tables[t].name, 'source_row': n + 1, 'materialEntityID': group[1]})
             if group not in material_groups:
@@ -1836,7 +1907,7 @@ def convert(archive, plan, decisions):
         if core.row_type == DWC + "Occurrence" and decisions["event-grain"] in COMBINED_GRAINS:
             group_id = event.get("eventID", "")
             if not group_id or missing_reference(group_id, ()):
-                raise ConversionError("Combining events requires a usable eventID on every core row.", category='decision',
+                raise ConversionError("To combine occurrences into events by eventID, every row of the main table needs an eventID.", category='decision',
                                       decision_ids=['event-grain'])
         event_key = _key(archive, "event", group_id); event_keys[source_id] = group_keys[source_id] = event_key
         event.update(event_pk=event_key)
@@ -1846,7 +1917,7 @@ def convert(archive, plan, decisions):
             supplied_categories.add(event_key)
         if group_id in event_groups:
             if event_groups[group_id] != event:
-                raise ConversionError(f"Conflicting event values for eventID {group_id!r}; use separate events or correct the source.",
+                raise ConversionError(f"Rows with eventID {group_id!r} disagree about the event, for example its date or place. Give each row its own event, or correct your files.",
                                       category='conflict', decision_ids=['event-grain', *(item['id'] for item in columns_by_table[core_index]
                                                                                         if decisions.get(item['id'], item['default']).startswith('event.'))],
                                       evidence={'eventID': group_id, 'source_row': n + 1,
@@ -1882,14 +1953,14 @@ def convert(archive, plan, decisions):
         if role == "preserve": continue
         if role == 'humboldt-grouped':
             if decisions.get('event-grain') != 'by_id':  # Depth children would split each surveyed event.
-                raise ConversionError('Occurrence-core Humboldt surveys require events combined by supplied eventID after consistency checks.',
+                raise ConversionError('Survey descriptions on occurrence rows need the occurrences with the same eventID combined into one event.',
                                       category='decision', decision_ids=['event-grain', f'table:{t}'])
             expected, attached, signatures = defaultdict(set), defaultdict(set), defaultdict(set)
             for source_id in core.ids: expected[event_keys[source_id]].add(source_id)
             for row, source_id in zip(table.rows, table.ids):
                 event_key = event_keys[source_id]; attached[event_key].add(source_id); signatures[event_key].add(source_signature(t, row))
             if any(attached[key] != expected[key] or len(signatures[key]) != 1 for key in attached):
-                raise ConversionError('Grouped Humboldt rows need complete identical coverage of every occurrence in each attached event.',
+                raise ConversionError('To make one survey per eventID, every occurrence with that eventID needs a survey row, and those rows must be identical.',
                                       category='conflict', decision_ids=[f'table:{t}'])
         for n, (row, source_id) in enumerate(zip(table.rows, table.ids)):
             try:
@@ -1934,7 +2005,7 @@ def convert(archive, plan, decisions):
                     if role == 'declared-assertions' and explicit_id:
                         matches = occurrences_by_identifier.get(explicit_id, [])
                         if len(matches) != 1 or matches[0][1] != event_keys[source_id]:
-                            raise ConversionError(f'Assertion occurrenceID {explicit_id!r} does not resolve to exactly one occurrence in its attached event.',
+                            raise ConversionError(f'A measurement names occurrenceID {explicit_id!r}, which does not match exactly one occurrence in its event.',
                                                   category='conflict', decision_ids=[f'table:{t}'],
                                                   evidence={'source_table': table.name, 'source_row': n + 1, 'matches': len(matches)})
                         record['occurrence_fk'] = matches[0][0]; target = 'occurrence-assertion'
@@ -1942,7 +2013,7 @@ def convert(archive, plan, decisions):
                         if explicit_id:
                             matches = occurrences_by_identifier.get(explicit_id, [])
                             if len(matches) != 1 or matches[0][0] != occurrence_keys[source_id]:
-                                raise ConversionError('The assertion occurrenceID disagrees with its archive core attachment.', category='conflict',
+                                raise ConversionError('A measurement names an occurrenceID that does not belong to the record it is attached to.', category='conflict',
                                                       decision_ids=[f'table:{t}'], evidence={'source_table': table.name, 'source_row': n + 1})
                         record['occurrence_fk'] = occurrence_keys[source_id]; target = role
                     else:
@@ -1962,7 +2033,7 @@ def convert(archive, plan, decisions):
                     event_key = event_keys[source_id]; event = events_by_key[event_key]
                     if event['eventCategory'] != 'survey':
                         if decisions[f'hum-category:{t}'] != 'confirm' or event_key in supplied_categories:
-                            raise ConversionError('Humboldt rows need reviewed survey events; a supplied non-survey eventCategory cannot be overwritten.',
+                            raise ConversionError('Survey descriptions need survey events, but this event has a different eventCategory in your files, which ChatIPT does not overwrite.',
                                                   category='decision', decision_ids=[f'hum-category:{t}', 'event-category', f'table:{t}'])
                         event['eventCategory'] = 'survey'
                     source = approved_source(t, row)
@@ -1971,7 +2042,7 @@ def convert(archive, plan, decisions):
                     signature = (source_signature(t, row), json.dumps(mapped, sort_keys=True), scope_decision)
                     if group in humboldt_groups and humboldt_groups[group][0] != signature:
                         first_row = humboldt_groups[group][2]
-                        raise ConversionError('Combining Humboldt surveys requires identical source values and scope decisions; retain separate surveys instead.',
+                        raise ConversionError('Survey rows can be combined into one survey only when they are identical, with the same answers about scope. Keep them as separate surveys instead.',
                                               category='conflict', decision_ids=[f'table:{t}', f'hum-scope:{t}:{first_row}', f'hum-scope:{t}:{n}'],
                                               evidence={'source_table': table.name, 'source_rows': [first_row + 1, n + 1]})
                     survey_key = _key(archive, 'survey', *group)
@@ -1995,12 +2066,12 @@ def convert(archive, plan, decisions):
                     if subject_table == 'material':
                         material = materials_by_source.get(source_id)
                         if not material or not material.get('materialEntityID'):
-                            raise ConversionError('Germplasm material conversion requires an explicitly approved material with a supplied identifier on every linked core row.',
+                            raise ConversionError('Passport details can only be attached to specimen records, so every linked row of the main table needs a specimen record with an identifier.',
                                                   category='conflict', decision_ids=[f'table:{t}', f'material:{core_index}'],
                                                   evidence={'source_table': table.name, 'source_row': n + 1})
                         subject_key = material['materialEntity_pk']
                         if family == 'germplasm-score' and (not raw.get(G + 'germplasmID') or raw[G + 'germplasmID'] not in material_identifiers[subject_key]):
-                            raise ConversionError('Score germplasmID must exactly match an identifier of its reviewed material subject.',
+                            raise ConversionError("A measurement's germplasmID does not match the accession number of its specimen record.",
                                                   category='conflict', decision_ids=[f'table:{t}', f'material:{core_index}'],
                                                   evidence={'source_table': table.name, 'source_row': n + 1, 'germplasmID': raw.get(G + 'germplasmID', '')})
                     elif subject_table == 'protocol': subject_key = _key(archive, 'trait-protocol', t, n)
@@ -2010,7 +2081,7 @@ def convert(archive, plan, decisions):
                     if family == 'germplasm-score' and decisions.get(f'trait-link:{t}') == 'exact' and raw.get(G + 'measurementTraitID'):
                         matches = trait_protocols[raw[G + 'measurementTraitID']]
                         if len(matches) != 1:
-                            raise ConversionError('A Score trait ID must exactly match one converted Trait Descriptor protocol ID; missing or duplicate matches cannot be linked.',
+                            raise ConversionError("A measurement's measurementTraitID does not match exactly one converted trait definition, so it cannot be linked.",
                                                   category='conflict', decision_ids=[f'trait-link:{t}'],
                                                   evidence={'source_table': table.name, 'source_row': n + 1, 'traitID': raw[G + 'measurementTraitID']})
                         for _, record in records: record['assertionProtocol_fk'] = matches[0]
@@ -2034,7 +2105,7 @@ def convert(archive, plan, decisions):
                                 if term not in present: derived[term] = ''
                     if family == 'nbn' and any(term in derived for term in NBN_DATE):
                         if any(term in present and term not in derived for term in NBN_DATE):
-                            raise ConversionError('NBN vague date columns must be approved or preserved together.', category='decision',
+                            raise ConversionError('The NBN date columns belong together: convert them all, or leave them all out of the Data Package.', category='decision',
                                                   decision_ids=[item['id'] for item in columns_by_table[t] if item['term'] in NBN_DATE])
                         try:
                             date_value = nbn_event_date(*(derived.get(term, '') for term in NBN_DATE))
@@ -2057,7 +2128,7 @@ def convert(archive, plan, decisions):
                 elif role.startswith('media-'):
                     media = {field: value for field, value in mapped.get('media', {}).items() if value}
                     if not media:
-                        raise ConversionError('A converted media row needs at least one mapped media value; preserve the extension instead of creating empty records.',
+                        raise ConversionError('A media row has no values that can be converted. Leave the media table out of the Data Package instead of creating empty media records.',
                                               category='conflict', decision_ids=[f'table:{t}', f'row:{t}:{n}'],
                                               evidence={'source_table': table.name, 'source_row': n + 1})
                     media_key = _key(archive, 'media', t, n)
@@ -2087,7 +2158,7 @@ def convert(archive, plan, decisions):
                 elif role == "molecular":
                     sequence = mapped.get("nucleotide-sequence", {}).get("sequence", "")
                     if not sequence:
-                        raise ConversionError("Molecular conversion requires a mapped nonempty DNA sequence for each analysis.", category='conflict',
+                        raise ConversionError("Every DNA row needs a DNA sequence to be converted.", category='conflict',
                                               decision_ids=[f'table:{t}'], evidence={'source_table': table.name, 'source_row': n + 1})
                     sequence_key = _key(archive, 'sequence', sequence)
                     protocol = mapped.get('molecular-protocol', {})
@@ -2233,7 +2304,7 @@ def convert(archive, plan, decisions):
     for survey in resources.get('survey', []):
         if survey.get('surveyID'): survey_ids[survey['surveyID']].add(survey['survey_pk'])
     if any(len(keys) > 1 for keys in survey_ids.values()):
-        raise ConversionError('A supplied surveyID would identify several separate surveys. Combine identical survey rows per event, or keep surveyID in the originals.',
+        raise ConversionError('The same surveyID would be used for several separate surveys. Combine identical survey rows for each event, or leave surveyID out of the Data Package.',
                               category='conflict', decision_ids=[item['id'] for item in plan['columns'] if item['term'] == ECO_SURVEY_ID],
                               evidence={'surveyIDs': sorted(value for value, keys in survey_ids.items() if len(keys) > 1)[:5]})
     for group, material in material_groups.items():

@@ -67,23 +67,23 @@ def is_iri(value):
 
 def blocked_fields(source):
     """Reasons for withholding individual direct values, without normalizing them."""
-    blocked = {term: 'Value does not meet the pinned type or bound.' for term, field in DIRECT.items()
+    blocked = {term: 'Not a valid value for this field.' for term, field in DIRECT.items()
                if source.get(term) and not valid_value(field, source[term])}
     for term in IRI_DIRECT:
         if source.get(term) and not is_iri(source[term]):
-            blocked[term] = 'An ecoiri: value must be one absolute IRI; literals and lists are not copied into identifier fields.'
+            blocked[term] = 'This column needs one web link (IRI) per cell; text and lists are not copied into it.'
     for value, unit in _PAIRS.items():
         if source.get(value) and not source.get(unit, '').strip():
-            blocked[value] = 'The source value requires a supplied unit.'
+            blocked[value] = 'This value has no unit in your files.'
     for flag, detail in _CONTRADICTIONS.items():
         flag, detail = ECO + flag, ECO + detail
         if source.get(flag, '').lower() == 'false' and source.get(detail):
-            reason = 'A false reporting/presence flag conflicts with the supplied detail.'
+            reason = 'A true/false flag says false, but the row also gives the detail that the flag says is not there.'
             blocked[flag] = blocked[detail] = reason
     total, area = ECO + 'totalAreaSampledValue', ECO + 'geospatialScopeAreaValue'
     if source.get(total) and source.get(area) and total not in blocked and area not in blocked:
         if source.get(_PAIRS[total]) == source.get(_PAIRS[area]) and Decimal(source[total]) > Decimal(source[area]):
-            blocked[total] = blocked[area] = 'Sampled area exceeds scope area in the same supplied units.'
+            blocked[total] = blocked[area] = 'The area sampled is larger than the survey area, in the same units.'
     return blocked
 
 
@@ -91,23 +91,26 @@ def humboldt_targets(term, sources, blocked_counts=None):
     if term in SCOPE_TERMS:
         return ['derive'], None
     if term in IRI_SCOPE_TERMS:
-        return ['derive'], ('IRI scopes denote resources and stay distinct from literal scopes. A row converts them only when it has no literal '
-                            'scope statement, each cell is one absolute IRI, and the usual completeness rules pass; they become '
-                            'surveyTargetValueIRI descriptors without a literal label. Confirm, or keep them in the originals.')
+        # IRI scopes stay distinct from literal scopes; they become surveyTargetValueIRI descriptors without a literal label.
+        return ['derive'], ('These scope columns hold web links (IRIs) to vocabulary terms. They are converted only for rows that '
+                            'have no text scope, with one link per cell and the usual completeness flags; each link becomes part of '
+                            'the survey target. Confirm, or leave them out of the Data Package.')
     field = COPIED.get(term)
     if not field:
         entry = AUDIT.get(term)
         return [], (entry['reason'] if entry else None)
     count = blocked_counts.get(term, 0) if blocked_counts is not None else sum(term in blocked_fields(source) for source in sources)
-    reason = (f'{count} source rows fail a type, unit or consistency check. Mapping copies compatible values only; flagged values stay in originals and the report.' if count else None)
+    reason = (f'{count} {"row has" if count == 1 else "rows have"} a value that is not valid, has no unit, or contradicts another column. Only the values that pass are '
+              'copied; the others are listed in the report and stay only in your original files.' if count else None)
     if term in IRI_DIRECT:
-        reason = ' '.join(filter(None, ('Audited alias: an ecoiri:samplingPerformedBy IRI identifies the sampling agent, so it is copied to '
-                                        'samplingPerformedByID, never to the literal samplingPerformedBy name.', reason)))
+        reason = ' '.join(filter(None, ('These links identify who did the sampling, so they are saved as the identifier of the sampler '
+                                        '(samplingPerformedByID), not as their name.', reason)))
     if term in SUPPLEMENTAL:
         repeated = _repeated(source.get(term, '') for source in sources)
         if repeated:
-            reason = ' '.join(filter(None, (f'{repeated} surveyID values occur on several rows. Separate surveys cannot share an identifier; '
-                                            'combine one survey per event (identical rows only) or keep the column in the originals.', reason)))
+            reason = ' '.join(filter(None, (f'{repeated} surveyID values appear on several rows, but separate surveys cannot share an '
+                                            'identifier. Combine the rows into one survey per event (possible only when they are identical), '
+                                            'or leave the column out of the Data Package.', reason)))
     return ['survey.' + field['name']], reason
 
 
@@ -124,7 +127,8 @@ def _elements(value):
         return []
     elements = value.split(' | ')
     if any(not item or item != item.strip() for item in elements) or len(set(elements)) != len(elements):
-        raise ImportFailure('Survey scopes contain empty, padded or duplicate list elements; correct the source or preserve the scope.')
+        raise ImportFailure('A scope list has an empty item, spaces around an item, or the same item twice. Correct your files, '
+                            'or leave the scope out of the Data Package.')
     return elements
 
 
@@ -136,7 +140,8 @@ def _iri_elements(value):
     if not value:
         return []
     if not is_iri(value):
-        raise ImportFailure('An ecoiri: scope must contain one absolute IRI. Lists and literals are not split or converted; preserve the scope.')
+        raise ImportFailure('A scope column for web links (IRIs) must hold one link per cell; lists and text are not split or '
+                            'converted. Leave the scope out of the Data Package.')
     return [value]
 
 
@@ -154,21 +159,24 @@ def scope_state(source, *, literal_scope_present=False):
         try:
             included, excluded = split(include), split(exclude)
             if set(included) & set(excluded):
-                raise ImportFailure('The same scope element is both included and excluded.')
+                raise ImportFailure('The same item is listed as both included in and excluded from the survey scope.')
         except ImportFailure as error:
             return [], str(error), False
         if not included:
-            return [], 'An exclusion-only scope has no supplied inclusion universe. Preserve it or correct the source.', False
+            return [], ('This scope lists only what the survey excluded, not what it included. Leave it out of the Data Package, '
+                        'or correct your files.'), False
         if namespace == ECO and any(';' in item or ',' in item for item in included + excluded):
-            reasons.append('Confirm that punctuation within scope values is literal; only the exact " | " separator will be split.')
+            reasons.append('Some scope values contain commas or semicolons. Only " | " separates list items, so confirm that the '
+                           'commas and semicolons are part of the values.')
         if flag.lower() not in {'true', 'false'}:
-            reasons.append(f'{dimension} has no valid completeness flag; a reviewed assertion is required.')
+            reasons.append(f'The {label} scope has no valid "fully reported" flag (true or false), so you need to say whether it was fully reported.')
         if dimension == 'DegreeOfEstablishment':
-            reasons.append('Confirm degreeOfEstablishment as the target-type label; it is not establishmentMeans.')
+            reasons.append('Confirm that this scope is about degree of establishment (such as native or introduced), not establishment means.')
         dimensions.append({'dimension': dimension, 'label': label, 'include': included, 'exclude': excluded, 'flag': flag,
                            'namespace': namespace})
     if len(dimensions) > 1:
-        reasons.append('Multiple dimensions will form one combined target. Its single completeness flag needs an explicit assertion.')
+        reasons.append('This row has scopes for several things (for example taxa and life stages), which become one combined survey '
+                       'target. Say whether that combined target was fully reported.')
     return dimensions, ' '.join(dict.fromkeys(reasons)) or None, True
 
 
@@ -176,10 +184,10 @@ def scope_review(source):
     dimensions, reason, convertible = scope_state(source)
     if not reason:
         return None
-    options = [{'value': 'preserve', 'label': 'Retain scope in originals only'}]
+    options = [{'value': 'preserve', 'label': 'Leave the scope out of the Data Package'}]
     if convertible and dimensions:
-        options += [{'value': 'reported-true', 'label': 'One combined target; I confirm it is fully reported'},
-                    {'value': 'reported-false', 'label': 'One combined target; I confirm it is not fully reported'}]
+        options += [{'value': 'reported-true', 'label': 'Convert it: everything in this scope was fully reported'},
+                    {'value': 'reported-false', 'label': 'Convert it: this scope was not fully reported'}]
     return {'reason': reason, 'options': options}
 
 
@@ -205,7 +213,7 @@ def emit_humboldt_records(source, mapped, event_key, survey_key, scope_decision=
     dimensions, reason, convertible = scope_state(source, literal_scope_present=literal_scope_present)
     if dimensions and scope_decision != 'preserve':
         if not convertible or (reason and scope_decision not in {'reported-true', 'reported-false'}):
-            raise ImportFailure('Resolve the Humboldt scope review before creating survey targets.')
+            raise ImportFailure('Answer the survey scope question before converting.')
         if scope_decision == 'source':
             flag = dimensions[0]['flag']
         elif scope_decision in {'reported-true', 'reported-false'}:
@@ -233,9 +241,9 @@ def emit_humboldt_records(source, mapped, event_key, survey_key, scope_decision=
                         consumed.add(term)
     for term in (SCOPE_TERMS | IRI_SCOPE_TERMS) - consumed:
         if source.get(term) and term not in withheld:
-            withheld[term] = ('Literal and IRI scopes in one row are not paired; the IRI scope stays in the originals.'
+            withheld[term] = ('A row with both a text scope and a web-link (IRI) scope keeps only the text one; the link stays only in your original files.'
                               if term in IRI_SCOPE_TERMS and literal_scope_present else
-                              reason or 'Scope value has no emitted target under the approved decision.')
+                              reason or 'This scope value is not converted under your answer, so it stays only in your original files.')
     return records, consumed, withheld
 
 
@@ -244,11 +252,15 @@ def _audit(term, disposition, target, prerequisites, reason):
                   'disposition': disposition, 'target': target, 'prerequisites': prerequisites, 'reason': reason}
 
 
-_TARGET_MODEL = ('eco:SurveyTarget records have their own grain: several descriptor rows share one surveyTargetID and link to surveys. '
-                 'A Humboldt eco:Event extension row describes one survey, and no registered SurveyTarget source table is supported, '
-                 'so these values stay in the originals. Survey targets are never synthesized from them.')
-_NO_IRI_FIELD = ('The pinned survey table has only a literal field for this property. IRIs are not copied into literal fields, and '
-                 'literals are not treated as IRIs; values stay in the originals.')
+# eco:SurveyTarget records have their own grain: several descriptor rows share one surveyTargetID and link to
+# surveys. A Humboldt eco:Event extension row describes one survey and no registered SurveyTarget source table is
+# supported, so survey targets are never synthesized from these values.
+_TARGET_MODEL = ('These columns describe survey targets, which in a Data Package need their own table of targets linked to '
+                 'surveys. ChatIPT cannot build that table from rows that each describe one survey, so the values are left out '
+                 'of the Data Package.')
+# The pinned survey table has only a literal field: IRIs are not copied into literal fields, nor literals treated as IRIs.
+_NO_IRI_FIELD = ('The Data Package has only a text field for this, so web links (IRIs) are not copied into it and the values '
+                 'are left out of the Data Package.')
 # Audit of current-vocabulary properties outside the registered 57-field XML (hc 2026-05-26 term list,
 # DwC-DP 76898192). Dispositions: imported, reviewed-import (column review required), preserved.
 AUDIT = dict([
@@ -263,7 +275,7 @@ AUDIT = dict([
                            ('includeOrExclude', 'survey-target-descriptor.includeOrExclude'))],
     _audit(ECO + 'isSurveyTargetFullyReported', 'preserved', 'survey-target.isSurveyTargetFullyReported',
            'A SurveyTarget source table model. The flag belongs to one complete target and is never copied to, or inferred for, other targets.',
-           _TARGET_MODEL + ' Completeness flags are not overwritten or guessed.'),
+           _TARGET_MODEL + ' Completeness flags are never copied or guessed.'),
     *[_audit(term, 'reviewed-import', 'survey-target-descriptor.surveyTargetValueIRI',
              'Humboldt eco:Event row; no literal scope in that row; one absolute IRI per cell; an inclusion for each dimension; '
              'a valid eco:is...ScopeFullyReported flag or an explicit completeness assertion (always required for combined dimensions '
@@ -277,9 +289,9 @@ AUDIT = dict([
       for name, field in (('surveyTargetType', 'surveyTargetTypeIRI'), ('surveyTargetValue', 'surveyTargetValueIRI'),
                           ('surveyTargetUnit', 'surveyTargetUnitIRI'))],
     *[_audit(ECOIRI + name, 'preserved', '', 'A pinned target field with IRI semantics, or a reviewed linked-record design.', _NO_IRI_FIELD
-             + (' A supplied value is not treated as the unit of the literal measurement; the literal value still needs a literal unit.'
+             + (' The link is not used as the unit of the text value, which still needs a unit written as text.'
                 if name.endswith('Unit') else '')
-             + (' Protocol IRIs would need reviewed protocol records rather than a copied link.' if name.endswith('Protocol') or name.endswith('Protocols') else ''))
+             + (' Links to methods would need their own method descriptions, not a copied link.' if name.endswith('Protocol') or name.endswith('Protocols') else ''))
       for name in ('absentTaxa', 'compilationSourceTypes', 'compilationTypes', 'eventDurationUnit', 'geospatialScopeAreaUnit',
                    'inventoryTypes', 'materialSampleTypes', 'nonTargetTaxa', 'protocolNames', 'samplingEffortProtocol',
                    'samplingEffortUnit', 'taxonCompletenessProtocols', 'taxonCompletenessReported', 'totalAreaSampledUnit')],

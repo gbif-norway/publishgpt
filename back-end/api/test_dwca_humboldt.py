@@ -147,8 +147,8 @@ class HumboldtConversionTests(SimpleTestCase):
         frames, report = convert(source, plan, decisions)
         self.assertNotIn('survey', frames)
         self.assertEqual(frames['event'].iloc[0]['eventCategory'], 'occurrence')
-        self.assertTrue(any('cannot be overwritten' in item['reason'] for item in report['warnings']))
-        with self.assertRaisesMessage(ImportFailure, 'cannot be overwritten'):
+        self.assertTrue(any('does not overwrite' in item['reason'] for item in report['warnings']))
+        with self.assertRaisesMessage(ImportFailure, 'does not overwrite'):
             convert(source, plan, {**decisions, 'table:1': 'humboldt-survey'})
 
     def test_serialized_survey_package_has_valid_targets_and_retains_sources(self):

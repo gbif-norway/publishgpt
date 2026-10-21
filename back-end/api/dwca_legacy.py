@@ -34,18 +34,20 @@ NBN_DATE = (NXF + "eventDateTypeCode", NXF + "eventDateStart", NXF + "eventDateE
 # Vague-date codes whose start/end alignment is checked here. Other codes are withheld, never extrapolated.
 DATE_CODES = {"D", "DD", "O", "OO", "Y", "YY"}
 
-_GROUP_REASON = ("BMDE measurement group {n} becomes its own occurrence-assertion on an approved Occurrence subject, "
-                 "never merged with other groups. bmde: terms are documented MoF equivalents, not exact IRIs; approve "
-                 "every column of the group together.")
+# Each group becomes its own occurrence-assertion on an approved Occurrence subject, never merged with other groups.
+# bmde: terms are documented MoF equivalents, not exact IRIs.
+_GROUP_REASON = ("Measurement {n} (its type, value, unit and so on) becomes one measurement of the occurrence, kept "
+                 "separate from the other measurements. Convert all of its columns together, or none.")
 LEGACY_DERIVED_TERMS = {
     **{(BMDE_ROW_TYPE, term): _GROUP_REASON.format(n=n) for n, group in enumerate(GROUPS, 1) for term in group},
-    **{(BMDE_ROW_TYPE, term): "Event context only: zone, easting and northing are combined into event.verbatimCoordinates "
-       "with verbatimCoordinateSystem 'UTM'. Approve all three; no decimal coordinates are computed." for term in UTM},
-    **{(BMDE_ROW_TYPE, term): "Event context only: decimal local hours describe the whole observation event and become "
-       "event.eventTime (hh:mm, or start/end) without a time zone. Approve both columns." for term in TIMES},
-    **{(NBN_ROW_TYPE, term): "UK vague dates become event.eventDate only for codes D, DD, O, OO, Y and YY whose start and "
-       "end dates are valid and aligned with the code. Other codes are withheld; invalid endpoints are rejected. Approve "
-       "all three columns; the root rejects conflicts with the existing eventDate." for term in NBN_DATE},
+    **{(BMDE_ROW_TYPE, term): "The UTM zone, easting and northing are combined, as written, into the coordinates of the "
+       "event, with the coordinate system UTM. Convert all three together; ChatIPT does not calculate decimal coordinates "
+       "from them." for term in UTM},
+    **{(BMDE_ROW_TYPE, term): "The start and end times, in decimal hours, become the time of the event (hh:mm, or "
+       "start/end), without a time zone. Convert both columns together." for term in TIMES},
+    **{(NBN_ROW_TYPE, term): "NBN vague dates become the event date only for the codes D, DD, O, OO, Y and YY, when the "
+       "start and end dates are valid and match the code. Dates with other codes are not converted. Convert all three "
+       "columns together; if the event already has a different eventDate, the conversion stops." for term in NBN_DATE},
 }
 _TARGETS = {
     BMDE_ROW_TYPE: {
@@ -64,20 +66,25 @@ _TARGETS = {
     },
 }
 ALIAS_REASONS = {
-    (BMDE_ROW_TYPE, BMDE + "SurveyAreaIdentifier"): "Event context only: bmde:SurveyAreaIdentifier is not dwc:siteNumber; confirm it names the site of the linked event.",
-    (BMDE_ROW_TYPE, BMDE + "CoordinatesScope"): "Event context only: the scope (route start, county centroid, ...) changes what the event coordinates mean; it is kept as georeferenceRemarks text.",
-    (NBN_ROW_TYPE, NXF + "gridReference"): "Event context only: the grid reference is copied verbatim to verbatimCoordinates. Its precision is not an uncertainty radius.",
-    (NBN_ROW_TYPE, NXF + "gridReferenceType"): "Event context only: the grid system (BNG, ING, UTM) is copied verbatim and needs a grid reference in the same row.",
-    (NBN_ROW_TYPE, NXF + "siteFeatureKey"): "Event context only: an NBN Gateway site key, not a dwc:locationID IRI; confirm it identifies the event location.",
+    (BMDE_ROW_TYPE, BMDE + "SurveyAreaIdentifier"): ("Saved as the site number of the linked event. This is the closest match, "
+                                                     "not an exact one, so confirm it names the site of the event."),
+    (BMDE_ROW_TYPE, BMDE + "CoordinatesScope"): ("The coordinates scope (such as route start or county centroid) changes what the "
+                                                 "event's coordinates mean, so it is kept as a note on how the location was recorded."),
+    (NBN_ROW_TYPE, NXF + "gridReference"): ("The grid reference is copied as written into the coordinates of the event. Its "
+                                            "precision is not treated as a coordinate uncertainty."),
+    (NBN_ROW_TYPE, NXF + "gridReferenceType"): ("The grid system (BNG, ING or UTM) is copied as written for the event, and needs "
+                                                "a grid reference in the same row."),
+    (NBN_ROW_TYPE, NXF + "siteFeatureKey"): ("An NBN Gateway site key, saved as the locationID of the event. Confirm that it "
+                                             "identifies the location of the event."),
 }
 _PRESERVE = [
-    (BMDE_ROW_TYPE, {DWC + "individualCount", BMDE + "ObservationDescriptor"}, "Count meaning depends on ObservationDescriptor (1 means presence for 'Presence/Absence'). No occurrence patch is defined; originals retain the count."),
-    (BMDE_ROW_TYPE, {BMDE + f"MultiScientificName{n}" for n in range(1, 7)} | {BMDE + "TaxonomicAuthorityVersion", BMDE + "TaxonomicAuthorityYear"}, "Multiple names do not establish identifications; originals retain them."),
-    (BMDE_ROW_TYPE, {BMDE + "Specimen" + name for name in ("DecimalLatitude", "DecimalLongitude", "GeodeticDatum", "UTMZone", "UTMNorthing", "UTMEasting")} | {BMDE + "CoordinatesUncertaintyInDecimalDegrees"}, "Record-level specimen coordinates have no subject location in this conversion; originals retain them."),
-    (BMDE_ROW_TYPE, {BMDE + name for name in ("SurveyAreaSize", "SurveyAreaPercentageCovered", "SurveyAreaShape", "SurveyAreaLongAxisLength", "SurveyAreaShortAxisLength", "SurveyAreaLongAxisOrientation", "SamplingEventStructure", "RouteIdentifier", "ProtocolSpeciesTargeted", "AllIndividualsReported", "AllSpeciesReported")}, "Survey geometry and completeness need a survey or parent event, which this family does not create; originals retain them."),
-    (BMDE_ROW_TYPE, {BMDE + name for name in ("RecordPermissions", "LastModifiedAction", "NoObservations", "RecordReviewStatus")}, "Record-management state is reported by row review and never converted into policy, absence or verification values."),
-    (NBN_ROW_TYPE, {NXF + "gridReferencePrecision"}, "Grid square size is not a coordinate uncertainty radius; originals retain it."),
-    (NBN_ROW_TYPE, {NXF + "sensitiveOccurrence"}, "Sensitive records are reported by row review; no withheld or generalisation statement is invented."),
+    (BMDE_ROW_TYPE, {DWC + "individualCount", BMDE + "ObservationDescriptor"}, "What the count means depends on ObservationDescriptor (for 'Presence/Absence', 1 means present), so the count is left out of the Data Package."),
+    (BMDE_ROW_TYPE, {BMDE + f"MultiScientificName{n}" for n in range(1, 7)} | {BMDE + "TaxonomicAuthorityVersion", BMDE + "TaxonomicAuthorityYear"}, "Several names on one record do not say which identification is right, so they are left out of the Data Package."),
+    (BMDE_ROW_TYPE, {BMDE + "Specimen" + name for name in ("DecimalLatitude", "DecimalLongitude", "GeodeticDatum", "UTMZone", "UTMNorthing", "UTMEasting")} | {BMDE + "CoordinatesUncertaintyInDecimalDegrees"}, "Coordinates of the specimen itself have no place in this conversion, so they are left out of the Data Package."),
+    (BMDE_ROW_TYPE, {BMDE + name for name in ("SurveyAreaSize", "SurveyAreaPercentageCovered", "SurveyAreaShape", "SurveyAreaLongAxisLength", "SurveyAreaShortAxisLength", "SurveyAreaLongAxisOrientation", "SamplingEventStructure", "RouteIdentifier", "ProtocolSpeciesTargeted", "AllIndividualsReported", "AllSpeciesReported")}, "The survey area and completeness need a survey or parent event, which ChatIPT does not create for this table, so they are left out of the Data Package."),
+    (BMDE_ROW_TYPE, {BMDE + name for name in ("RecordPermissions", "LastModifiedAction", "NoObservations", "RecordReviewStatus")}, "Record status (permissions, deletions, review state) is checked row by row; it is never turned into licences, absences or verification values."),
+    (NBN_ROW_TYPE, {NXF + "gridReferencePrecision"}, "Grid square size is not a coordinate uncertainty, so it is left out of the Data Package."),
+    (NBN_ROW_TYPE, {NXF + "sensitiveOccurrence"}, "Sensitive records are flagged row by row; ChatIPT does not write statements about withheld or generalised data for them."),
 ]
 _EVENT_FIELDS = {"bmde": {"siteNumber", "georeferenceRemarks"}, "nbn": {"verbatimCoordinates", "verbatimCoordinateSystem", "locationID"}}
 _OCCURRENCE_TERMS = {term for group in GROUPS for term in group}
@@ -89,10 +96,10 @@ def _filled(value):
 
 def _hours(text):
     if not re.fullmatch(r"\d{1,2}(\.\d*)?|\.\d+", text.strip()):
-        raise ImportFailure(f"{text!r} is not decimal hours from midnight.")
+        raise ImportFailure(f"{text!r} is not a time in decimal hours (such as 13.5 for 13:30).")
     minutes = Decimal(text.strip()) * 60
     if minutes != minutes.to_integral_value():
-        raise ImportFailure(f"{text!r} has finer precision than whole minutes; retain it rather than round it.")
+        raise ImportFailure(f"{text!r} is more precise than whole minutes, and ChatIPT does not round it.")
     if minutes >= 24 * 60:
         raise ImportFailure(f"{text!r} is not a time of day.")
     return int(minutes)
@@ -108,16 +115,16 @@ def legacy_targets(row_type, term, values):
         try:
             [_hours(value) for value in values]
         except ImportFailure:
-            return [], "Some values are not decimal hours from midnight; originals retain the column."
+            return [], "Some values are not times in decimal hours (such as 13.5 for 13:30), so the column is left out of the Data Package."
     reason = LEGACY_DERIVED_TERMS.get((row_type, term)) or ALIAS_REASONS[(row_type, term)]
     if term == NBN_DATE[0] and any(value not in DATE_CODES for value in values):
-        reason += " Codes present here outside that list are withheld for review."
+        reason += " Some rows use other codes; those dates are not converted."
     return list(targets), reason
 
 
 def _date(text, term):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        raise ImportFailure(f"{term} {text!r} is not an ISO calendar date.")
+        raise ImportFailure(f"{term} {text!r} is not a date in the form YYYY-MM-DD.")
     try:
         return date.fromisoformat(text)
     except ValueError:
@@ -127,11 +134,11 @@ def _date(text, term):
 def nbn_event_date(code, start, end):
     """Return the ISO eventDate for a supported vague date, None for codes left to review."""
     if not _filled(code):
-        raise ImportFailure("eventDateTypeCode is required by the NBN extension.")
+        raise ImportFailure("Each NBN row needs an eventDateTypeCode.")
     if code not in DATE_CODES:
         return None
     if not (_filled(start) and _filled(end)):
-        raise ImportFailure(f"Vague date code {code} requires eventDateStart and eventDateEnd.")
+        raise ImportFailure(f"Vague date code {code} needs both eventDateStart and eventDateEnd.")
     first, last = _date(start, "eventDateStart"), _date(end, "eventDateEnd")
     month_end = lambda day: day.day == calendar.monthrange(day.year, day.month)[1]
     valid = first <= last and {
@@ -153,32 +160,32 @@ def legacy_row_review(row_type, source):
     reasons = []
     if row_type == BMDE_ROW_TYPE:
         if value(BMDE + "RecordPermissions") not in {"", "5"}:
-            reasons.append(f"RecordPermissions {value(BMDE + 'RecordPermissions')!r} restricts display; resolve before publication")
+            reasons.append(f"RecordPermissions {value(BMDE + 'RecordPermissions')!r} limits who may see this record, so decide how to handle it before publishing")
         if value(BMDE + "LastModifiedAction").upper() == "DELETE":
-            reasons.append("LastModifiedAction DELETE marks the record for permanent exclusion")
+            reasons.append("LastModifiedAction DELETE says this record should be removed")
         if value(BMDE + "NoObservations") == "NoObs":
-            reasons.append("NoObservations reports no observation; absence is not inferred")
+            reasons.append("NoObservations says nothing was observed; ChatIPT does not turn that into an absence")
         if value(BMDE + "RecordReviewStatus").lower() in {"not accepted", "pending review"}:
             reasons.append(f"RecordReviewStatus is {value(BMDE + 'RecordReviewStatus')!r}")
         if value(DWC + "individualCount") and value(BMDE + "ObservationDescriptor").replace(" ", "").lower() == "presence/absence":
-            reasons.append("individualCount means presence, not a number of individuals")
+            reasons.append("individualCount here means present, not a number of individuals")
         for n, group in enumerate(GROUPS, 1):
             filled = {field for term, field in group.items() if value(term)}
             if filled and not {"verbatimAssertionType", "assertionValue"} <= filled:
-                reasons.append(f"measurement group {n} lacks a type or value")
+                reasons.append(f"measurement {n} has no type or no value")
     elif row_type == NBN_ROW_TYPE:
         sensitive = value(NXF + "sensitiveOccurrence")
         if sensitive.lower() == "true":
-            reasons.append("sensitiveOccurrence is true; publication needs a reviewed handling decision")
+            reasons.append("sensitiveOccurrence is true, so decide how to handle this sensitive record before publishing")
         elif sensitive.lower() != "false":
-            reasons.append(f"sensitiveOccurrence {sensitive!r} is not the required true/false flag")
+            reasons.append(f"sensitiveOccurrence {sensitive!r} is not true or false")
         try:
             if nbn_event_date(*(value(term) for term in NBN_DATE)) is None:
-                reasons.append(f"vague date code {value(NBN_DATE[0])!r} is not converted")
+                reasons.append(f"dates with vague date code {value(NBN_DATE[0])!r} are not converted")
         except ImportFailure as error:
             reasons.append(str(error).rstrip("."))
         if value(NXF + "gridReferenceType") and not value(NXF + "gridReference"):
-            reasons.append("gridReferenceType has no gridReference")
+            reasons.append("gridReferenceType is given without a gridReference")
     return "; ".join(reasons) + "." if reasons else None
 
 
@@ -208,7 +215,7 @@ def _checked(family, source, mapped):
 def _complete(source, terms, label):
     supplied = [term for term in terms if term in source]
     if supplied and len(supplied) != len(terms):
-        raise ImportFailure(f"{label} needs every column approved together.")
+        raise ImportFailure(f"{label}: convert all of its columns together, or none.")
     return bool(supplied)
 
 
@@ -227,17 +234,17 @@ def emit_legacy_records(family, source, mapped, subject_table, subject_key, reco
             raise ImportFailure("BMDE event values need an explicit Event-context choice, not an occurrence subject.")
         rows = []
         for n, group in enumerate(GROUPS, 1):
-            if not _complete(source, list(group), f"BMDE measurement group {n}"):
+            if not _complete(source, list(group), f"BMDE measurement {n}"):
                 continue
             record = {field: source[term] for term, field in group.items() if _filled(source[term])}
             if not record:
                 continue
             if not {"verbatimAssertionType", "assertionValue"} <= record.keys():
-                raise ImportFailure(f"BMDE measurement group {n} needs both a type and a value.")
+                raise ImportFailure(f"BMDE measurement {n} needs both a type and a value.")
             rows.append(("occurrence-assertion", {"occurrence_fk": subject_key, **record}))
         return rows
     if occurrence_values:
-        raise ImportFailure("BMDE measurement groups describe an occurrence and cannot be attached to an event.")
+        raise ImportFailure("BMDE measurements describe an occurrence, so they cannot be attached to an event.")
     if family == "bmde":
         if _complete(source, UTM, "BMDE UTM coordinates") and any(_filled(source[term]) for term in UTM):
             if not all(_filled(source[term]) for term in UTM):
@@ -248,7 +255,7 @@ def emit_legacy_records(family, source, mapped, subject_table, subject_key, reco
                 raise ImportFailure("TimeObservationsEnded needs TimeObservationsStarted.")
             times = [_hours(source[term]) for term in TIMES if _filled(source[term])]
             if len(times) == 2 and times[1] < times[0]:
-                raise ImportFailure("TimeObservationsEnded precedes TimeObservationsStarted; the event date span is unknown.")
+                raise ImportFailure("TimeObservationsEnded is earlier than TimeObservationsStarted, so the time span is unclear.")
             clock = [f"{minutes // 60:02d}:{minutes % 60:02d}" for minutes in dict.fromkeys(times)]
             event["eventTime"] = "/".join(clock)
     else:

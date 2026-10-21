@@ -214,7 +214,8 @@ def process_next_conversion():
                     metadata_warnings = [{'field': 'eml.xml', 'reason': f'Metadata could not be promoted: {error}'}]
             sources = conversion.metadata_sources or {}
             report['metadata'] = {
-                'eml': 'original EML 2.2.0 included' if eml else 'original metadata retained in source-originals.zip; no replacement metadata invented',
+                'eml': ('Your original EML 2.2.0 metadata is included' if eml else
+                        'Your original metadata is kept only in the copy of your original files, and ChatIPT did not write new metadata'),
                 # Recorded when inspection filled the fields, not inferred from matching text.
                 'title_source': sources.get('title', 'user' if (conversion.dataset.title or '').strip() else 'none'),
                 'description_source': sources.get('description', 'user' if (conversion.dataset.description or '').strip() else 'none'),

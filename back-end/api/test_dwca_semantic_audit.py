@@ -28,7 +28,7 @@ class SemanticValueAuditTests(SimpleTestCase):
         self.assertEqual(findings[DWC + 'minimumDepthInMeters']['count'], 2)
         self.assertEqual(findings[DWC + 'maximumDepthInMeters']['count'], 2)
         self.assertTrue(all(item['action'].startswith('audit-only') for item in report['findings']))
-        self.assertIn('valid elevation or depth', findings[DWC + 'minimumDepthInMeters']['guidance'])
+        self.assertIn('real elevation or depth', findings[DWC + 'minimumDepthInMeters']['guidance'])
         self.assertEqual(archive.tables[0].rows, before)
 
     def test_examples_are_bounded_and_negative_limit_is_rejected(self):
@@ -52,5 +52,5 @@ class SemanticValueAuditTests(SimpleTestCase):
                       'urn:lsid:marinespecies.org:taxname:103259'):
             self.assertIsNone(semantic_target_rejection('event-assertion.assertionTypeIRI', value))
         for value in ('NA', 'micrometers', 'P01 MSHSIZE1', 'vocab.nerc.ac.uk/collection/S10/current/S102/'):
-            self.assertIn('absolute IRI', semantic_target_rejection('occurrence-assertion.assertionValueIRI', value))
+            self.assertIn('full web link (IRI)', semantic_target_rejection('occurrence-assertion.assertionValueIRI', value))
         self.assertIsNone(semantic_target_rejection('occurrence-assertion.assertionValue', 'NA'))

@@ -313,7 +313,7 @@ class ArchiveTests(SimpleTestCase):
         archive = occurrence(b'occurrenceID,eventID,eventDate,occurrenceStatus\na,e,2025-01-01,present\nb,e,2025-01-02,present\n')
         plan = build_plan(archive); decisions = decisions_for(plan); decisions['event-grain'] = 'by_id'
         self.assertFalse(option_status(plan, decisions)['event-grain']['by_id']['available'])
-        with self.assertRaisesRegex(ImportFailure, 'disagree within 1 eventID groups'): convert(archive, plan, decisions)
+        with self.assertRaisesRegex(ImportFailure, r'same eventID give different values in eventDate \(1 group\)'): convert(archive, plan, decisions)
         # Availability follows the effective decisions: retaining eventDate makes combining valid.
         date = next(column['id'] for column in plan['columns'] if column['term'] == DWC + 'eventDate')
         self.assertTrue(option_status(plan, {**decisions, date: 'preserve'})['event-grain']['by_id']['available'])
@@ -695,7 +695,7 @@ class ArchiveTests(SimpleTestCase):
     def test_material_merging_blocks_conflicting_descriptions(self):
         archive = occurrence(b'occurrenceID,eventID,materialSampleID,catalogNumber,occurrenceStatus\na,e,m,catalog-a,present\nb,e,m,catalog-b,present\n')
         plan = build_plan(archive); decisions = decisions_for(plan); decisions.update({'material:0': 'by_id', 'event-grain': 'by_id'})
-        with self.assertRaisesRegex(ImportFailure, 'disagree within 1 material identifier groups'): convert(archive, plan, decisions)
+        with self.assertRaisesRegex(ImportFailure, r'same specimen identifier give different values in catalogNumber \(1 group\)'): convert(archive, plan, decisions)
 
     def test_event_extensions_and_explicit_assertion_subjects(self):
         archive = read_inputs([('event.csv', b'eventID,eventCategory\ne,survey\n'),
@@ -710,6 +710,49 @@ class ArchiveTests(SimpleTestCase):
         self.assertIn('table:1', {item['id'] for item in plan['issues']})
         with self.assertRaisesRegex(ImportFailure, 'Unsupported mapping decision'):
             validate_decisions(plan, {**decisions_for(plan), 'table:1': 'declared-assertions'})
+
+    def test_assertion_ids_must_differ_only_within_the_table_each_row_reaches(self):
+        # m1 reaches the occurrence measurements once and the event measurements once when occurrenceID decides.
+        archive = read_inputs([('event.csv', b'eventID,eventCategory\ne,survey\n'),
+            ('extendedmeasurementorfact.csv', b'eventID,occurrenceID,measurementID,measurementType,measurementValue\ne,o,m1,length,5\ne,,m1,temperature,20\n'),
+            ('occurrence.csv', b'eventID,occurrenceID,occurrenceStatus\ne,o,present\n')])
+        plan = build_plan(archive)
+        table = next(index for index, item in enumerate(archive.tables) if item.name == 'extendedmeasurementorfact.csv')
+        column = next(item for item in plan['columns'] if item['table'] == table and item['term'] == DWC + 'measurementID')
+        self.assertEqual(column['default'], 'occurrence-assertion.assertionID')
+        decisions = {**decisions_for(plan), f'table:{table}': 'declared-assertions'}
+        self.assertTrue(option_status(plan, decisions)[column['id']]['occurrence-assertion.assertionID']['available'])
+        status = option_status(plan, {**decisions, f'table:{table}': 'event-assertion'})[column['id']]['occurrence-assertion.assertionID']
+        self.assertFalse(status['available'])
+        self.assertIn('1 value in measurementID is used on more than one row (for example m1)', ' '.join(status['reasons']))
+        frames, report = convert(archive, plan, decisions)
+        self.assertTrue(report['validation']['valid'])
+        self.assertEqual((list(frames['occurrence-assertion']['assertionID']), list(frames['event-assertion']['assertionID'])), (['m1'], ['m1']))
+
+    def test_a_plain_column_ruled_out_by_its_values_says_why(self):
+        archive = read_inputs([('occurrence.csv', b'occurrenceID,occurrenceStatus\no1,present\no2,present\n'),
+            ('measurementorfact.csv', b'occurrenceID,measurementID,measurementType,measurementValue\no1,none,length,5\no2,none,mass,2\n')])
+        plan = build_plan(archive)
+        column = next(item for item in plan['columns'] if item['term'] == DWC + 'measurementID')
+        self.assertEqual((column['default'], column.get('unmapped')), ('preserve', 'unavailable'))
+        notice = next(item for item in plan['warnings'] if item['id'] == column['id'])
+        self.assertIn('used on more than one row (for example none)', notice['reason'])
+        frames, report = convert(archive, plan, decisions_for(plan))
+        self.assertTrue(report['validation']['valid'])
+
+    def test_columns_used_for_other_fields_are_not_called_left_out(self):
+        archive = read_inputs([('occurrence.csv', b'occurrenceID,occurrenceStatus,individualCount,scientificName,identificationQualifier\n'
+                                                  b'o1,present,3,Apus apus,cf. apus\n')])
+        plan = build_plan(archive)
+        entries = {item['term'].rsplit('/', 1)[-1]: item for item in [*plan['issues'], *plan['automatic_choices']] if item.get('term')}
+        count = next(item for item in plan['columns'] if item['term'] == DWC + 'individualCount')
+        self.assertEqual(count['unmapped'], 'derived')
+        self.assertEqual([option['label'] for option in entries['individualCount']['options']], ['Used for the organism quantity'])
+        self.assertIn('becomes the number of individuals', entries['individualCount']['reason'])
+        self.assertEqual([option['label'] for option in entries['identificationQualifier']['options']],
+                         ['Added after the name text in verbatimIdentification'])
+        frames, _ = convert(archive, plan, decisions_for(plan))
+        self.assertEqual((frames['occurrence'].iloc[0]['organismQuantity'], frames['occurrence'].iloc[0]['organismQuantityType']), ('3', 'individuals'))
 
     def test_unmatched_na_reference_uses_event_subject_without_erasing_original(self):
         archive = read_inputs([('event.csv', b'eventID,parentEventID,eventCategory\nparent,NA,survey\nchild,parent,survey\n'),
@@ -749,7 +792,7 @@ class ArchiveTests(SimpleTestCase):
         ]
         for files, dropped in cases:
             with self.subTest(core=files[0][0]):
-                with self.assertRaisesRegex(ImportFailure, 'ambiguous core link'):
+                with self.assertRaisesRegex(ImportFailure, 'not linked to a row of the main table'):
                     read_inputs(files)
                 archive = read_inputs(files, drop_unlinked_extension_rows=True)
                 self.assertEqual(archive.dropped_extension_rows[0]['rows'], dropped)
@@ -759,7 +802,7 @@ class ArchiveTests(SimpleTestCase):
         files = [('meta.xml', manifest(extension=extension)),
                  ('occ.csv', b'key,occurrenceID\nNA,persistent\n'),
                  ('facts.csv', b'key,value\nNA,5\n')]
-        with self.assertRaisesRegex(ImportFailure, 'ambiguous core link'):
+        with self.assertRaisesRegex(ImportFailure, 'not linked to a row of the main table'):
             read_inputs(files)
 
     def test_placeholder_assertion_id_with_no_core_id_keeps_occurrence_subject(self):
@@ -820,7 +863,7 @@ class ArchiveTests(SimpleTestCase):
         plan = build_plan(archive)
         issue = next(item for item in [*plan['issues'], *plan['automatic_choices']] if item['id'] == 'table:1')
         self.assertEqual([option['value'] for option in issue['unavailable_options']], ['occurrence-assertion'])
-        self.assertIn('attached core row', issue['unavailable_options'][0]['reason'])
+        self.assertIn('the one the row is attached to', issue['unavailable_options'][0]['reason'])
 
 
 class ConversionAPITests(TransactionTestCase):

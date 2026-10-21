@@ -192,6 +192,6 @@ def extract_eml_descriptor_metadata(content):
     return {
         'descriptor': descriptor,
         'source_metadata': source_metadata,
-        'warnings': ([{'field': 'intellectualRights', 'reason': 'Free-text rights were retained; they do not identify an unambiguous standard license.'}]
+        'warnings': ([{'field': 'intellectualRights', 'reason': 'The rights statement is kept as text, because it does not clearly name a standard licence.'}]
                      if rights and not license_value else []),
     }

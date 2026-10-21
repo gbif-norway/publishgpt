@@ -109,7 +109,7 @@ class MediaConversionTests(SimpleTestCase):
     def test_conflicting_alias_columns_cannot_silently_overwrite(self):
         archive = media_archive([DCT + 'identifier', DCT + 'type', DC + 'type'], [['o1', 'urn:m:1', 'StillImage', 'Sound']])
         plan = build_plan(archive); decisions = choices(plan)
-        with self.assertRaisesMessage(ImportFailure, 'supply different values for media.mediaType in 1 rows'):
+        with self.assertRaisesMessage(ImportFailure, 'give different values for the media type on the media record in 1 row.'):
             convert(archive, plan, decisions)
         alias = next(c for c in plan['columns'] if c['term'] == DC + 'type')
         decisions[alias['id']] = 'preserve'

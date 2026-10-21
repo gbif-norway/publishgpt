@@ -25,7 +25,7 @@ export default function ConversionPlanDiagram({ state, selected }) {
   return <section className="conversion-plan mb-4" aria-labelledby="conversion-plan-heading">
     <h2 className="h5 mb-1" id="conversion-plan-heading">What the conversion will create</h2>
     <p className="small text-body-secondary mb-2">A plan based on your current choices, drawn before anything is converted. Your files → Darwin Core Data Package tables.
-      A dashed line means new child events are created inside existing events. Your original files are always kept in full.</p>
+      A dashed line means new child events are created inside existing events. A full copy of your original files is always included in the download.</p>
     {targets.length === 0
       ? <p className="small">No table of your files has a Darwin Core Data Package field yet. Make the choices below and the plan will appear here.</p>
       : <>
@@ -41,7 +41,7 @@ export default function ConversionPlanDiagram({ state, selected }) {
           {sources.map(source => <g key={source.index} className={`conversion-plan-node ${source.retained ? 'conversion-plan-node-kept' : ''}`} transform={`translate(0 ${sourceY(source.index)})`}>
             <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="8" />
             <text x="12" y="22" className="conversion-plan-name">{clip(source.name, 30)}</text>
-            <text x="12" y="40" className="conversion-plan-detail">{rowsLabel(source.rows)}{source.retained ? ' · kept as original' : ''}</text>
+            <text x="12" y="40" className="conversion-plan-detail">{rowsLabel(source.rows)}{source.retained ? ' · left out' : ''}</text>
           </g>)}
           {targets.map(target => <g key={target.name} className="conversion-plan-node conversion-plan-node-target" transform={`translate(${WIDTH - NODE_WIDTH} ${targetY(target.name)})`}>
             <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="8" />
@@ -52,7 +52,7 @@ export default function ConversionPlanDiagram({ state, selected }) {
         <ul className="conversion-plan-list mb-0">
           {sources.map(source => <li key={source.index}>
             <strong>{source.name}</strong> ({rowsLabel(source.rows)}){' '}
-            {source.retained ? 'stays in your original files.' : targetsOf(source.index).length ? `fills ${targetsOf(source.index).join(', ')}.` : 'has no table to fill yet.'}
+            {source.retained ? 'is left out of the Data Package.' : targetsOf(source.index).length ? `fills ${targetsOf(source.index).join(', ')}.` : 'has no table to fill yet.'}
           </li>)}
         </ul>
       </>}

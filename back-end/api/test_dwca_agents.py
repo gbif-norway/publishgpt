@@ -62,10 +62,10 @@ class AgentRoleTests(SimpleTestCase):
         self.assertFalse([item for item in plan['issues'] if item['id'].startswith(('agent-share:', 'agent-names'))])
         everyone = automatic['agent-names']
         self.assertEqual((everyone['default'], everyone['count'], everyone['names']), ('shared', 6, 2))
-        self.assertIn('Links up to 6 mentions of 2 names', everyone['reason'])
+        self.assertIn('Up to 6 mentions of 2 names', everyone['reason'])
         share = next(item for item in automatic.values() if item['id'].startswith('agent-share:'))
         self.assertEqual((share['default'], share['source_value']), ('shared', 'OceanPro AS'))
-        self.assertIn("Linked the 5 mentions of 'OceanPro AS' to one agent", share['reason'])
+        self.assertIn("The 5 mentions of 'OceanPro AS' are linked to one person or organization", share['reason'])
         self.assertFalse(any(option['assertion'] for item in (everyone, share) for option in item['options']))
         choices = {item['id']: item['options'][0]['value'] for item in plan['issues']}
         frames, report = convert(archive, plan, choices)
@@ -214,14 +214,14 @@ class AgentRoleTests(SimpleTestCase):
         plan = build_plan(archive)
         names = next(item for item in plan['automatic_choices'] if item['id'] == 'agent-names')
         notice = next(item for item in plan['warnings'] if item['id'] == 'agent-names')
-        self.assertIn('Links up to 3 mentions of 2 names', notice['reason'])
+        self.assertIn('Up to 3 mentions of 2 names', notice['reason'])
         self.assertEqual(notice['reason'], names['reason'])
         choices = {issue['id']: issue['options'][0]['value'] for issue in plan['issues']}
         frames, report = convert(archive, plan, choices)
         linked = sum(stats['name'] for stats in report['agent_roles']['fields'].values())
         self.assertEqual((linked, len(frames['agent'])), (names['count'], names['names']))
         restated = next(item for item in report['warnings'] if item.get('id') == 'agent-names')
-        self.assertTrue(restated['reason'].startswith('Linked 3 mentions of 2 names'), restated['reason'])
+        self.assertTrue(restated['reason'].startswith('2 names without an identifier were each listed once as a person or organization and linked to 3 mentions'), restated['reason'])
 
         def notice_after(changes):
             _, changed = convert(archive, plan, {**choices, **changes})
@@ -232,13 +232,13 @@ class AgentRoleTests(SimpleTestCase):
         recorded = next(column for column in plan['columns'] if column['term'].endswith('/recordedBy'))
         linked, kept_column = notice_after({recorded['id']: 'preserve'})
         self.assertEqual(linked, 1)
-        self.assertTrue(kept_column['reason'].startswith('Linked 1 mention of 1 name without'), kept_column['reason'])
+        self.assertTrue(kept_column['reason'].startswith('1 name without an identifier was listed once as a person or organization and linked to 1 mention.'), kept_column['reason'])
         self.assertEqual((kept_column['count'], kept_column['names']), (1, 1))
         share = next(item for item in plan['automatic_choices'] if item['id'].startswith('agent-share:'))
         linked, kept_name = notice_after({share['id']: 'separate'})
         self.assertEqual(linked, 1)
-        self.assertTrue(kept_name['reason'].startswith('Linked 1 mention of 1 name without identifiers to one agent per '
-                                                       'exact name; 2 mentions were kept as text only'), kept_name['reason'])
+        self.assertTrue(kept_name['reason'].startswith('1 name without an identifier was listed once as a person or organization '
+                                                       'and linked to 1 mention; 2 mentions were kept as text only'), kept_name['reason'])
         # With every name kept as text, nothing was linked and the notice is gone.
         self.assertEqual(notice_after({'agent-names': 'text'}), (0, None))
         # A column remapped to another agent role was counted too, so its names keep their choice.
