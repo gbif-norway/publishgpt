@@ -120,6 +120,26 @@ NBN dates) patch the eventID event, never a depth child. Material can be combine
 each identifier stays within one depth. Because it asserts that each depth is a separate sampling
 action, it is a confirmed choice.
 
+Rule version 29 keeps two kinds of core sampling context that previously stayed in the originals
+(production dataset 590). `samplingProtocol` on core rows becomes `protocol` records, one per exact
+text and one per item of a ` | ` list (`protocolName`, or `protocolReferences` for a lone http(s)
+link), linked to each event through `event-protocol`. A paired `sampleSizeValue` and
+`sampleSizeUnit` go to a `survey` record on a survey event (supplied category or the
+event-category answer) that no converted Humboldt row already describes; that survey also keeps the
+full `samplingProtocol` text, and links the protocol when there is only one. Other events get an
+`event-assertion` with assertionType `sampleSizeValue`. An unpaired value or unit stays in the
+originals with a reason. Rows combined into one event must agree on these columns. Every emitted
+assertion with a `verbatimAssertionType` and no supplied `assertionType` now also carries the same
+text as `assertionType`, so MoF/eMoF, germplasm Score and BMDE types reach both fields.
+`measurementMethod` stays free text in `assertionProtocols`: citations and descriptions are not
+turned into protocol records without evidence of what they are.
+
+Rule version 29 also rewrites the review questions, option labels and errors in plain language
+(prompted by production dataset 589); the glossary in `api/dwca_glossary.py` holds the shared
+wording. "Preserve" is labelled "Leave out of the Data Package": such values reach no table and
+survive only in `source-originals.zip`. A column whose copied values repeat cannot map to a unique
+field (`assertionID`); rows are compared within the table each one reaches under each role.
+
 Rule version 13 treats conventional empty reference tokens as absent only when
 they do not match a real source identifier. This allows mixed event and occurrence
 measurements to use their respective explicit subjects, and parent-event links to

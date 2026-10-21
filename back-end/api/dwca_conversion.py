@@ -30,7 +30,7 @@ from api.dwca_review import (apply_policy, effective_decisions, failed_requireme
 from api.dwca_semantic_audit import ASSERTION_IRI_FIELDS, is_age_like_remark, semantic_target_rejection
 from api.dwca_agents import ROLE_FIELDS, agent_name, build_agent_roles, composite_name_reason, split_agent_ids
 
-RULE_VERSION = "28"
+RULE_VERSION = "29"
 DERIVED_VALUE_EXAMPLE_LIMIT = 20
 ECO_SURVEY_ID = 'http://rs.tdwg.org/eco/terms/surveyID'
 REGISTERED_TERMS = {term for terms in REGISTRY['terms'].values() for term in terms}
@@ -51,6 +51,21 @@ OBIS = 'http://rs.iobis.org/obis/terms/'
 # (the DwC-DP fields are versions of dwciri:measurementType etc.). Only absolute IRIs are copied.
 OBIS_IRI_ALIASES = {'measurementTypeID': 'assertionTypeIRI', 'measurementValueID': 'assertionValueIRI',
                     'measurementUnitID': 'assertionUnitIRI'}
+# Core sampling columns describe the row's event. The event table has no field for them, so they
+# become protocol records linked by event-protocol, and a paired sample size goes to a survey record
+# on survey events (otherwise an event assertion). See docs/dwca-conversion/README.md, rule version 29.
+SAMPLING_PROTOCOL = DWC + 'samplingProtocol'
+SAMPLE_SIZE = (DWC + 'sampleSizeValue', DWC + 'sampleSizeUnit')
+SAMPLING_TERMS = {SAMPLING_PROTOCOL, *SAMPLE_SIZE}
+SAMPLING_CHOICES = {
+    SAMPLING_PROTOCOL: ('Method descriptions linked to each event',
+                        'Each sampling protocol becomes a method description linked to its event; events with the same protocol share '
+                        'one, and a " | " list becomes one per protocol. On survey events the text is also kept on the survey description.'),
+    **{term: ('Sample size of each event',
+              'The sample size and its unit are kept together: on the survey description of a survey event, otherwise as a '
+              'measurement of the event. A value without its unit, or a unit without its value, is left out of the Data Package.')
+       for term in SAMPLE_SIZE},
+}
 ROLE_DESCRIPTIONS = {
     'occurrence': 'Each row of {table} becomes an occurrence, linked to its event in {core}.',
     'identification': 'Each row of {table} becomes an identification of its linked occurrence in {core}.',
@@ -144,6 +159,11 @@ def _agent_names_warnings(warnings, roles):
 
 def _agent_name_id(value):
     return 'agent-share:' + hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
+def _protocol_field(item):
+    """A listed sampling protocol that is only a web link is a reference; anything else names the protocol."""
+    return 'protocolReferences' if re.fullmatch(r'https?://\S+', item.strip()) else 'protocolName'
 
 
 def _key(archive, *parts):
@@ -1002,6 +1022,11 @@ def build_plan(archive):
             automatic_reason = None
             glance = True
             special_chosen = None
+            sampling_label = None
+            if table.is_core and term in SAMPLING_TERMS:
+                options, media_reason = ['derive'], None
+                sampling_label, automatic_reason = SAMPLING_CHOICES[term]
+                automatic_family = 'events'
             if family == 'media' and term in {'http://purl.org/dc/terms/format', 'http://purl.org/dc/terms/created',
                                               'http://purl.org/dc/terms/creator', 'http://purl.org/dc/elements/1.1/type'} and len(options) == 1:
                 target = options[0]
@@ -1179,6 +1204,8 @@ def build_plan(archive):
                     **({'parent_link_unavailable': parent_blocked} if parent_blocked else {})}
             if parent_default:
                 item['options'] = [PRESERVE] + [option for option in item['options'] if option['value'] != 'preserve']
+            if sampling_label:
+                item['options'] = [{**option, 'label': sampling_label} if option['value'] == 'derive' else option for option in item['options']]
             if not options and not join_only:
                 # Distinguish a term the Data Package has no field for from one this converter does not map yet.
                 item['unmapped'] = 'unsupported' if term in SCHEMA_TERMS else 'no-target'
@@ -1798,6 +1825,10 @@ def convert(archive, plan, decisions):
                           "archive_join_id": archive.tables[t].ids[n] if archive.tables[t].ids else ""})
 
     def add(name, row, t, n):
+        if name.endswith('-assertion') and row.get('verbatimAssertionType') and not row.get('assertionType'):
+            # The supplier's own type is its category: keep it verbatim and as assertionType (the
+            # schema uses the verbatim field in addition to assertionType). A supplied one is never replaced.
+            row['assertionType'] = row['verbatimAssertionType']
         resources[name].append(row)
         if name == 'event': events_by_key[row['event_pk']] = row
         key_fields = TABLE_SPECS[name].primary_key or [field for field in row if field.endswith('_fk')]
@@ -1884,6 +1915,61 @@ def convert(archive, plan, decisions):
                 if occurrence.get(field): record.setdefault(field, occurrence[field])
             add("identification", record, t, n)
 
+    sampling_columns = [column for column in columns_by_table[core_index]
+                        if column['term'] in SAMPLING_TERMS and decisions.get(column['id'], column['default']) == 'derive']
+    sampling_events, sampling_signatures, sampling_protocols, protocol_links = {}, {}, {}, set()
+    protocol_targets = Counter()  # Source rows per protocol field, for the report.
+
+    def withhold_sampling(n, term, value, reason):
+        withheld_values.append({'source_table': core.name, 'source_table_index': core_index, 'source_row': n + 1,
+                                'term': term, 'value': value, 'target': 'derive', 'reason': reason})
+
+    def core_sampling(n, row, group_id, event_key):
+        """A core row's samplingProtocol and sample size describe the event that holds its sampling: the row's
+        own event, the event rows are combined into, or the depth child of a depth split."""
+        supplied = {column['term']: row[column['column']] for column in sampling_columns}
+        signature = sampling_signatures.setdefault(event_key, supplied)
+        if signature != supplied:
+            raise ConversionError(f'Rows combined into event {group_id!r} give different sampling protocols or sample sizes. '
+                                  'Keep each row as its own event, or leave these columns out of the Data Package.',
+                                  category='conflict', decision_ids=['event-grain', *(column['id'] for column in sampling_columns)],
+                                  evidence={'eventID': group_id, 'source_row': n + 1,
+                                            'terms': sorted(term.rsplit('/', 1)[-1] for term in supplied if supplied[term] != signature.get(term))})
+        entry = sampling_events.setdefault(event_key, {'rows': [], 'protocol': '', 'protocols': [], 'size': None})
+        entry['rows'].append(n)
+        protocol = supplied.get(SAMPLING_PROTOCOL, '')
+        # Darwin Core lists use ' | '; each listed protocol is a record of its own, shared by exact text.
+        items = list(dict.fromkeys(part for part in protocol.split(' | ') if part.strip()))
+        if protocol and not items:
+            withhold_sampling(n, SAMPLING_PROTOCOL, protocol, 'This samplingProtocol has no text between its " | " separators, '
+                                                               'so it stays in your original files.')
+        if items:
+            entry['protocol'] = protocol
+            entry['protocols'] = []
+            protocol_targets.update({'protocol.' + _protocol_field(item) for item in items})
+            for item in items:
+                key = sampling_protocols.get(item)
+                if key is None:
+                    # Nested Taxon-core occurrence tables share the archive fingerprint; their names keep keys apart.
+                    key = sampling_protocols[item] = _key(archive, 'sampling-protocol', core.name, item)
+                    add('protocol', {'protocol_pk': key, _protocol_field(item): item}, core_index, n)
+                else:
+                    trace('protocol', {'protocol_pk': key}, core_index, n)
+                if (event_key, key) in protocol_links:
+                    trace('event-protocol', {'event_fk': event_key, 'protocol_fk': key}, core_index, n)
+                else:
+                    protocol_links.add((event_key, key))
+                    add('event-protocol', {'event_fk': event_key, 'protocol_fk': key}, core_index, n)
+                entry['protocols'].append(key)
+            column_consumption[(core_index, SAMPLING_PROTOCOL)].add(n)
+        value, unit = (supplied.get(term, '') for term in SAMPLE_SIZE)
+        if value and unit:
+            entry['size'] = (value, unit)  # Written once all events are known: survey record or event assertion.
+        elif value or unit:
+            withhold_sampling(n, SAMPLE_SIZE[0] if value else SAMPLE_SIZE[1], value or unit,
+                              'sampleSizeValue and sampleSizeUnit only make sense together, and this row has only one of them, '
+                              'so it stays in your original files.')
+
     event_groups = {}; group_keys = {}; depth_children = defaultdict(set); depth_parents = {}
     depth_split = core.row_type == DWC + "Occurrence" and decisions.get("event-grain") == DEPTH_SPLIT
     # Separate per-row events never repeat a supplied eventID. A repeated eventID
@@ -1937,6 +2023,8 @@ def convert(archive, plan, decisions):
                 add("event", child, core_index, n)
             depth_children[event_key].add(child_key); depth_parents[child_key] = event_key
             event_key = event_keys[source_id] = child_key
+        if sampling_columns:
+            core_sampling(n, row, group_id, event_key)
         if core.row_type == DWC + "Occurrence":
             occurrence_row(core_index, n, source_id, mapped, event_key)
 
@@ -2183,6 +2271,34 @@ def convert(archive, plan, decisions):
                 raise ConversionError(f'{table.name}, row {n + 1}: {error}', category='conflict',
                                       decision_ids=[f'table:{t}', *([f'row:{t}:{n}'] if f'row:{t}:{n}' in issues_by_id else [])],
                                       evidence={'source_table': table.name, 'source_row': n + 1}) from error
+    # A core sample size goes to the survey record of a survey event. When converted Humboldt rows
+    # already describe that event's survey (possibly several), or the event is not a survey, it is an
+    # event assertion instead, so no survey is merged into another or created for a non-survey event.
+    humboldt_events = {survey['event_fk'] for survey in resources.get('survey', [])}
+    sample_size_routes = Counter()
+    for event_key, entry in sampling_events.items():
+        if not entry['size']:
+            continue
+        (value, unit), (first, *others) = entry['size'], entry['rows']
+        if events_by_key[event_key].get('eventCategory') == 'survey' and event_key not in humboldt_events:
+            record = {'survey_pk': _key(archive, 'core-survey', event_key), 'event_fk': event_key,
+                      'sampleSizeValue': value, 'sampleSizeUnit': unit}
+            if entry['protocol']:
+                record['samplingProtocol'] = entry['protocol']
+                protocol_targets['survey.samplingProtocol'] += len(entry['rows'])
+                if len(entry['protocols']) == 1:
+                    record['samplingProtocol_fk'] = entry['protocols'][0]
+            name, route = 'survey', 'survey'
+        else:
+            record = {'event_fk': event_key, 'assertionType': 'sampleSizeValue', 'assertionTypeIRI': SAMPLE_SIZE[0],
+                      'assertionValue': value, 'assertionUnit': unit}
+            name, route = 'event-assertion', 'assertion'
+        add(name, record, core_index, first)
+        for n in others:
+            trace(name, {'survey_pk': record['survey_pk']} if name == 'survey' else {'event_fk': event_key}, core_index, n)
+        for n in entry['rows']:
+            for term in SAMPLE_SIZE: column_consumption[(core_index, term)].add(n)
+        sample_size_routes[route] += len(entry['rows'])
     # Tables whose rows became occurrences, so individualCount was considered for every converted row.
     count_tables = [t for t, table in enumerate(archive.tables) if table.row_type == DWC + 'Occurrence'
                     and DWC + 'individualCount' in table.terms and (table.is_core or decisions.get(f'table:{t}') == 'occurrence')]
@@ -2191,6 +2307,27 @@ def convert(archive, plan, decisions):
         if column['term'] == DWC + 'individualCount' and column['table'] in count_tables:
             continue  # Replaced below with the row-level derived disposition.
         target = decisions.get(column["id"], column["default"])
+        if column in sampling_columns:
+            consumed = len(column_consumption[(column['table'], column['term'])])
+            if column['term'] == SAMPLING_PROTOCOL:
+                target_counts = {'event-protocol.protocol_fk': consumed, **dict(sorted(protocol_targets.items()))}
+                rule = ('Each item of a " | " list becomes a protocol record (protocolName, or protocolReferences for a single http(s) '
+                        'link), shared by exact text and linked to its event through event-protocol. A survey record created for '
+                        'the sample size also keeps the full text, and links the protocol when there is only one.')
+            else:
+                field = 'Value' if column['term'] == SAMPLE_SIZE[0] else 'Unit'
+                target_counts = {target: sample_size_routes[route] for route, target in (
+                    ('survey', f'survey.sampleSize{field}'), ('assertion', f'event-assertion.assertion{field}')) if sample_size_routes[route]}
+                rule = ('A paired sampleSizeValue and sampleSizeUnit go to the survey record of a survey event that no converted '
+                        'Humboldt row describes; otherwise they become an event-assertion with assertionType sampleSizeValue. '
+                        'Values are copied unchanged; an unpaired value or unit stays in the originals.')
+            dispositions.append({'source_table': source_table.name, 'term': column['term'],
+                                 'target': 'derived sampling records' if consumed else 'preserve',
+                                 'disposition': 'derived' if consumed else 'retained-unmapped',
+                                 'nonempty': column['nonempty'], 'mapped_rows': consumed,
+                                 'retained_only_rows': column['nonempty'] - consumed,
+                                 **({'target_counts': target_counts, 'mapping_rule': rule} if consumed else {})})
+            continue
         if not archive.tables[column["table"]].is_core and decisions.get(f"table:{column['table']}") == "preserve":
             target = "preserve"
         if target.startswith('material.') and decisions.get(f"material:{column['table']}", 'preserve') == 'preserve':
@@ -2243,6 +2380,9 @@ def convert(archive, plan, decisions):
             extra['empty_placeholder'] = len(placeholder_rows[(column['table'], column['column'])])
         if column['term'] == QUALIFIER and qualifier_retained[column['table']]:
             extra['retained_reasons'] = dict(sorted(qualifier_retained[column['table']].items()))
+        if target.endswith('verbatimAssertionType'):
+            # add() also fills assertionType with the same text wherever none was supplied.
+            extra['also_copied_to'] = target[:-len('verbatimAssertionType')] + 'assertionType'
         dispositions.append({"source_table": archive.tables[column["table"]].name, "term": column["term"], "target": target,
                              "disposition": "retained-unmapped" if target == "preserve" else 'derived' if target == 'join' or target.startswith('derived ') else "mapped+retained", "nonempty": column["nonempty"], **extra})
     # Account for each converted occurrence's individualCount (core or extension)
