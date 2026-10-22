@@ -64,9 +64,9 @@ test('option notes include singular, plural, all count types, and omit zero coun
 test('classification notice distinguishes mixed source systems', () => {
   assert.equal(classificationNotice({ classification_notice: null }), '')
   assert.equal(classificationNotice({ classification_notice: { names: 4, mixed: false, examples: [{ yours: 'Magnoliophyta / Eudicots', col: 'Tracheophyta / Magnoliopsida' }] } }),
-    'Your file uses other higher-group names than Catalogue of Life for 4 names (e.g. Magnoliophyta / Eudicots where COL has Tracheophyta / Magnoliopsida). Only names are published, so this changes nothing.')
+    'Your file uses other higher-group names than Catalogue of Life for 4 names (e.g. Magnoliophyta / Eudicots where COL has Tracheophyta / Magnoliopsida). Your supplied classification is kept.')
   assert.equal(classificationNotice({ classification_notice: { names: 2, mixed: true, examples: [{ yours: 'A / B', col: 'C / D' }] } }),
-    'Your file uses two sets of higher-group names for 2 names (e.g. A / B where COL has C / D). Only names are published, so this changes nothing.')
+    'Your file uses two sets of higher-group names for 2 names (e.g. A / B where COL has C / D). Your supplied classification is kept.')
   assert.equal(classificationNotice({ classification_notice: { names: 3, mixed: true } }), 'Your file uses two sets of higher-group names for 3 names.')
 })
 

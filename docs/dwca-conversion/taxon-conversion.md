@@ -332,13 +332,18 @@ user finds with "Search Catalogue of Life…" (ChecklistBank's suggest service).
 The picked usage is looked up by id (`taxon_matching.resolve_col_usage`) and
 saved as an `alternative` decision; picking it is itself the confirmation.
 
-**One review, two workflows.** The publication workflow's review
-(`TaxonReviewModal`) offers each name the same choices, worded the same, through
-the shared `NameReviewItem` and `NameChoices` components
+**One review, two workflows.** Both workflows use `api/name_review.py` for source
+context, grouping, automatic defaults, confirmations, group decisions, Undo and previews.
+`taxon_matching.check_name_chunk` shares matching, verbose homonym checks, ID disambiguation
+and parsing. Conversion keeps its background jobs and archive crosswalk; `api/taxon_review.py`
+adapts chat rows without merging separate source contexts that share a label.
+
+Both screens render `ScientificNameReview`, including the group controls and per-name dialogs,
+with the shared `NameReviewItem` and `NameChoices` components
 (`front-end/app/utils/nameReview.mjs` holds the shared wording): use COL's name,
 a same-name or other COL name, a searched COL name, Keep original, Type a
 correction, or Don't publish a name. Both apply the same write rules
-(`taxon_matching.written_fields`):
+(`name_review.decision_fields`, built on `taxon_matching.written_fields`):
 
 | Choice | scientificName | Authorship | Rank |
 | --- | --- | --- | --- |
@@ -350,16 +355,20 @@ correction, or Don't publish a name. Both apply the same write rules
 
 "Keep original" splits the name with GBIF's name parser when the parts rebuild
 the text exactly and nothing qualifies the name (`own_name_kind`); the
-publication workflow parses the label when the choice is made, and keeps it as
-written when the parser is unavailable. "Yours" is the conversion row's supplied
+stored parse is used in both flows, and the label stays as written when the
+parser was unavailable. "Yours" is the conversion row's supplied
 value, or the value already in the publication workflow's table. Each name shows
-what its decision writes, from these same rules (`preview_items`), limited in
-the publication workflow to the columns its table can hold. An accepted COL name
-there also fills empty higher-classification and `identificationQualifier`
-cells; the conversion writes `taxonFormula` instead.
+what its decision writes, from these same rules (`preview_items`), limited to
+the columns its output tables can hold. An accepted COL name fills blank
+higher-classification cells where supported. Both flows preserve uncertainty
+in `taxonFormula` on identification tables, or `identificationQualifier` on
+working tables that support it. Each row's own qualifier takes precedence;
+a qualifier found only on another row is never copied. Existing values stand.
+Previews list multiple formula values when rows use different qualifiers.
 
-The publication workflow's COL choices need the same confirmation as here. The serializer exposes `replacements` for the suggestion and for
-each alternative. `decide` refuses such a usage without `confirm_coarser`. A name
+Both workflows' COL choices need the same confirmation. Shared review entries expose
+`col_choices` with the replacements for the suggestion and each alternative.
+The server refuses such a usage without `confirm_coarser`. A name
 the reviewer searched for and picked is itself an explicit choice.
 
 **Name, rank and authorship are written together.** Whenever a decision writes

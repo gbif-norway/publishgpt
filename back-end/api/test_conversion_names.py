@@ -2106,7 +2106,7 @@ class NamesV2ContractTests(SimpleTestCase):
         no_usage = self.record(label='Cus dus', usage_name=None)
         no_usage['match']['usage'] = None
         check = {'group': 'check:name', 'kind': 'check', 'reasons': [], 'default': None, 'eligible': ['col', 'mine']}
-        with patch.object(names, 'classify', side_effect=lambda item: check if item['label'] in {'Calanus', 'Aus bus', 'Cus dus'} else check):
+        with patch('api.name_review.classify', side_effect=lambda item: check if item['label'] in {'Calanus', 'Aus bus', 'Cus dus'} else check):
             conversion = SimpleNamespace(plan={'id': 'plan'}, name_review={'plan_id': 'plan', 'labels': [coarse, different, no_usage],
                                                                            'decisions': {}, 'col_release': RELEASE},
                                         save=lambda **kwargs: None)
@@ -2294,7 +2294,7 @@ class NamesV2ContractTests(SimpleTestCase):
         state = {'plan_id': 'plan', 'labels': [first, second], 'decisions': {
             'Aus bus': {'decision': 'keep', 'by': 'user', 'source': 'verbatim'}}}
         conversion = SimpleNamespace(plan={'id': 'plan'}, name_review=state, save=lambda **kwargs: None)
-        with patch.object(names, 'classify', return_value=group):
+        with patch('api.name_review.classify', return_value=group):
             for choice in ('col', 'mine', 'manual'):
                 names.group_choice(conversion, 'check:name', choice)
                 self.assertEqual(conversion.name_review['decisions']['Aus bus']['by'], 'user')
@@ -2305,7 +2305,7 @@ class NamesV2ContractTests(SimpleTestCase):
         state = {'plan_id': 'plan', 'labels': [record], 'decisions': {
             'Aus bus': {'decision': 'keep', 'by': 'auto:exact'}}}
         conversion = SimpleNamespace(plan={'id': 'plan'}, name_review=state, save=lambda **kwargs: None)
-        with patch.object(names, 'classify', return_value=group):
+        with patch('api.name_review.classify', return_value=group):
             names.group_choice(conversion, 'check:name', 'manual')
         self.assertEqual(conversion.name_review['decisions'], {})
         self.assertEqual(conversion.name_review['auto_declined'], ['Aus bus'])
@@ -2419,7 +2419,8 @@ class RealOverlayConsistencyTests(SimpleTestCase):
         pairs = {}
         for _, row in result['identification'].iterrows():
             source = occurrence.loc[row['occurrence_fk']]
-            pairs[source['occurrenceID']] = tuple((source[field], row[field]) for field in ('scientificName', 'taxonRank', 'scientificNameAuthorship'))
+            pairs[source['occurrenceID']] = tuple((source.get(field, ''), row.get(field, ''))
+                                                 for field in ('scientificName', 'taxonRank', 'scientificNameAuthorship'))
         return pairs, {entry['label']: entry for entry in section['entries']}, section
 
     def test_a_decided_name_carries_its_own_rank_and_authorship_to_occurrence_and_identification(self):

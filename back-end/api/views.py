@@ -1180,6 +1180,43 @@ class TaxonNameMatchViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset
         return queryset.filter(dataset__user=self.request.user)
 
+    @action(detail=False, methods=['get', 'post'], url_path='review')
+    def review(self, request):
+        """The shared review protocol, backed by chat rows rather than a conversion plan."""
+        from api import taxon_matching, taxon_review
+
+        params = request.query_params if request.method == 'GET' else request.data
+        try:
+            dataset_id = int(params.get('dataset'))
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': 'Choose a dataset.'})
+        datasets = Dataset.objects.all() if request.user.is_superuser else Dataset.objects.filter(user=request.user)
+        with transaction.atomic():
+            if request.method == 'POST':
+                datasets = datasets.select_for_update()
+            dataset = get_object_or_404(datasets, pk=dataset_id)
+            opened = taxon_matching.open_review(dataset)
+            scope = {'source_table': params.get('source_table', ''), 'context_column': params.get('context_column', '')}
+            if not scope['source_table'] and opened:
+                scope = opened[1]
+            if request.method == 'POST' and (not opened or scope != opened[1]):
+                return self._review_closed()
+            rows = list(self.get_queryset().filter(dataset=dataset, **scope))
+            try:
+                if request.method == 'POST':
+                    taxon_review.change(rows, request.data, request.user)
+                page = {
+                    'view': request.query_params.get('names_view', 'all'),
+                    'group': request.query_params.get('names_group'),
+                    'offset': request.query_params.get('names_offset', 0),
+                    'limit': request.query_params.get('names_limit', 100),
+                    'q': request.query_params.get('names_q', '')[:100],
+                }
+                section = taxon_review.section(rows, **page)
+            except ValueError as exc:
+                raise ValidationError({'detail': str(exc)})
+        return Response({'name_review': section})
+
     @action(detail=True, methods=['post'])
     def decide(self, request, *args, **kwargs):
         from api import taxon_matching

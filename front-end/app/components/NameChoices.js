@@ -24,7 +24,7 @@ export default function NameChoices({ label, choices, busy, onDecide }) {
   const submit = async (payload) => {
     const failure = await onDecide(payload)
     setError(failure || '')
-    if (!failure) setConfirming(null)
+    if (!failure) { setConfirming(null); setMode(null) }
     return !failure
   }
   const choose = (choice) => {

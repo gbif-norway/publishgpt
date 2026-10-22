@@ -47,10 +47,11 @@ export const decisionSummary = (kind, decided = {}) => {
 }
 
 // One column of a decision's preview (api.taxon_matching.preview_items).
-export const previewPart = ({ field, how, value }) => {
+export const previewPart = ({ field, how, value, values }) => {
   if (how === 'set') return `${field} “${value}”`
   if (how === 'empty') return `${field} empty`
-  return value ? `${field} as in your data, else “${value}”` : `${field} as in your data`
+  const fallback = values?.length ? values.map(item => `“${item}”`).join(' or ') : value ? `“${value}”` : ''
+  return fallback ? `${field} as in your data, else ${fallback}` : `${field} as in your data`
 }
 
-export const previewText = items => (items || []).map(previewPart).join(' · ')
+export const previewText = items => (items || []).map(item => `${previewPart(item)}${item.note ? ` (${item.note})` : ''}`).join(' · ')

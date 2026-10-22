@@ -13,3 +13,9 @@ test('a preview says exactly what each column gets', () => {
   assert.equal(previewText([]), '')
   assert.equal(previewText(undefined), '')
 })
+
+test('row-specific qualifier previews show every possible written value', () => {
+  assert.equal(previewText([{ field: 'taxonFormula', how: 'yours', value: 'A sp.',
+    values: ['A sp.', 'A spp.'], note: 'from each row’s qualifier' }]),
+  'taxonFormula as in your data, else “A sp.” or “A spp.” (from each row’s qualifier)')
+})

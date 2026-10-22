@@ -2747,6 +2747,8 @@ class RequestTaxonReview(OpenAIBaseModel):
             )
         if not taxon_matching.matching_complete(rows):
             return "ERROR: matching is not finished. Call MatchTaxonNames again before requesting review."
+        from api import taxon_review
+        taxon_review.initialize(rows)
         return json.dumps(
             {
                 "status": "awaiting_taxon_review",

@@ -23,6 +23,12 @@ Supported source mappings and retention happen automatically. Choices that chang
 meaning still need input; parent/child scientific findings are reported without
 blocking conversion or claiming that the source is scientifically consistent.
 
+Scientific-name reviews in the chat and archive conversion share their grouping,
+automatic defaults, choices, confirmation checks and column-value previews. Their
+decision policy lives in `back-end/api/name_review.py`; both screens render
+`front-end/app/components/ScientificNameReview.js`. Keep name-review changes in
+these shared layers and verify both workflows with `api.test_name_review`.
+
 ## Who it is for
 
 - People new to biodiversity data publication.

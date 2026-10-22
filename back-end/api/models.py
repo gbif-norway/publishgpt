@@ -2715,8 +2715,8 @@ class DatasetAttentionNotification(models.Model):
 class TaxonNameMatch(models.Model):
     """One distinct verbatim taxon label (in one source context) and its COL XR review state.
 
-    The suggestion comes from GBIF's v2 matcher against Catalogue of Life XR. Only a reviewer
-    decision is ever written back to the data; verbatimIdentification itself is never changed.
+    The suggestion comes from GBIF's v2 matcher against Catalogue of Life XR. Saved review
+    decisions (including safe automatic defaults) are written back; verbatimIdentification is never changed.
     COL ids are kept here as provenance and are not published.
     """
 
@@ -2749,6 +2749,8 @@ class TaxonNameMatch(models.Model):
     # and the one rank the table itself gives the label's rows: what a COL name or "Keep original" is checked against.
     parsed = models.JSONField(default=dict, blank=True)
     supplied = models.JSONField(default=dict, blank=True)
+    # Review controls survive reopening: Undo/manual choices must not be auto-accepted again.
+    review_meta = models.JSONField(default=dict, blank=True)
 
     match = models.JSONField(default=dict, help_text='Summarised GBIF v2 COL XR match.')
     review_aids = models.JSONField(default=dict, blank=True)
