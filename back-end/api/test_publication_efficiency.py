@@ -379,12 +379,12 @@ class SetEMLTemporalScopeExportTests(TestCase):
         self.assertEqual(self.dataset.eml["temporal_scope"], "Summer 2018")
 
         result = SetEML(
-            agent_id=self.agent.id, temporal_scope=None, license="CC0 1.0"
+            agent_id=self.agent.id, temporal_scope="", license="CC0 1.0"
         ).run()
         self.dataset.refresh_from_db()
         self.assertIn("EML has been successfully set.", result)
         self.assertEqual(self.dataset.eml.get("license"), "CC0 1.0")
-        self.assertNotIn("temporal_scope", self.dataset.eml)
+        self.assertEqual(self.dataset.eml["temporal_scope"], "")
 
     def test_accepts_documented_year_range(self):
         result = SetEML(agent_id=self.agent.id, temporal_scope="1990-2020").run()

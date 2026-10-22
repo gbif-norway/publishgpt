@@ -16,6 +16,7 @@ import Tabs from 'react-bootstrap/Tabs';
 import Tab from 'react-bootstrap/Tab';
 import config from '../config.js';
 import { getCsrfToken } from '../utils/csrf.js';
+import { publishableEmail } from '../utils/creatorEmail.mjs';
 import { normalizeTableList } from '../utils/tableApi.mjs';
 
 const emptyCreator = () => ({ first_name: '', last_name: '', email: '', orcid: '' });
@@ -33,7 +34,7 @@ const creatorsFromDataset = (dataset, fallbackUser) => {
     return savedCreators.map((person) => ({
       first_name: person?.first_name || '',
       last_name: person?.last_name || '',
-      email: person?.email || '',
+      email: publishableEmail(person?.email),
       orcid: person?.orcid || '',
     }));
   }
@@ -45,7 +46,7 @@ const creatorsFromDataset = (dataset, fallbackUser) => {
   return [{
     first_name: profile.first_name || '',
     last_name: profile.last_name || '',
-    email: profile.email || '',
+    email: publishableEmail(profile.email),
     orcid: profile.orcid_id || '',
   }];
 };
@@ -419,9 +420,11 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
   ];
   const hasMetadataRows = metadataRows.some(({ value }) => value !== undefined && value !== null && String(value).trim() !== '');
   const hasSourceRows = sourceRows.some(({ value }) => value !== undefined && value !== null && String(value).trim() !== '');
-  const emlUsers = Array.isArray(eml.users) ? eml.users : [];
-  const emlContacts = Array.isArray(eml.contacts) ? eml.contacts : [];
-  const emlMetadataProviders = Array.isArray(eml.metadata_providers) ? eml.metadata_providers : [];
+  const emlPeople = (people) => (Array.isArray(people) ? people : [])
+    .map((person) => ({ ...person, email: publishableEmail(person?.email) }));
+  const emlUsers = emlPeople(eml.users);
+  const emlContacts = emlPeople(eml.contacts);
+  const emlMetadataProviders = emlPeople(eml.metadata_providers);
   const taxonomicKeywords = Array.isArray(eml.taxonomic_keywords) ? eml.taxonomic_keywords : [];
   const hasGeographicBounds = eml.geographic_bounds && typeof eml.geographic_bounds === 'object';
   const knownEmlKeys = new Set([
@@ -531,9 +534,9 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
         Object.entries(person).map(([key, value]) => [key, String(value || '').trim()])
       ))
       .filter((person) => Object.values(person).some(Boolean));
-    const incompleteCreator = creators.find((person) => !person.first_name || !person.last_name || !person.email);
+    const incompleteCreator = creators.find((person) => !person.first_name || !person.last_name);
     if (incompleteCreator) {
-      setMetadataSaveError('Each dataset creator needs a first name, last name, and email address.');
+      setMetadataSaveError('Each dataset creator needs a first name and last name.');
       return;
     }
 
@@ -569,6 +572,11 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
       };
       if (creators.length > 0) {
         delete updatedEml.creators_unknown;
+      }
+      // A saved empty scope tells the agent it was cleared on purpose, so a blank
+      // scope the dataset never had stays absent and can still be inferred.
+      for (const key of ['temporal_scope', 'geographic_scope', 'taxonomic_scope', 'methodology']) {
+        if (!updatedEml[key] && !(key in eml)) delete updatedEml[key];
       }
 
       const response = await fetch(`${config.baseUrl}/api/datasets/${currentDatasetId}/`, {
@@ -1181,7 +1189,7 @@ const Dataset = ({ onNewDataset, onBackToDashboard }) => {
                               type="email"
                               className="form-control"
                               aria-label={`Creator ${index + 1} email`}
-                              placeholder="Email"
+                              placeholder="Email (optional)"
                               value={person.email}
                               onChange={(event) => handleCreatorChange(index, 'email', event.target.value)}
                               disabled={isSavingMetadata || isAgentCurrentlyWorking}

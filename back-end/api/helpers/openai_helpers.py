@@ -568,6 +568,8 @@ def custom_schema(cls: BaseModel) -> Dict[str, Any]:
     # Clean out noisy schema metadata keys while preserving actual field names
     # in maps like `properties` (e.g., a real field named "description").
     _remove_schema_metadata_noise(parameters)
+    # The class docstring is already the tool description.
+    parameters.pop('description', None)
     return {
         'name': cls.__name__,
         'description': cls.__doc__,
@@ -589,7 +591,10 @@ class OpenAIBaseModel(BaseModel):
 #     return fn
 
 def _remove_schema_metadata_noise(node, preserve_map_keys: bool = False) -> None:
-    """Remove verbose schema metadata without deleting actual property names."""
+    """Remove Pydantic's generated titles without deleting property names.
+
+    Field descriptions stay: they carry the usage rules the model relies on.
+    """
     if isinstance(node, dict):
         for key in list(node.keys()):
             value = node[key]
@@ -600,7 +605,7 @@ def _remove_schema_metadata_noise(node, preserve_map_keys: bool = False) -> None
                 _remove_schema_metadata_noise(value, preserve_map_keys=False)
                 continue
 
-            if key in {"title", "description"}:
+            if key == "title":
                 del node[key]
                 continue
 

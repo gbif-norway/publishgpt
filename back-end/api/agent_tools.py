@@ -18,6 +18,7 @@ from api.helpers.publish import (
     clean_text,
     normalize_orcid,
     inspect_dwca_archive,
+    is_synthetic_orcid_email,
     normalize_temporal_scope,
     taxonomic_keywords_for_eml,
     upload_dwca,
@@ -205,13 +206,15 @@ class EMLUser(BaseModel):
     """Representation of an individual associated with the dataset."""
     first_name: str
     last_name: str
-    email: EmailStr
+    email: Optional[EmailStr] = Field(
+        None,
+        description="Omit when unknown. Never invent or derive one, e.g. from an ORCID iD.",
+    )
     orcid: Optional[str] = None
 
 
 class EMLContact(EMLUser):
-    """A source contact or provider may not have a published email address."""
-    email: Optional[EmailStr] = None
+    """A source contact or metadata provider."""
 
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -1241,9 +1244,9 @@ class Python(OpenAIBaseModel):
         from utils import replace_table, create_or_replace, delete_tables
         from Dataset import Dataset
         from Table import Table
-        from datetime import datetime
+        import datetime
         ```
-        So this SHOULD NOT BE INCLUDED. Just begin using (without importing) pd, np, uuid, re, utm, replace_table, create_or_replace, delete_tables, normalize_event_date, Table, Dataset and datetime as necessary.
+        So this SHOULD NOT BE INCLUDED. Just begin using (without importing) pd, np, uuid, re, utm, replace_table, create_or_replace, delete_tables, normalize_event_date, Table, Dataset and datetime as necessary. `datetime` is the module: write `datetime.datetime(1949, 5, 1)` or `datetime.date(1949, 5, 1)`.
     """
     code: str = Field(..., description="String containing valid python code to be executed in `exec()`")
     _agent_id: Optional[int] = PrivateAttr(None)
@@ -1495,6 +1498,8 @@ class EMLGeographicBounds(BaseModel):
 class SetEML(OpenAIBaseModel):
     """Sets the EML (Metdata) for a Dataset via an Agent, returns a success or error message. Note that SetBasicMetadata should be used to set the dataset Title and Description.
 
+    Omit a field or pass null to keep its saved value. Pass an empty string to clear temporal_scope, geographic_scope, taxonomic_scope, methodology, or project_title; a cleared scope is not re-inferred from the tables.
+
     Creators default to the account holder's profile. If the account holder did not create the data and the source's creators are unknown, pass creators_unknown=true and no users: the EML then names an unknown creator and uses the account holder as metadataProvider and contact by default. Set contacts and metadata_providers to use source people in those roles without changing the account. Passing users or creators_unknown=false clears it."""
     agent_id: PositiveInt = Field(...)
     license: Optional[Literal["CC0 1.0", "CC BY 4.0", "CC BY-NC 4.0"]] = Field(
@@ -1510,26 +1515,47 @@ class SetEML(OpenAIBaseModel):
         description=(
             "Optional temporal coverage as calendar dates, e.g. 2018-06-02/2018-06-30, "
             "2018-06, 1990/2020, or 2018. Descriptive prose belongs in methodology. "
-            "Pass null or an empty string to clear a saved temporal scope."
+            "Pass an empty string to clear it."
         ),
     )
-    geographic_scope: Optional[str] = Field(None, description="Optional geographic coverage of the dataset (e.g. Amazon Basin, Brazil)")
+    geographic_scope: Optional[str] = Field(
+        None,
+        description=(
+            "Optional geographic coverage, e.g. 'Adventdalen, Svalbard'. Without "
+            "geographic_bounds or latitude/longitude ranges in the text, it is exported "
+            "as text in EML additionalInfo. Pass an empty string to clear it and its bounds."
+        ),
+    )
     geographic_bounds: Optional[EMLGeographicBounds] = Field(
         None,
         description=(
-            "Optional geographic bounding box with west, east, north, and south decimal-degree "
-            "coordinates. Supply all four when the tables do not contain decimalLatitude and "
-            "decimalLongitude; the GBIF EML profile requires them to export geographicCoverage."
+            "Optional west, east, north, and south decimal-degree bounding box, exported "
+            "with geographic_scope as geographicCoverage. Inferred from decimalLatitude and "
+            "decimalLongitude when none are saved. Supply all four only from source "
+            "coordinates or user-supplied values; never estimate them."
         ),
     )
-    taxonomic_scope: Optional[str] = Field(None, description="Optional taxonomic coverage (e.g. Lepidoptera, Aves)")
-    methodology: Optional[str] = Field(None, description="Optional description of the sampling / data collection methodology")
+    taxonomic_scope: Optional[str] = Field(
+        None,
+        description=(
+            "Optional taxonomic coverage naming scientific taxa, e.g. 'Mites (Acari)'. "
+            "Scope that names none is exported as text in EML additionalInfo. Pass an "
+            "empty string to clear it."
+        ),
+    )
+    methodology: Optional[str] = Field(
+        None,
+        description=(
+            "Optional description of the sampling / data collection methodology. "
+            "Pass an empty string to clear it."
+        ),
+    )
     manuscript_doi: Optional[str] = Field(None, description="Optional manuscript DOI (without or with DOI URL).")
     manuscript_title: Optional[str] = Field(None, description="Optional manuscript title.")
     journal: Optional[str] = Field(None, description="Optional manuscript journal name.")
     publication_year: Optional[int] = Field(None, description="Optional manuscript publication year.")
     dataset_citation: Optional[str] = Field(None, description="Optional dataset-level citation text (GBIF profile citation).")
-    project_title: Optional[str] = Field(None, description="Optional project title for EML project metadata. Required if project personnel should be included.")
+    project_title: Optional[str] = Field(None, description="Optional project title for EML project metadata. Required if project personnel should be included. Pass an empty string to clear it.")
     abstract_source: Optional[str] = Field(None, description="Optional source of abstract text: user|manuscript|mixed.")
     methods_source: Optional[str] = Field(None, description="Optional source of methods text: user|manuscript|mixed.")
     creators_source: Optional[str] = Field(None, description="Optional source of creator list: user_profile|manuscript|mixed.")
@@ -1545,7 +1571,7 @@ class SetEML(OpenAIBaseModel):
     )
     users: Optional[List[EMLUser]] = Field(
         None,
-        description="Optional list of dataset creators. Contact and metadata provider roles are set separately. Each entry has first_name, last_name, email, and optional orcid."
+        description="Optional list of dataset creators. Contact and metadata provider roles are set separately. Each entry has first_name, last_name, optional email, and optional orcid."
     )
     contacts: Optional[List[EMLContact]] = Field(
         None,
@@ -1996,8 +2022,10 @@ class SetEML(OpenAIBaseModel):
     def _resolve_temporal_scope(
         cls, provided_scope: Optional[str], existing_scope: Optional[str], inferred_scope: Optional[str]
     ) -> Tuple[Optional[str], Optional[str]]:
-        chosen_scope = provided_scope if provided_scope is not None else existing_scope
-        chosen_text = cls._clean_text_value(chosen_scope)
+        if provided_scope is None and cls._clean_text_value(existing_scope) is not None:
+            # A saved value, even a placeholder the user chose, changes only when passed.
+            return cls._clean_text_value(existing_scope), None
+        chosen_text = cls._clean_text_value(provided_scope)
         if chosen_text is None:
             if inferred_scope:
                 return inferred_scope, f"Temporal scope inferred from table dates: {inferred_scope}."
@@ -2017,6 +2045,13 @@ class SetEML(OpenAIBaseModel):
 
         return chosen_text, None
 
+    def _scope_cleared(self, field: str, eml: dict) -> bool:
+        """An empty string clears a scope, and it stays empty until a value is passed."""
+        provided = getattr(self, field)
+        if provided is not None:
+            return self._clean_text_value(provided) is None
+        return field in eml and self._clean_text_value(eml[field]) is None
+
     @classmethod
     def _resolve_text_scope(
         cls,
@@ -2025,8 +2060,10 @@ class SetEML(OpenAIBaseModel):
         existing_value: Optional[str],
         inferred_value: Optional[str],
     ) -> Tuple[Optional[str], Optional[str]]:
-        chosen_value = provided_value if provided_value is not None else existing_value
-        chosen_text = cls._clean_text_value(chosen_value)
+        if provided_value is None and cls._clean_text_value(existing_value) is not None:
+            # A saved value, even a placeholder the user chose, changes only when passed.
+            return cls._clean_text_value(existing_value), None
+        chosen_text = cls._clean_text_value(provided_value)
 
         if chosen_text is None:
             if inferred_value:
@@ -2055,9 +2092,9 @@ class SetEML(OpenAIBaseModel):
 
             eml["license"] = self.license or eml.get("license") or "CC BY 4.0"
 
-            if "temporal_scope" in self.model_fields_set and not clean_text(self.temporal_scope):
-                eml.pop("temporal_scope", None)
-                temporal_note = "Saved temporal scope cleared."
+            if self._scope_cleared("temporal_scope", eml):
+                eml["temporal_scope"] = ""
+                temporal_note = "Temporal scope cleared." if self.temporal_scope is not None else None
             else:
                 inferred_temporal_scope = self._infer_temporal_scope_from_dataset(dataset)
                 temporal_scope_to_set, temporal_note = self._resolve_temporal_scope(
@@ -2077,51 +2114,63 @@ class SetEML(OpenAIBaseModel):
                         temporal_note = (
                             f"The saved temporal_scope '{temporal_scope_to_set}' cannot be exported "
                             "as EML calendar dates and will block export until it is replaced with "
-                            "a date, month, or range, or cleared with temporal_scope=null."
+                            "a date, month, or range, or cleared with temporal_scope=\"\"."
                         )
                     else:
                         eml["temporal_scope"] = temporal_scope_to_set
 
-            inferred_geographic_scope = self._infer_geographic_scope_from_dataset(dataset)
-            inferred_geographic_bounds = self._infer_geographic_bounds_from_dataset(dataset)
-            geographic_scope_to_set, geographic_note = self._resolve_text_scope(
-                "Geographic scope",
-                self.geographic_scope,
-                eml.get("geographic_scope"),
-                inferred_geographic_scope,
-            )
-            if geographic_scope_to_set is not None:
-                eml["geographic_scope"] = geographic_scope_to_set
-            if "geographic_bounds" in self.model_fields_set:
-                if self.geographic_bounds is None:
+            if self._scope_cleared("geographic_scope", eml):
+                eml["geographic_scope"] = ""
+                geographic_note = None
+                if self.geographic_scope is not None:
                     eml.pop("geographic_bounds", None)
-                else:
+                    geographic_note = "Geographic scope and bounds cleared."
+                if self.geographic_bounds is not None:
                     eml["geographic_bounds"] = self.geographic_bounds.model_dump()
-            elif inferred_geographic_bounds is not None:
-                eml["geographic_bounds"] = inferred_geographic_bounds
+            else:
+                geographic_scope_to_set, geographic_note = self._resolve_text_scope(
+                    "Geographic scope",
+                    self.geographic_scope,
+                    eml.get("geographic_scope"),
+                    self._infer_geographic_scope_from_dataset(dataset),
+                )
+                if geographic_scope_to_set is not None:
+                    eml["geographic_scope"] = geographic_scope_to_set
+                if self.geographic_bounds is not None:
+                    eml["geographic_bounds"] = self.geographic_bounds.model_dump()
+                elif not eml.get("geographic_bounds"):
+                    inferred_geographic_bounds = self._infer_geographic_bounds_from_dataset(dataset)
+                    if inferred_geographic_bounds is not None:
+                        eml["geographic_bounds"] = inferred_geographic_bounds
 
-            inferred_taxonomic_scope = self._infer_taxonomic_scope_from_dataset(dataset)
+            if self._scope_cleared("taxonomic_scope", eml):
+                eml["taxonomic_scope"] = ""
+                taxonomic_note = "Taxonomic scope cleared." if self.taxonomic_scope is not None else None
+            else:
+                taxonomic_scope_to_set, taxonomic_note = self._resolve_text_scope(
+                    "Taxonomic scope",
+                    self.taxonomic_scope,
+                    eml.get("taxonomic_scope"),
+                    self._infer_taxonomic_scope_from_dataset(dataset),
+                )
+                if taxonomic_scope_to_set is not None:
+                    eml["taxonomic_scope"] = taxonomic_scope_to_set
             inferred_taxonomic_keywords = self._infer_taxonomic_keywords_from_dataset(dataset)
-            taxonomic_scope_to_set, taxonomic_note = self._resolve_text_scope(
-                "Taxonomic scope",
-                self.taxonomic_scope,
-                eml.get("taxonomic_scope"),
-                inferred_taxonomic_scope,
-            )
-            if taxonomic_scope_to_set is not None:
-                eml["taxonomic_scope"] = taxonomic_scope_to_set
             if inferred_taxonomic_keywords:
                 eml["taxonomic_keywords"] = inferred_taxonomic_keywords
 
-            inferred_methodology = self._infer_methodology_from_dataset(dataset)
-            methodology_to_set, methodology_note = self._resolve_text_scope(
-                "Methodology",
-                self.methodology,
-                eml.get("methodology"),
-                inferred_methodology,
-            )
-            if methodology_to_set is not None:
-                eml["methodology"] = methodology_to_set
+            if self._scope_cleared("methodology", eml):
+                eml["methodology"] = ""
+                methodology_note = "Methodology cleared." if self.methodology is not None else None
+            else:
+                methodology_to_set, methodology_note = self._resolve_text_scope(
+                    "Methodology",
+                    self.methodology,
+                    eml.get("methodology"),
+                    self._infer_methodology_from_dataset(dataset),
+                )
+                if methodology_to_set is not None:
+                    eml["methodology"] = methodology_to_set
 
             manuscript_doi = self._normalize_doi(self.manuscript_doi)
             if manuscript_doi is not None:
@@ -2143,7 +2192,7 @@ class SetEML(OpenAIBaseModel):
             if dataset_citation is not None:
                 eml["dataset_citation"] = dataset_citation
 
-            if "project_title" in self.model_fields_set:
+            if self.project_title is not None:
                 project_title = self._clean_text_value(self.project_title)
                 if project_title is None:
                     eml.pop("project_title", None)
@@ -2192,7 +2241,7 @@ class SetEML(OpenAIBaseModel):
                     eml["users"] = [{
                         "first_name": first_name,
                         "last_name": last_name,
-                        "email": profile_user.email or "",
+                        "email": profile_user.email or None,
                         "orcid": normalize_orcid(profile_user.orcid_id),
                     }]
                     if creators_source is None:
@@ -2207,6 +2256,12 @@ class SetEML(OpenAIBaseModel):
                         ]
                     else:
                         eml.pop(role, None)
+            # ORCID-only accounts log in as "<orcid>@orcid.org", which is not a
+            # mailbox; drop it so the draft matches what export publishes.
+            for role in ("users", "contacts", "metadata_providers"):
+                for person in eml.get(role) or []:
+                    if is_synthetic_orcid_email(person.get("email")):
+                        person["email"] = None
             people_missing_surname = [
                 f"{role}: {person.get('first_name') or '(no name)'}"
                 for role in ("users", "contacts", "metadata_providers")
@@ -2226,14 +2281,15 @@ class SetEML(OpenAIBaseModel):
             taxonomic_export_note = None
             if eml.get("taxonomic_scope") and not taxonomic_keywords_for_eml(eml):
                 taxonomic_export_note = (
-                    "Taxonomic scope was saved but names no scientific taxon, so it will block "
-                    "export as taxonomicCoverage until it does, e.g. 'Mites (Acari)'."
+                    "Taxonomic scope names no scientific taxon, so it will be exported as "
+                    "text in EML additionalInfo rather than taxonomicCoverage."
                 )
             geographic_export_note = None
             if eml.get("geographic_scope") and not eml.get("geographic_bounds"):
                 geographic_export_note = (
-                    "Geographic scope was saved but will block export as geographicCoverage until "
-                    "west, east, north, and south geographic_bounds are supplied."
+                    "Geographic scope has no geographic_bounds, so unless its text states "
+                    "latitude and longitude ranges it will be exported as text in EML "
+                    "additionalInfo rather than geographicCoverage."
                 )
             notes = [
                 note

@@ -193,6 +193,16 @@ class EmlValidationTests(SimpleTestCase):
         eml = make_eml("Title", "Description")
         self.assertEqual(validate_eml(eml.encode("utf-8")), [])
 
+    def test_scope_text_without_bounds_or_taxa_exports_as_valid_additional_info(self):
+        eml = make_eml("Title", "Description", eml_extra={
+            "geographic_scope": "Franzigmark, Petersberg, Sachsen-Anhalt, Germany",
+            "taxonomic_scope": "Soil fauna of dry grassland",
+            "methodology": "Pitfall traps.",
+        })
+        self.assertEqual(validate_eml(eml.encode("utf-8")), [])
+        self.assertIn("<para>Geographic coverage: Franzigmark, Petersberg, Sachsen-Anhalt, Germany</para>", eml)
+        self.assertIn("<para>Taxonomic coverage: Soil fauna of dry grassland</para>", eml)
+
     def test_reports_schema_violations(self):
         eml = make_eml("Title", "Description").replace("<language>", "<notAnEmlElement/><language>", 1)
         errors = validate_eml(eml.encode("utf-8"))

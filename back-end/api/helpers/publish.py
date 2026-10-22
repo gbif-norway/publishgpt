@@ -548,6 +548,10 @@ def taxonomic_keywords_for_eml(eml_extra: dict | None) -> list[dict[str, str]]:
     return _taxon_keywords_from_prose(scope) or _fallback_taxonomic_keywords_from_scope(scope)
 
 
+GEOGRAPHIC_SCOPE_NOTE_LABEL = 'Geographic coverage: '
+TAXONOMIC_SCOPE_NOTE_LABEL = 'Taxonomic coverage: '
+
+
 def is_synthetic_orcid_email(value) -> bool:
     """ORCID-only accounts log in with "<orcid>@orcid.org", which is not a mailbox."""
     return (clean_text(value) or '').lower().endswith('@orcid.org')
@@ -973,9 +977,12 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
 
     # Coverage: rebuild from populated values only. GBIF's profile requires
     # geographicCoverage/boundingCoordinates and taxonomicCoverage/classification.
+    # Scope text that cannot meet those requirements is kept verbatim in
+    # additionalInfo: GBIF keywords must be single terms, which prose is not.
     remove_children(dataset_node, 'coverage')
     coverage = ET.Element('coverage')
     has_coverage = False
+    scope_notes = []
 
     # Geographic
     geographic_scope = clean_text(eml_extra.get('geographic_scope'))
@@ -983,13 +990,8 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
     if geographic_bounds is None:
         geographic_bounds = _extract_geographic_bounds_from_text(geographic_scope)
     if geographic_scope and not geographic_bounds:
-        # EML requires boundingCoordinates in geographicCoverage, so the scope
-        # would otherwise be dropped from the archive without notice.
-        raise EmlExportError(
-            "EML geographic_scope has no bounding box, so it cannot be exported as "
-            "geographicCoverage. Call SetEML with west, east, north, and south "
-            "geographic_bounds in decimal degrees that enclose the stated scope."
-        )
+        # Bounds must come from the source, never be guessed from place names.
+        scope_notes.append(f"{GEOGRAPHIC_SCOPE_NOTE_LABEL}{geographic_scope}")
     if geographic_scope and geographic_bounds:
         geo = ET.SubElement(coverage, 'geographicCoverage')
         set_text(ET.SubElement(geo, 'geographicDescription'), geographic_scope)
@@ -1028,13 +1030,8 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
     taxonomic_scope = clean_text(eml_extra.get('taxonomic_scope'))
     taxonomic_keywords = taxonomic_keywords_for_eml(eml_extra)
     if taxonomic_scope and not taxonomic_keywords:
-        # The GBIF profile requires a taxonomicClassification, so the scope
-        # would otherwise be dropped from the archive without notice.
-        raise EmlExportError(
-            "EML taxonomic_scope names no scientific taxon, so it cannot be exported as "
-            "taxonomicCoverage. Call SetEML with a taxonomic_scope that names at least one "
-            "scientific name, e.g. 'Mites (Acari)' or 'Mosquitoes (Diptera: Culicidae)'."
-        )
+        # taxonomicCoverage needs at least one taxonomicClassification.
+        scope_notes.append(f"{TAXONOMIC_SCOPE_NOTE_LABEL}{taxonomic_scope}")
 
     if taxonomic_keywords:
         tax = ET.SubElement(coverage, 'taxonomicCoverage')
@@ -1055,6 +1052,11 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
             dataset_node.insert(list(dataset_node).index(methods_node), coverage)
         else:
             dataset_node.append(coverage)
+
+    if scope_notes:
+        additional_info = ET.SubElement(dataset_node, 'additionalInfo')
+        for note in scope_notes:
+            set_text(ET.SubElement(additional_info, 'para'), note)
 
     # Methods / methodology
     methods = get_or_create(dataset_node, 'methods')
@@ -1097,6 +1099,7 @@ def make_eml(title, description, user=None, eml_extra: dict | None = None, datas
             'language',
             'abstract',
             'keywordSet',
+            'additionalInfo',
             'intellectualRights',
             'distribution',
             'coverage',
@@ -1834,14 +1837,28 @@ def inspect_dwca_archive(archive_path: str | Path) -> dict:
                     "single": clean_text(node.findtext("singleDateTime/calendarDate")),
                 })
             rights = dataset_node.find("intellectualRights/para/ulink")
+
+            def scope_note(label):
+                return next((
+                    clean_text(text[len(label):])
+                    for text in (node.text or "" for node in dataset_node.findall("additionalInfo/para"))
+                    if text.startswith(label)
+                ), None)
+
             summary["eml"] = {
                 "title": eml_text("title"),
                 "description": eml_text("abstract/para"),
                 "people": people,
                 "license_url": rights.attrib.get("url") if rights is not None else None,
                 "temporal_coverage": temporal,
-                "geographic_scope": eml_text("coverage/geographicCoverage/geographicDescription"),
-                "taxonomic_scope": eml_text("coverage/taxonomicCoverage/generalTaxonomicCoverage"),
+                "geographic_scope": (
+                    eml_text("coverage/geographicCoverage/geographicDescription")
+                    or scope_note(GEOGRAPHIC_SCOPE_NOTE_LABEL)
+                ),
+                "taxonomic_scope": (
+                    eml_text("coverage/taxonomicCoverage/generalTaxonomicCoverage")
+                    or scope_note(TAXONOMIC_SCOPE_NOTE_LABEL)
+                ),
                 "methodology": eml_text("methods/methodStep/description/para"),
             }
 

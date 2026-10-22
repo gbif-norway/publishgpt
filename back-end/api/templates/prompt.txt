@@ -84,10 +84,10 @@ DwC-A Core projection: {{ agent.dataset.dwc_core|default:"unknown" }}
 {% with eml=agent.dataset.eml %}
 {% if eml %}
 EML metadata recorded so far:
-{% if eml.temporal_scope %}- Temporal scope: {{ eml.temporal_scope }}{% endif %}
-{% if eml.geographic_scope %}- Geographic scope: {{ eml.geographic_scope }}{% endif %}
-{% if eml.taxonomic_scope %}- Taxonomic scope: {{ eml.taxonomic_scope }}{% endif %}
-{% if eml.methodology %}- Methodology: {{ eml.methodology }}{% endif %}
+{% if eml.temporal_scope %}- Temporal scope: {{ eml.temporal_scope }}{% elif "temporal_scope" in eml %}- Temporal scope: cleared on purpose{% endif %}
+{% if eml.geographic_scope %}- Geographic scope: {{ eml.geographic_scope }}{% elif "geographic_scope" in eml %}- Geographic scope: cleared on purpose{% endif %}
+{% if eml.taxonomic_scope %}- Taxonomic scope: {{ eml.taxonomic_scope }}{% elif "taxonomic_scope" in eml %}- Taxonomic scope: cleared on purpose{% endif %}
+{% if eml.methodology %}- Methodology: {{ eml.methodology }}{% elif "methodology" in eml %}- Methodology: cleared on purpose{% endif %}
 {% with users=eml.users %}
 {% if users %}
 - People involved:

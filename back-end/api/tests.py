@@ -651,11 +651,12 @@ class EmlGenerationTests(SimpleTestCase):
                     expected,
                 )
 
-    def test_make_eml_rejects_taxonomic_scope_without_scientific_names(self):
-        with self.assertRaisesRegex(EmlExportError, 'names no scientific taxon'):
-            make_eml('Taxa', 'Description', eml_extra={
-                'taxonomic_scope': 'Terrestrial vascular plants of Norway.',
-            })
+    def test_make_eml_keeps_taxonomic_scope_without_scientific_names_as_additional_info(self):
+        scope = 'Terrestrial vascular plants of Norway.'
+        root = ET.fromstring(make_eml('Taxa', 'Description', eml_extra={'taxonomic_scope': scope}))
+
+        self.assertIsNone(root.find('dataset/coverage/taxonomicCoverage'))
+        self.assertEqual(root.findtext('dataset/additionalInfo/para'), f'Taxonomic coverage: {scope}')
 
     def test_make_eml_does_not_publish_synthetic_orcid_email_from_creator_list(self):
         root = ET.fromstring(make_eml('Creators', 'Description', eml_extra={'users': [
@@ -1140,11 +1141,15 @@ class EmlGenerationTests(SimpleTestCase):
         contact_tags = [child.tag for child in list(dataset.find('contact'))]
         self.assertLess(contact_tags.index('electronicMailAddress'), contact_tags.index('userId'))
 
-    def test_make_eml_rejects_geographic_scope_without_bounds(self):
-        with self.assertRaisesRegex(EmlExportError, 'geographic_scope has no bounding box'):
-            make_eml('No geographic bounds', 'Abstract text', eml_extra={
-                'geographic_scope': 'Norway',
-            })
+    def test_make_eml_keeps_geographic_scope_without_bounds_as_additional_info(self):
+        root = ET.fromstring(make_eml('No geographic bounds', 'Abstract text', eml_extra={
+            'geographic_scope': 'Adventdalen, Svalbard',
+        }))
+
+        self.assertIsNone(root.find('dataset/coverage/geographicCoverage'))
+        self.assertEqual(
+            root.findtext('dataset/additionalInfo/para'), 'Geographic coverage: Adventdalen, Svalbard'
+        )
 
     def test_make_eml_extracts_geographic_bounds_from_scope_text(self):
         class DummyUser:
@@ -1941,11 +1946,15 @@ class SetEMLProjectTitleTests(TestCase):
         task = Task.objects.create(name="Metadata", text="Set metadata", order=1)
         self.agent = Agent.objects.create(dataset=self.dataset, task=task)
 
-    def test_explicit_null_clears_existing_project_title(self):
+    def test_explicit_null_preserves_and_empty_string_clears_project_title(self):
         result = SetEML(agent_id=self.agent.id, project_title=None).run()
         self.dataset.refresh_from_db()
 
         self.assertEqual(result, "EML has been successfully set.")
+        self.assertEqual(self.dataset.eml["project_title"], "Existing project")
+
+        SetEML(agent_id=self.agent.id, project_title="").run()
+        self.dataset.refresh_from_db()
         self.assertNotIn("project_title", self.dataset.eml)
 
     def test_omitted_project_title_preserves_existing_value(self):
@@ -2101,7 +2110,7 @@ class SetEMLProjectTitleTests(TestCase):
         self.assertIsNotNone(bounds)
         self.assertEqual(bounds.find("westBoundingCoordinate").text, "-5.37")
 
-    def test_geographic_scope_without_bounds_returns_export_warning(self):
+    def test_geographic_scope_without_bounds_notes_additional_info_export(self):
         result = SetEML(
             agent_id=self.agent.id,
             geographic_scope="Gibraltar, United Kingdom",
@@ -2109,8 +2118,139 @@ class SetEMLProjectTitleTests(TestCase):
         self.dataset.refresh_from_db()
 
         self.assertEqual(self.dataset.eml["geographic_scope"], "Gibraltar, United Kingdom")
-        self.assertIn("will block export as geographicCoverage", result)
-        self.assertIn("geographic_bounds", result)
+        self.assertIn("exported as text in EML additionalInfo", result)
+        self.assertNotIn("block", result)
+
+    def test_previously_cleared_scope_keeps_saved_and_explicit_bounds(self):
+        bounds = {"west": 4.0, "east": 31.0, "north": 71.0, "south": 58.0}
+        self.dataset.eml = {**self.dataset.eml, "geographic_scope": "", "geographic_bounds": bounds}
+        self.dataset.save()
+
+        SetEML(agent_id=self.agent.id, license="CC0 1.0").run()
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.eml["geographic_bounds"], bounds)
+
+        new_bounds = {"west": 5.0, "east": 6.0, "north": 61.0, "south": 60.0}
+        SetEML(agent_id=self.agent.id, geographic_bounds=new_bounds).run()
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.eml["geographic_bounds"], new_bounds)
+        self.assertEqual(self.dataset.eml["geographic_scope"], "")
+
+    def test_prompt_marks_cleared_scope_so_later_agents_keep_it_empty(self):
+        from django.template.loader import render_to_string
+
+        self.dataset.eml = {"geographic_scope": "", "taxonomic_scope": "Mites (Acari)"}
+        self.dataset.save()
+        text = render_to_string("prompt.txt", {"agent": self.agent, "all_tasks_count": 1})
+
+        self.assertIn("- Geographic scope: cleared on purpose", text)
+        self.assertIn("- Taxonomic scope: Mites (Acari)", text)
+        self.assertNotIn("Temporal scope", text)
+
+    def test_null_keeps_saved_placeholders_and_bounds_over_table_inference(self):
+        Table.objects.create(
+            dataset=self.dataset,
+            title="occurrence",
+            df=pd.DataFrame([{"country": "Norway", "decimalLatitude": 60.0, "decimalLongitude": 10.0}]),
+        )
+        user_bounds = {"west": 4.0, "east": 31.0, "north": 71.0, "south": 58.0}
+        self.dataset.eml = {
+            **self.dataset.eml,
+            "geographic_scope": "unknown",
+            "geographic_bounds": user_bounds,
+        }
+        self.dataset.save()
+
+        SetEML(agent_id=self.agent.id, geographic_scope=None, geographic_bounds=None).run()
+        self.dataset.refresh_from_db()
+
+        self.assertEqual(self.dataset.eml["geographic_scope"], "unknown")
+        self.assertEqual(self.dataset.eml["geographic_bounds"], user_bounds)
+
+    def test_null_scopes_preserve_saved_values(self):
+        saved = {
+            "temporal_scope": "2025",
+            "geographic_scope": "Adventdalen, Svalbard",
+            "geographic_bounds": {"west": 15.5, "east": 16.5, "north": 78.3, "south": 78.1},
+            "taxonomic_scope": "Mites (Acari)",
+            "methodology": "Soil cores.",
+        }
+        self.dataset.eml = {**self.dataset.eml, **saved}
+        self.dataset.save()
+
+        SetEML(
+            agent_id=self.agent.id,
+            temporal_scope=None,
+            geographic_scope=None,
+            geographic_bounds=None,
+            taxonomic_scope=None,
+            methodology=None,
+        ).run()
+        self.dataset.refresh_from_db()
+
+        for key, value in saved.items():
+            self.assertEqual(self.dataset.eml[key], value, key)
+
+    def test_empty_string_clears_scopes_without_reinferring_them(self):
+        Table.objects.create(
+            dataset=self.dataset,
+            title="occurrence",
+            df=pd.DataFrame([{
+                "country": "Germany",
+                "eventDate": "2025-06-01",
+                "samplingProtocol": "Pitfall trap",
+            }]),
+        )
+        SetEML(agent_id=self.agent.id).run()
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.eml["geographic_scope"], "Countries: Germany")
+        self.assertTrue(self.dataset.eml["temporal_scope"])
+        self.assertTrue(self.dataset.eml["methodology"])
+
+        result = SetEML(
+            agent_id=self.agent.id,
+            temporal_scope="",
+            geographic_scope="",
+            methodology="",
+        ).run()
+        self.assertIn("Geographic scope and bounds cleared.", result)
+        SetEML(agent_id=self.agent.id, license="CC0 1.0").run()
+        self.dataset.refresh_from_db()
+
+        for key in ("temporal_scope", "geographic_scope", "methodology"):
+            self.assertEqual(self.dataset.eml[key], "", key)
+        self.assertNotIn("geographic_bounds", self.dataset.eml)
+
+        SetEML(agent_id=self.agent.id, geographic_scope="Petersberg, Germany").run()
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.eml["geographic_scope"], "Petersberg, Germany")
+
+    def test_orcid_login_email_is_not_saved_for_default_or_explicit_creators(self):
+        profile_user = CustomUser.objects.create_user(
+            username="0009-0006-1096-3259@orcid.org",
+            email="0009-0006-1096-3259@orcid.org",
+            first_name="Arthur",
+            last_name="Grand",
+            orcid_id="0009-0006-1096-3259",
+        )
+        self.dataset.user = profile_user
+        self.dataset.save()
+
+        SetEML(agent_id=self.agent.id).run()
+        self.dataset.refresh_from_db()
+        self.assertEqual(self.dataset.eml["users"][0]["last_name"], "Grand")
+        self.assertIsNone(self.dataset.eml["users"][0]["email"])
+
+        SetEML(
+            agent_id=self.agent.id,
+            users=[
+                {"first_name": "Arthur", "last_name": "Grand",
+                 "email": "0009-0006-1096-3259@orcid.org", "orcid": "0009-0006-1096-3259"},
+                {"first_name": "Ola", "last_name": "Nordmann"},
+            ],
+        ).run()
+        self.dataset.refresh_from_db()
+        self.assertEqual([person["email"] for person in self.dataset.eml["users"]], [None, None])
 
 
 class ExcelWorkbookRepairTests(SimpleTestCase):
@@ -2825,6 +2965,14 @@ class ResponsesAdapterCompatibilityTests(SimpleTestCase):
         self.assertIn("title", properties)
         self.assertIn("description", properties)
         self.assertNotIn("suitable_for_publication_on_gbif", properties)
+
+    def test_tool_schema_keeps_field_descriptions_but_not_generated_titles(self):
+        parameters = SetEML.openai_schema()["parameters"]
+
+        self.assertIn("empty string", parameters["properties"]["temporal_scope"]["description"])
+        self.assertIn("description", parameters["$defs"]["EMLUser"]["properties"]["email"])
+        self.assertNotIn("description", parameters)
+        self.assertNotIn("title", parameters["properties"]["temporal_scope"])
 
     def test_upload_dwca_schema_exposes_extension_table_mapping_values(self):
         schema = UploadDwCA.openai_schema()
