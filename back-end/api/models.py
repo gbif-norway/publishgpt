@@ -2723,8 +2723,9 @@ class TaxonNameMatch(models.Model):
     class Decision(models.TextChoices):
         PENDING = 'pending', _('Pending review')
         ACCEPTED = 'accepted', _('Accepted a COL name')
-        NOT_IN_COL = 'not_in_col', _('Correct name, not in GBIF\'s COL copy')
-        KEEP_ORIGINAL = 'keep_original', _('Keep the original data unchanged')
+        CORRECTED = 'corrected', _('Corrected by the reviewer')
+        KEEP_ORIGINAL = 'keep_original', _('Keep the original name')
+        EMPTY = 'empty', _('No name published')
 
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name='taxon_matches')
     # Labels are matched per table (by resource title, which survives table replacement) and
@@ -2744,6 +2745,10 @@ class TaxonNameMatch(models.Model):
     query = models.JSONField(default=dict, help_text='Name and classification hints sent to the matcher.')
     preprocessing_note = models.TextField(blank=True)
     identification_qualifier = models.CharField(max_length=100, blank=True)
+    # GBIF's name parser on the label ({} for a qualified label, or while the parser was unavailable), and the authorships
+    # and the one rank the table itself gives the label's rows: what a COL name or "Keep original" is checked against.
+    parsed = models.JSONField(default=dict, blank=True)
+    supplied = models.JSONField(default=dict, blank=True)
 
     match = models.JSONField(default=dict, help_text='Summarised GBIF v2 COL XR match.')
     review_aids = models.JSONField(default=dict, blank=True)

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import config from '../config.js'
 import { getCsrfToken } from '../utils/csrf.js'
+import { formatName } from '../utils/nameReview.mjs'
 import {
-  DECISION_LABELS,
-  RANKS,
+  chatChoices,
+  chatDecisionBody,
   countByDecision,
+  decisionResult,
   filterRows,
-  formatName,
   isPending,
-  splitScientificName,
   statusInfo,
 } from '../utils/taxonReview.mjs'
+import NameReviewItem from './NameReviewItem'
 
 const PAGE_SIZE = 50
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -33,112 +34,8 @@ const postJson = async (path, body) => {
   return data
 }
 
-function TaxonSearch({ onPick, disabled }) {
-  const [text, setText] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    const query = text.trim()
-    if (query.length < 3) {
-      setResults([])
-      return undefined
-    }
-    const controller = new AbortController()
-    const timer = setTimeout(async () => {
-      setSearching(true)
-      setError(null)
-      try {
-        const response = await fetch(
-          `${config.baseUrl}/api/taxon-matches/search/?q=${encodeURIComponent(query)}`,
-          { credentials: 'include', signal: controller.signal },
-        )
-        const data = await response.json()
-        if (!response.ok) throw new Error(data?.detail || 'Search failed.')
-        setResults(data.results || [])
-      } catch (err) {
-        if (err.name !== 'AbortError') setError(err.message)
-      } finally {
-        setSearching(false)
-      }
-    }, 300)
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
-    }
-  }, [text])
-
-  return (
-    <div>
-      <input
-        type="search"
-        className="form-control form-control-sm"
-        placeholder="Search Catalogue of Life (at least 3 letters)"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        disabled={disabled}
-        aria-label="Search Catalogue of Life"
-      />
-      {searching && <div className="small text-muted mt-1">Searching…</div>}
-      {error && <div className="small text-danger mt-1">{error}</div>}
-      {results.length > 0 && (
-        <div className="list-group list-group-flush taxon-search-results mt-1">
-          {results.map((result) => (
-            <button
-              key={result.id}
-              type="button"
-              className="list-group-item list-group-item-action small py-1"
-              onClick={() => onPick(result.id)}
-              disabled={disabled}
-            >
-              {result.suggestion || result.label}
-              {result.status && result.status !== 'accepted' && (
-                <span className="text-muted"> · {result.status}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function NotInColForm({ row, onSave, onCancel, disabled }) {
-  const initial = splitScientificName(row.query?.scientificName || row.verbatim_label)
-  const [name, setName] = useState(initial.scientificName)
-  const [authorship, setAuthorship] = useState(initial.scientificNameAuthorship)
-  const [rank, setRank] = useState(initial.taxonRank)
-
-  return (
-    <form
-      className="taxon-not-in-col-form d-grid gap-1"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSave({ scientificName: name, scientificNameAuthorship: authorship, taxonRank: rank })
-      }}
-    >
-      <label className="small" htmlFor={`not-in-col-name-${row.id}`}>Scientific name</label>
-      <input id={`not-in-col-name-${row.id}`} className="form-control form-control-sm" value={name}
-        onChange={(event) => setName(event.target.value)} required disabled={disabled} />
-      <label className="small" htmlFor={`not-in-col-author-${row.id}`}>Authorship (optional)</label>
-      <input id={`not-in-col-author-${row.id}`} className="form-control form-control-sm" value={authorship}
-        onChange={(event) => setAuthorship(event.target.value)} disabled={disabled} />
-      <label className="small" htmlFor={`not-in-col-rank-${row.id}`}>Rank</label>
-      <select id={`not-in-col-rank-${row.id}`} className="form-select form-select-sm" value={rank}
-        onChange={(event) => setRank(event.target.value)} disabled={disabled}>
-        <option value="">unknown</option>
-        {RANKS.map((value) => <option key={value} value={value}>{value}</option>)}
-      </select>
-      <div className="d-flex gap-1 mt-1">
-        <button type="submit" className="btn btn-sm btn-primary" disabled={disabled}>Save</button>
-        <button type="button" className="btn btn-sm btn-link" onClick={onCancel} disabled={disabled}>Cancel</button>
-      </div>
-    </form>
-  )
-}
-
-function Suggestion({ row }) {
+// What only the chat's review knows about a name: its source context, qualifier, COL's suggestion and the interpretation.
+function RowDetails({ row }) {
   const status = statusInfo(row)
   const usage = row.match?.usage
   const aids = row.review_aids || {}
@@ -148,9 +45,16 @@ function Suggestion({ row }) {
   ].filter(([, aid]) => aid && ['exact', 'variant'].includes(aid.status))
 
   return (
-    <div className="small">
+    <div className="small mt-1">
+      {(row.context_key || row.identification_qualifier) && (
+        <div className="d-flex flex-wrap align-items-center gap-2 text-muted">
+          {row.context_key && <span>{row.context_key}</span>}
+          {row.identification_qualifier && <span className="badge text-bg-light border">qualifier: {row.identification_qualifier}</span>}
+        </div>
+      )}
       <div className="d-flex flex-wrap align-items-center gap-2">
-        {usage ? <span className="fw-semibold">{formatName(usage)}</span> : <span className="text-muted">No suggestion</span>}
+        <span className="text-muted">Catalogue of Life:</span>
+        {usage ? <span>{formatName(usage)}</span> : <span className="text-muted">no suggestion</span>}
         {usage?.taxonRank && <span className="text-muted">{usage.taxonRank}</span>}
         <span className={`badge text-bg-${status.variant}`}>{status.label}</span>
       </div>
@@ -170,110 +74,6 @@ function Suggestion({ row }) {
           {' '}<span className="fst-italic">may not yet be reflected on GBIF.org</span>
         </div>
       ))}
-    </div>
-  )
-}
-
-function DecisionCell({ row, busy, onDecide, editable }) {
-  const [mode, setMode] = useState(null)
-  // A COL name that is coarser than or different from the label waits for a confirming second click.
-  const [confirming, setConfirming] = useState(null)
-  const confirmRef = useRef(null)
-  useEffect(() => { if (confirming) confirmRef.current?.focus() }, [confirming])
-  const alternatives = row.match?.alternatives || []
-  const disabled = busy
-  const accept = (usage, replaces, payload) => replaces
-    ? setConfirming({ usage, replaces, payload })
-    : onDecide(row, payload)
-
-  if (!editable) {
-    const decided = row.decided_usage
-    return (
-      <div className="small">
-        <span className={`badge ${isPending(row) ? 'text-bg-secondary' : 'text-bg-primary'}`}>{DECISION_LABELS[row.decision]}</span>
-        {decided?.scientificName && <div>{formatName(decided)}{decided.taxonRank ? ` (${decided.taxonRank})` : ''}</div>}
-      </div>
-    )
-  }
-
-  if (!isPending(row)) {
-    const decided = row.decided_usage
-    return (
-      <div className="small">
-        <span className="badge text-bg-primary">{DECISION_LABELS[row.decision]}</span>
-        {decided?.scientificName && <div>{formatName(decided)}{decided.taxonRank ? ` (${decided.taxonRank})` : ''}</div>}
-        <button type="button" className="btn btn-link btn-sm p-0" disabled={disabled}
-          onClick={() => onDecide(row, { decision: 'pending' })}>
-          Undo
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <div className="d-flex flex-wrap gap-1" role="group" aria-label={`Decision for ${row.verbatim_label}`}>
-        <button type="button" className={`btn btn-sm ${row.replacements?.suggestion ? 'btn-outline-warning' : 'btn-outline-success'}`}
-          disabled={disabled || !row.match?.usage}
-          onClick={() => accept(row.match.usage, row.replacements?.suggestion, { decision: 'accepted' })}
-          title="Use the suggested Catalogue of Life name">
-          Accept{row.replacements?.suggestion ? '…' : ''}
-        </button>
-        <button type="button" className={`btn btn-sm btn-outline-secondary${mode === 'other' ? ' active' : ''}`}
-          disabled={disabled} onClick={() => setMode(mode === 'other' ? null : 'other')}
-          title="Choose a different Catalogue of Life name">
-          Other…
-        </button>
-        <button type="button" className={`btn btn-sm btn-outline-secondary${mode === 'not_in_col' ? ' active' : ''}`}
-          disabled={disabled} onClick={() => setMode(mode === 'not_in_col' ? null : 'not_in_col')}
-          title="The name is correct but Catalogue of Life does not have it">
-          Not in COL
-        </button>
-        <button type="button" className="btn btn-sm btn-outline-secondary" disabled={disabled}
-          onClick={() => onDecide(row, { decision: 'keep_original' })}
-          title="Leave the data for this name unchanged">
-          Keep original
-        </button>
-      </div>
-      {confirming && (
-        <div className="alert alert-warning small py-2 mt-2 mb-0" role="alert">
-          “{confirming.usage.scientificName}” {confirming.replaces.text} for “{row.verbatim_label}”.
-          <div className="d-flex flex-wrap gap-1 mt-1">
-            <button ref={confirmRef} type="button" className="btn btn-sm btn-warning" disabled={disabled}
-              onClick={async () => { if (await onDecide(row, { ...confirming.payload, confirm_coarser: true })) setConfirming(null) }}>
-              Replace with {confirming.usage.scientificName}
-            </button>
-            <button type="button" className="btn btn-sm btn-link" onClick={() => setConfirming(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-      {mode === 'other' && (
-        <div className="mt-2">
-          {alternatives.length > 0 && (
-            <div className="d-flex flex-wrap gap-1 mb-2">
-              {alternatives.map((alternative) => {
-                const replaces = row.replacements?.alternatives?.[String(alternative.id)]
-                return (
-                  <button key={alternative.id} type="button" className={`btn btn-sm ${replaces ? 'btn-outline-warning' : 'btn-outline-primary'}`}
-                    disabled={disabled} title={replaces ? replaces.text : undefined}
-                    onClick={() => accept(alternative, replaces, { decision: 'accepted', usage_id: alternative.id })}>
-                    {formatName(alternative)} <span className="opacity-75">({alternative.taxonRank})</span>{replaces ? '…' : ''}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          {/* A name the reviewer searched for and picked is itself the explicit choice, so it is sent confirmed. */}
-          <TaxonSearch disabled={disabled}
-            onPick={(usageId) => onDecide(row, { decision: 'accepted', usage_id: usageId, confirm_coarser: true })} />
-        </div>
-      )}
-      {mode === 'not_in_col' && (
-        <div className="mt-2">
-          <NotInColForm row={row} disabled={disabled} onCancel={() => setMode(null)}
-            onSave={(name) => onDecide(row, { decision: 'not_in_col', ...name })} />
-        </div>
-      )}
     </div>
   )
 }
@@ -361,15 +161,19 @@ export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDo
     setRows((current) => current.map((row) => byId.get(row.id) || row))
   }
 
+  // Resolves to the error message, or null once saved; the shared choices show it beside the name.
+  const undo = async (row) => {
+    const failure = await decide(row, { decision: 'pending' })
+    setError(failure && `${row.verbatim_label}: ${failure}`)
+  }
+
   const decide = async (row, payload) => {
     setBusyIds((current) => new Set(current).add(row.id))
-    setError(null)
     try {
       replaceRows([await postJson(`/api/taxon-matches/${row.id}/decide/`, payload)])
-      return true
+      return null
     } catch (err) {
-      setError(`${row.verbatim_label}: ${err.message}`)
-      return false
+      return err.message
     } finally {
       setBusyIds((current) => {
         const next = new Set(current)
@@ -494,34 +298,14 @@ export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDo
               )}
 
               {pageRows.length > 0 && (
-                <div className="table-responsive">
-                  <table className="table table-sm align-top taxon-review-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Original name</th>
-                        <th scope="col">Catalogue of Life suggestion</th>
-                        <th scope="col">Your decision</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageRows.map((row) => (
-                        <tr key={row.id}>
-                          <td className="small">
-                            <div className="fw-semibold text-break">{row.verbatim_label}</div>
-                            <div className="text-muted">
-                              {row.record_count} {row.record_count === 1 ? 'record' : 'records'}
-                              {row.context_key && <> · {row.context_key}</>}
-                            </div>
-                            {row.identification_qualifier && (
-                              <span className="badge text-bg-light border">qualifier: {row.identification_qualifier}</span>
-                            )}
-                          </td>
-                          <td><Suggestion row={row} /></td>
-                          <td><DecisionCell row={row} busy={busyIds.has(row.id)} onDecide={decide} editable={editable} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="name-review-rows">
+                  {pageRows.map((row) => (
+                    <NameReviewItem key={row.id} label={row.verbatim_label} count={row.record_count} noun="record"
+                      details={<RowDetails row={row} />} result={decisionResult(row)}
+                      status={isPending(row) ? '' : 'Changed by you'} preview={row.preview}
+                      onUndo={isPending(row) ? null : () => undo(row)} editable={editable} busy={busyIds.has(row.id)}
+                      choices={chatChoices(row)} onDecide={(payload) => decide(row, chatDecisionBody(payload))} />
+                  ))}
                 </div>
               )}
 

@@ -123,7 +123,8 @@ class RealNameTests(SimpleTestCase):
         self.assertEqual(subgenus, "Acartia (Acartiura)")
         row = SimpleNamespace(decision=TaxonNameMatch.Decision.PENDING, record_count=1, matched_at=timezone.now(),
                               match=taxon_matching.summarize_match(acartia), identification_qualifier="",
-                              query={"scientificName": "Acartia longiremis"}, verbatim_label="Acartia longiremis")
+                              query={"scientificName": "Acartia longiremis"}, verbatim_label="Acartia longiremis",
+                              parsed={}, supplied={})
         self.assertTrue(taxon_matching.bulk_acceptable(row))
         self.assertEqual(taxon_matching.usage_for_decision(row)["scientificName"], "Acartia longiremis")
 
@@ -223,7 +224,8 @@ class RealNameTests(SimpleTestCase):
             summary = taxon_matching.summarize_match(REAL[label]["response"])
             query = REAL[label]["query"]
             return SimpleNamespace(decision=TaxonNameMatch.Decision.PENDING, record_count=1, matched_at=timezone.now(), match=summary,
-                                   identification_qualifier="", query=query, verbatim_label=query["scientificName"])
+                                   identification_qualifier="", query=query, verbatim_label=query["scientificName"],
+                                   parsed={}, supplied={})
         # 568: the class hint steered "AmphibiaReptilia" to an EXACT match on the class Amphibia.
         self.assertFalse(taxon_matching.bulk_acceptable(row("AmphibiaReptilia sp.")))
         self.assertTrue(taxon_matching.bulk_acceptable(row("Columba livia var. domestica")))
@@ -359,6 +361,12 @@ def fake_aids(query, deadline=None):
     return {"gbifBackbone": {"status": "exact", "scientificName": query["scientificName"], "taxonRank": "species"}}
 
 
+def parser_unavailable(labels, deadline=None):
+    raise taxon_matching.TaxonServiceError("parser down")
+
+
+# Labels are matched without GBIF's parser unless a test gives one; "Keep original" then parses when it is chosen.
+@patch("api.taxon_matching.parse_names", new=parser_unavailable)
 @patch("api.taxon_matching.col_release", return_value=RELEASE)
 @patch("api.taxon_matching.review_aids", side_effect=fake_aids)
 @patch("api.taxon_matching.match_col", side_effect=fake_match)
@@ -471,13 +479,14 @@ class RecordAndApplyTests(TestCase):
     def test_decisions(self, match_col, aids, release):
         rows = {row.verbatim_label: row for row in self.record()}
         neodiscopoma = taxon_matching.decide(
-            rows["Neodiscopoma splendida (Kramer, 1882)"], TaxonNameMatch.Decision.NOT_IN_COL,
-            name={"scientificName": "Neodiscopoma splendida", "scientificNameAuthorship": "(Kramer, 1882)",
-                  "taxonRank": "Species"},
+            rows["Neodiscopoma splendida (Kramer, 1882)"], TaxonNameMatch.Decision.CORRECTED,
+            scientific_name="  Neodiscopoma   splendida ",
         )
-        self.assertEqual(neodiscopoma.decided_usage["scientificName"], "Neodiscopoma splendida")
-        self.assertEqual(neodiscopoma.decided_usage["taxonRank"], "species")
-        self.assertEqual(neodiscopoma.decided_usage["classification"]["class"], "Arachnida")
+        # A corrected name is the typed name alone: no authorship, rank or classification is guessed for it.
+        self.assertEqual(neodiscopoma.decided_usage, {"scientificName": "Neodiscopoma splendida", "source": "reviewer"})
+        for typed in ("", "   ", "x" * (taxon_matching.MAX_CORRECTED_NAME_CHARS + 1)):
+            with self.assertRaises(ValueError):
+                taxon_matching.decide(rows["N_silvestris"], TaxonNameMatch.Decision.CORRECTED, scientific_name=typed)
         with self.assertRaises(ValueError):
             taxon_matching.decide(rows["Pająki"], TaxonNameMatch.Decision.ACCEPTED)  # nothing suggested
 
@@ -503,13 +512,70 @@ class RecordAndApplyTests(TestCase):
         self.table.save()
         taxon_matching.record_matches(self.dataset, "species labels", self.table.df, "verbatimIdentification")
         row = TaxonNameMatch.objects.get(verbatim_label="Dinychus sp.")
-        taxon_matching.decide(row, TaxonNameMatch.Decision.NOT_IN_COL, name={"scientificName": "Dinychus"})
+        taxon_matching.decide(row, TaxonNameMatch.Decision.CORRECTED, scientific_name="Dinychus")
         taxon_matching.apply_decisions(self.dataset, self.table, "verbatimIdentification")
         self.table.refresh_from_db()
         df = self.table.df
         self.assertEqual(list(df.scientificName), ["Dinychus", "Dinychus"])
         self.assertEqual(df.scientificNameAuthorship[0], "Kramer")  # no authorship decided: kept
+        # A corrected name changes scientificName only; the label's "sp." stays in verbatimIdentification.
+        self.assertNotIn("identificationQualifier", df.columns)
         self.assertEqual(df.kingdom[0], "Metazoa")  # supplied classification is never overwritten
+
+    def test_keep_original_and_dont_publish_follow_the_conversions_rules(self, match_col, aids, release):
+        self.table.df = pd.DataFrame({
+            "verbatimIdentification": ["Neodiscopoma splendida (Kramer, 1882)", "Pająki", "Dinychus sp."],
+            "scientificName": [None, "Araneae", "Dinychus"],
+            "scientificNameAuthorship": [None, None, "Kramer"],
+            "taxonRank": [None, "order", "genus"],
+        })
+        self.table.save()
+        rows = {row.verbatim_label: row for row in self.record()}
+        split = {"usable": True, "lossless": True, "canonical": "Neodiscopoma splendida", "authorship": "(Kramer, 1882)",
+                 "rank": "species"}
+        with patch("api.taxon_matching.parse_names", return_value=[split]) as parse:
+            neodiscopoma = taxon_matching.decide(rows["Neodiscopoma splendida (Kramer, 1882)"], TaxonNameMatch.Decision.KEEP_ORIGINAL)
+        self.assertEqual(parse.call_args.args[0], ["Neodiscopoma splendida (Kramer, 1882)"])
+        self.assertEqual(neodiscopoma.decided_usage["kind"], "parsed")
+        # Without the parser the label is kept as written; a qualified label is never split.
+        with patch("api.taxon_matching.parse_names", side_effect=taxon_matching.TaxonServiceError("down")):
+            spiders = taxon_matching.decide(rows["Pająki"], TaxonNameMatch.Decision.KEEP_ORIGINAL)
+        self.assertEqual(spiders.decided_usage, {"kind": "keep", "source": "verbatim"})
+        with patch("api.taxon_matching.parse_names") as parse:
+            self.assertEqual(taxon_matching.decide(rows["Dinychus sp."], TaxonNameMatch.Decision.KEEP_ORIGINAL).decided_usage["kind"], "keep")
+        parse.assert_not_called()
+        dinychus = taxon_matching.decide(rows["Dinychus sp."], TaxonNameMatch.Decision.EMPTY)
+
+        self.assertEqual(taxon_matching.decision_preview(neodiscopoma), [
+            {"field": "scientificName", "how": "set", "value": "Neodiscopoma splendida"},
+            {"field": "scientificNameAuthorship", "how": "yours", "value": "(Kramer, 1882)"},
+            {"field": "taxonRank", "how": "set", "value": "species"},
+        ])
+        self.assertEqual(taxon_matching.decision_preview(spiders)[0], {"field": "scientificName", "how": "yours", "value": "Pająki"})
+        self.assertEqual({item["how"] for item in taxon_matching.decision_preview(dinychus)}, {"empty"})
+
+        taxon_matching.apply_decisions(self.dataset, self.table, "verbatimIdentification")
+        self.table.refresh_from_db()
+        df = self.table.df
+        self.assertEqual(list(df.loc[0, ["scientificName", "scientificNameAuthorship", "taxonRank"]]),
+                         ["Neodiscopoma splendida", "(Kramer, 1882)", "species"])
+        self.assertEqual(df.loc[1, "scientificName"], "Araneae")  # kept: the table's own name stands
+        self.assertTrue(all(pd.isna(df.loc[2, field]) for field in ("scientificName", "scientificNameAuthorship", "taxonRank")))
+
+    def test_another_taxon_does_not_inherit_the_tables_authorship(self, match_col, aids, release):
+        self.table.df = pd.DataFrame({"verbatimIdentification": ["Pająki"], "scientificName": ["Pająki"],
+                                      "scientificNameAuthorship": ["Somebody"], "taxonRank": ["family"]})
+        self.table.save()
+        row = self.record()[0]
+        with patch("api.taxon_matching.resolve_col_usage", return_value={
+            "id": "5W", "scientificName": "Araneae", "scientificNameAuthorship": None,
+            "taxonRank": "order", "status": "accepted", "classification": {"order": "Araneae"},
+        }):
+            taxon_matching.decide(row, TaxonNameMatch.Decision.ACCEPTED, usage_id="5W", confirm_coarser=True)
+        taxon_matching.apply_decisions(self.dataset, self.table, "verbatimIdentification")
+        self.table.refresh_from_db()
+        self.assertEqual(list(self.table.df.loc[0, ["scientificName", "taxonRank"]]), ["Araneae", "order"])
+        self.assertTrue(pd.isna(self.table.df.loc[0, "scientificNameAuthorship"]))
 
     def test_duplicate_index_and_context_are_read_positionally(self, match_col, aids, release):
         df = pd.DataFrame(
@@ -587,18 +653,18 @@ class RecordAndApplyTests(TestCase):
         rows = {row.verbatim_label: row for row in self.record()}
         taxon_matching.decide(rows["Dinychus sp."], TaxonNameMatch.Decision.ACCEPTED)
         taxon_matching.decide(
-            rows["Neodiscopoma splendida (Kramer, 1882)"], TaxonNameMatch.Decision.NOT_IN_COL,
-            name={"scientificName": "Neodiscopoma splendida", "scientificNameAuthorship": "(Kramer, 1882)",
-                  "taxonRank": "species"},
+            rows["Neodiscopoma splendida (Kramer, 1882)"], TaxonNameMatch.Decision.CORRECTED,
+            scientific_name="Neodiscopoma splendens",
         )
-        taxon_matching.decide(rows["Pająki"], TaxonNameMatch.Decision.KEEP_ORIGINAL)
+        with patch("api.taxon_matching.parse_names", return_value=[{"usable": False}]):
+            taxon_matching.decide(rows["Pająki"], TaxonNameMatch.Decision.KEEP_ORIGINAL)
 
         result = taxon_matching.apply_decisions(self.dataset, self.table, "verbatimIdentification")
         self.table.refresh_from_db()
         df = self.table.df.set_index("occurrenceID")
 
         self.assertEqual(result["labels_applied"], 2)
-        self.assertEqual(result["rows_updated"], 2)
+        self.assertEqual(result["rows_updated"], 3)
         self.assertEqual(result["pending_labels"], 1)
         self.assertEqual(result["kept_labels"], 1)
         # The occurrence resource has no classification or qualifier columns.
@@ -607,9 +673,10 @@ class RecordAndApplyTests(TestCase):
         self.assertNotIn("kingdom", df.columns)
         self.assertEqual(df.loc["o5", "scientificName"], "Dinychus")
         self.assertEqual(df.loc["o5", "taxonRank"], "genus")
-        self.assertEqual(df.loc["o3", "scientificNameAuthorship"], "(Kramer, 1882)")
+        self.assertEqual(df.loc["o3", "scientificName"], "Neodiscopoma splendens")
+        self.assertTrue(pd.isna(df.loc["o3", "scientificNameAuthorship"]))  # a corrected name writes no authorship
         self.assertTrue(pd.isna(df.loc["o1", "scientificName"]))  # pending
-        self.assertTrue(pd.isna(df.loc["o4", "scientificName"]))  # kept
+        self.assertEqual(df.loc["o4", "scientificName"], "Pająki")  # kept: the label fills an empty name
         self.assertEqual(df.loc["o3", "verbatimIdentification"], "Neodiscopoma splendida (Kramer, 1882)")
         self.assertIsNotNone(TaxonNameMatch.objects.get(verbatim_label="Dinychus sp.").applied_at)
 
@@ -638,6 +705,7 @@ class RecordAndApplyTests(TestCase):
         )
 
 
+@patch("api.taxon_matching.parse_names", new=parser_unavailable)
 @patch("api.taxon_matching.col_release", return_value=RELEASE)
 @patch("api.taxon_matching.review_aids", side_effect=fake_aids)
 @patch("api.taxon_matching.match_col", side_effect=fake_match)
@@ -722,6 +790,55 @@ class TaxonToolTests(TestCase):
         self.assertIn("does not belong", ApplyTaxonDecisions(agent_id=self.agent.id, table_id=other.id).run())
 
 
+class SharedNameRulesTests(TestCase):
+    """The publication review checks and writes a COL name by the conversion review's rules."""
+
+    def setUp(self):
+        self.dataset = Dataset.objects.create(title="Shared rules")
+
+    def row(self, label, usage, match_type="EXACT", supplied=None, query=None):
+        return TaxonNameMatch.objects.create(
+            dataset=self.dataset, source_table="species labels", verbatim_column="verbatimIdentification",
+            verbatim_label=label, record_count=1, matched_at=timezone.now(), query=query or {"scientificName": label},
+            supplied=supplied or {}, match={"matchType": match_type, "status": "exact", "usage": usage, "alternatives": []})
+
+    def test_a_different_authorship_or_rank_needs_confirmation(self):
+        parus = self.row("Parus major", {"id": "PM", "scientificName": "Parus major", "scientificNameAuthorship": "Linnaeus, 1758",
+                                         "taxonRank": "species"}, supplied={"authorships": ["Smith, 1900"]})
+        self.assertTrue(taxon_matching.choice_checks(parus)["suggestion"]["authorship_differs"])
+        self.assertFalse(taxon_matching.bulk_acceptable(parus))
+        with self.assertRaisesRegex(ValueError, "authorship of \"Parus major\""):
+            taxon_matching.decide(parus, TaxonNameMatch.Decision.ACCEPTED)
+        taxon_matching.decide(parus, TaxonNameMatch.Decision.ACCEPTED, confirm_coarser=True)
+
+        larus = self.row("Larus", {"id": "L", "scientificName": "Larus", "taxonRank": "genus"}, supplied={"rank": "family"})
+        self.assertEqual(taxon_matching.choice_checks(larus)["suggestion"]["rank_change"], "makes your family a genus")
+        with self.assertRaisesRegex(ValueError, "makes your family a genus"):
+            taxon_matching.decide(larus, TaxonNameMatch.Decision.ACCEPTED)
+        larus = taxon_matching.decide(larus, TaxonNameMatch.Decision.ACCEPTED, confirm_coarser=True)
+        self.assertEqual(larus.decided_usage["rankChange"], "makes your family a genus")
+        # A confirmed rank change is another taxon: the table's authorship does not carry over to it.
+        self.assertEqual(taxon_matching.row_fields(larus)["scientificNameAuthorship"], ("set", ""))
+
+    def test_a_spelling_correction_keeps_the_tables_authorship_and_nullable_cells_apply(self):
+        table = Table.objects.create(dataset=self.dataset, title="species labels", df=pd.DataFrame({
+            "verbatimIdentification": ["Circium arvense", "Circium arvense"],
+            "scientificName": pd.array(["Circium arvense", pd.NA], dtype="string"),
+            "scientificNameAuthorship": pd.array(["(L.) Scop.", pd.NA], dtype="string"),
+        }))
+        row = self.row("Circium arvense", {"id": "CA", "scientificName": "Cirsium arvense", "taxonRank": "species",
+                                           "classification": {"kingdom": "Plantae"}},
+                       match_type="VARIANT", query={"scientificName": "Circium arvense", "kingdom": "Plantae"})
+        check = taxon_matching.choice_checks(row)["suggestion"]
+        self.assertEqual((check["changeKind"], check["replaces"]), ("spelling", None))
+        taxon_matching.decide(row, TaxonNameMatch.Decision.ACCEPTED)
+        taxon_matching.apply_decisions(self.dataset, table, "verbatimIdentification")
+        table.refresh_from_db()
+        self.assertEqual(list(table.df.scientificName), ["Cirsium arvense", "Cirsium arvense"])
+        self.assertEqual(table.df.scientificNameAuthorship[0], "(L.) Scop.")  # COL has none: the table's stands
+        self.assertTrue(pd.isna(table.df.scientificNameAuthorship[1]))
+
+
 class TaxonMatchApiTests(TestCase):
     def setUp(self):
         self.owner = CustomUser.objects.create_user(username="owner", password="x")
@@ -768,11 +885,12 @@ class TaxonMatchApiTests(TestCase):
         self.client.force_authenticate(self.owner)
         response = self.client.post(
             f"/api/taxon-matches/{self.higher.id}/decide/",
-            {"decision": "not_in_col", "scientificName": "Neodiscopoma splendida", "taxonRank": "species"},
+            {"decision": "corrected", "scientificName": "Neodiscopoma splendida"},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["decision"], "not_in_col")
+        self.assertEqual(response.json()["decision"], "corrected")
+        self.assertEqual(response.json()["decided_usage"], {"scientificName": "Neodiscopoma splendida", "source": "reviewer"})
         self.assertEqual(response.json()["decided_by"], self.owner.id)
 
         response = self.client.post(f"/api/taxon-matches/{self.higher.id}/decide/", {"decision": "bogus"})
@@ -788,8 +906,8 @@ class TaxonMatchApiTests(TestCase):
         listed = self.client.get("/api/taxon-matches/", {"dataset": self.dataset.id}).json()
         listed = listed["results"] if isinstance(listed, dict) else listed
         higher = next(row for row in listed if row["id"] == self.higher.id)
-        self.assertEqual(higher["replacements"]["suggestion"]["text"], "replaces your species with a genus")
-        self.assertIsNone(next(row for row in listed if row["id"] == self.exact.id)["replacements"]["suggestion"])
+        self.assertEqual(higher["choice_checks"]["suggestion"]["replaces"]["text"], "replaces your species with a genus")
+        self.assertIsNone(next(row for row in listed if row["id"] == self.exact.id)["choice_checks"]["suggestion"]["replaces"])
         url = f"/api/taxon-matches/{self.higher.id}/decide/"
         refused = self.client.post(url, {"decision": "accepted"}, format="json")
         self.assertEqual(refused.status_code, 400)
@@ -868,18 +986,18 @@ class FinishReviewApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["applied"])
         self.table.refresh_from_db()
-        self.assertEqual(list(self.table.df.scientificName[:2]), ["Dinychus", "Dinychus"])
+        self.assertEqual(list(self.table.df.scientificName[:3]), ["Dinychus", "Dinychus", "Pająki"])  # kept: the label fills it
         self.assertEqual(list(self.table.df.species), ["Dinychus", "Dinychus", "Pająki", "Zieminek"])
 
         message = self.agent.message_set.last()
         self.assertEqual(message.role, Message.Role.USER)
         content = message.openai_obj["content"]
         self.assertTrue(content.startswith(
-            "I have finished reviewing the taxon names: 1 name accepted, 1 name kept unchanged. "
+            "I have finished reviewing the taxon names: 1 name accepted, 1 name kept as the original. "
             "1 name (1 record) is left unreviewed."
         ))
         self.assertIn("[NOTE: ChatIPT applied the reviewed taxon names itself", content)
-        self.assertIn("Applied reviewed names for 1 labels to 2 rows", content)
+        self.assertIn("Applied reviewed names for 1 labels to 3 rows", content)
         self.assertEqual(response.json()["message"]["id"], message.id)
         ensure_work.assert_called_once_with(self.dataset.id)
 

@@ -1,14 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DECISION_LABELS, GROUPS, PAGE_SIZE, ariaPressed, carriedMessage, checkMessage, choiceGroups, choiceLabel,
-  classificationContext, classificationNotice, decisionBody, decisionResult, groupChoiceBody, groupExplanation,
-  groupOptions, groupQuery, groupTitle, isChecking, isEditable, needsConfirmation, optionNote, pageCount, progress,
-  reasonText, replacementWarning, rowStatus, selectedGroupChoice, skippedMessage, unconfirmedMessage,
+  DECISION_LABELS, GROUPS, PAGE_SIZE, ariaPressed, carriedMessage, checkMessage, choiceGroups,
+  classificationNotice, conversionChoices, conversionDecision, decisionBody, decisionResult, groupChoiceBody, groupExplanation,
+  groupOptions, groupQuery, groupTitle, isChecking, isEditable, optionNote, pageCount, progress,
+  reasonText, rowStatus, selectedGroupChoice, skippedMessage, unconfirmedMessage,
 } from './conversionNames.mjs'
+import { choiceLabel, classificationContext, needsConfirmation, replacementWarning } from './nameReview.mjs'
 
 test('group copy has the requested choices and plain explanations', () => {
-  assert.deepEqual(GROUPS.check.buttons, { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' })
+  assert.deepEqual(GROUPS.check.buttons, { col: 'Use COL names', mine: 'Keep original names', manual: 'Review all manually' })
   assert.equal(GROUPS.uncertain.buttons.stem, 'Use the genus or family')
   for (const kind of Object.keys(GROUPS)) {
     assert.ok(groupTitle({ kind }))
@@ -95,6 +96,7 @@ test('row choice, formatting, and confirmation helpers cover alternatives and wa
   assert.equal(decisionResult({ decision: 'col', scientificName: 'Aus bus', scientificNameAuthorship: 'L.' }), 'Aus bus L.')
   assert.equal(decisionResult({ decision: 'empty' }), 'No name published')
   assert.equal(decisionResult({ decision: 'keep' }), 'Your text as written')
+  assert.equal(decisionResult({ decision: 'corrected', scientificName: 'Aus bux', scientificNameAuthorship: null, taxonRank: null }), 'Aus bux')
   assert.equal(reasonText({ reasons: [{ text: 'Different kingdom' }] }), 'Different kingdom')
   assert.equal(reasonText({}), '')
 })
@@ -104,6 +106,8 @@ test('decision body, query, and paging use bounded server requests', () => {
     action: 'names', plan_id: 'p', name_decisions: { 'Aus bus': { decision: 'col', usage_id: 123, confirm_coarser: true } },
   })
   assert.deepEqual(decisionBody('p', 'Aus bus', null).name_decisions['Aus bus'], null)
+  assert.deepEqual(decisionBody('p', 'Aus bus', 'corrected', undefined, { scientificName: 'Aus bux' }).name_decisions['Aus bus'],
+    { decision: 'corrected', scientificName: 'Aus bux' })
   const query = new URLSearchParams(groupQuery({ group: 'check:name', offset: 100, q: 'Aus bus' }))
   assert.equal(query.get('names_view'), 'group')
   assert.equal(query.get('names_group'), 'check:name')
@@ -147,4 +151,21 @@ test('no group copy uses the removed all/apply wording', () => {
 
 test('a rank change is part of the option note', () => {
   assert.equal(optionNote({ eligible: 2, broader: 2, rank: 2 }), '2 of these would become a broader group · 2 would change rank')
+})
+
+test('conversion names offer the shared choices and send them as name decisions', () => {
+  const col = { decision: 'col', usage: { id: 'C1', scientificName: 'Aus bus', scientificNameAuthorship: 'L.' }, same_name: true }
+  const homonym = { decision: 'alternative', usage: { id: 'C2', scientificName: 'Aus bus', taxonRank: 'genus' }, same_name: true, rank_note: 'a genus' }
+  const other = { decision: 'alternative', usage: { id: 'C3', scientificName: 'Aus cus' }, replaces: { text: 'changes your epithet' } }
+  const choices = conversionChoices({ rows: 2, col_choices: [col, homonym, other], stem: { scientificName: 'Aus', taxonRank: 'genus' } })
+  assert.deepEqual([choices.main.text, choices.main.usageId, choices.main.warning], ['Use Aus bus L.', 'C1', ''])
+  assert.equal(choices.stem.text, 'Use Aus')
+  assert.deepEqual(choices.sameName.map(choice => choice.text), ['Use Aus bus · genus — a genus'])
+  assert.deepEqual(choices.others.map(choice => [choice.text, choice.warning]),
+    [['Aus cus — changes your epithet', '“Aus cus” changes your epithet on 2 rows. Your text stays in verbatimIdentification.']])
+  assert.deepEqual(conversionDecision({ decision: 'keep' }), ['mine'])
+  assert.deepEqual(conversionDecision({ decision: 'search', usageId: 'X' }), ['alternative', 'X', { confirmCoarser: true }])
+  assert.deepEqual(conversionDecision({ decision: 'alternative', usageId: 'C3', confirmCoarser: true }), ['alternative', 'C3', { confirmCoarser: true }])
+  assert.deepEqual(conversionDecision({ decision: 'corrected', scientificName: 'Aus bux' }), ['corrected', undefined, { scientificName: 'Aus bux' }])
+  assert.deepEqual(conversionDecision({ decision: 'empty' }), ['empty'])
 })

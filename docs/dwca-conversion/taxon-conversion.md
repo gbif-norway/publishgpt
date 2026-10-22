@@ -320,8 +320,45 @@ plan id, with AI provenance and evidence-basis hashes.
 `scientificName`, its authorship and its rank empty. The supplied text fills
 `verbatimIdentification` wherever that would otherwise be empty.
 
-The publication workflow's review (`TaxonReviewModal`) uses the same
-confirmation. The serializer exposes `replacements` for the suggestion and for
+**Type a correction** (decision `corrected`) publishes a name the user types,
+for a name COL does not have. Every name offers it, one at a time, never in a
+group. The typed name replaces `scientificName` exactly as typed (whitespace
+normalised, at most 200 characters, `taxon_matching.corrected_name`); each row
+keeps its supplied authorship and rank, and no `taxonFormula` is written. A name
+COL has is picked from its COL options instead.
+
+**Searching Catalogue of Life.** Every name can also take any COL usage the
+user finds with "Search Catalogue of Life…" (ChecklistBank's suggest service).
+The picked usage is looked up by id (`taxon_matching.resolve_col_usage`) and
+saved as an `alternative` decision; picking it is itself the confirmation.
+
+**One review, two workflows.** The publication workflow's review
+(`TaxonReviewModal`) offers each name the same choices, worded the same, through
+the shared `NameReviewItem` and `NameChoices` components
+(`front-end/app/utils/nameReview.mjs` holds the shared wording): use COL's name,
+a same-name or other COL name, a searched COL name, Keep original, Type a
+correction, or Don't publish a name. Both apply the same write rules
+(`taxon_matching.written_fields`):
+
+| Choice | scientificName | Authorship | Rank |
+| --- | --- | --- | --- |
+| Keep original, split | The parsed name | Yours, else the parsed one | The parsed rank, else yours |
+| Keep original, as written | Yours, else the text as written | Yours | Yours |
+| Type a correction | The typed name | Yours | Yours |
+| Don't publish a name | Empty | Empty | Empty |
+| A COL name | COL's | COL's; yours (else the label's) only when it is your own name and COL has none; empty for another taxon | COL's; yours only when it is your own name and COL has none; empty for another taxon |
+
+"Keep original" splits the name with GBIF's name parser when the parts rebuild
+the text exactly and nothing qualifies the name (`own_name_kind`); the
+publication workflow parses the label when the choice is made, and keeps it as
+written when the parser is unavailable. "Yours" is the conversion row's supplied
+value, or the value already in the publication workflow's table. Each name shows
+what its decision writes, from these same rules (`preview_items`), limited in
+the publication workflow to the columns its table can hold. An accepted COL name
+there also fills empty higher-classification and `identificationQualifier`
+cells; the conversion writes `taxonFormula` instead.
+
+The publication workflow's COL choices need the same confirmation as here. The serializer exposes `replacements` for the suggestion and for
 each alternative. `decide` refuses such a usage without `confirm_coarser`. A name
 the reviewer searched for and picked is itself an explicit choice.
 
@@ -335,6 +372,8 @@ values.
 | --- | --- | --- |
 | Parsed split | The parsed rank | The user's own authorship is kept and differences are counted; the parsed one fills a blank |
 | COL name | COL's rank | COL's authorship; the supplied one survives only when COL has none for the same name |
+| Corrected name | The supplied rank | The supplied authorship |
+| Keep (as written) | The supplied rank | The supplied authorship |
 
 Replaced rank values are counted per name (`ranksReplaced`, `ranks_replaced`).
 Replaced authorships are counted as `authorshipReplaced`.

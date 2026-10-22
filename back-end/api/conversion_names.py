@@ -21,14 +21,15 @@ from django.conf import settings
 from django.utils import timezone
 
 from api import taxon_matching
-from api.taxon_matching import (HINT_RANKS, NAME_RULES_VERSION, RANK_ORDER, TaxonServiceError, authorships_agree, col_release,
-                                implied_rank, match_col, name_change, name_parts, split_qualifier)
+from api.taxon_matching import (GBIF_PARSER_URL, HINT_RANKS, INFRASPECIFIC_RANKS, NAME_RULES_VERSION, RANK_ORDER, TaxonServiceError,
+                                authorships_agree, col_authorship_agrees, col_release, corrected_name, implied_rank, match_col, name_change, name_parts,
+                                own_name_kind, parse_names, preview_items, rank_change, row_value, split_qualifier, summarize_parse,
+                                unread_trailing_text, written_fields)
 
 logger = logging.getLogger(__name__)
 
 DWC = 'http://rs.tdwg.org/dwc/terms/'
 NAME = DWC + 'scientificName'
-GBIF_PARSER_URL = 'https://api.gbif.org/v1/parser/name'
 # Source tables whose names are reviewed, and the converted tables the decisions are applied to.
 SOURCE_TABLES = {DWC + 'Occurrence': 'occurrence', DWC + 'Identification': 'identification'}
 OUTPUT_TABLES = ('occurrence', 'identification')
@@ -40,22 +41,16 @@ MAX_RUNS = 30
 LEASE_SECONDS = 900  # a names run is bounded by its budget, so a silent worker is reclaimed sooner than a review
 PAGE_SIZE = 100
 MAX_PAGE_SIZE = 500
-DECISIONS = ('parsed', 'col', 'alternative', 'keep', 'empty', 'stem')
+DECISIONS = ('parsed', 'col', 'alternative', 'keep', 'empty', 'stem', 'corrected')
 STATUSES = ('none', 'pending', 'running', 'incomplete', 'complete', 'error')
 REVIEW_STATUSES = {'review', 'reviewing'}
-# GBIF's parser reports a rank marker rather than a rank; only these are mapped to a DwC taxonRank.
-RANK_MARKERS = {'sp.': 'species', 'subsp.': 'subspecies', 'var.': 'variety', 'f.': 'form',
-                'subvar.': 'subvariety', 'subf.': 'subform', 'agg.': 'species aggregate'}
 CONTEXT_RANKS = ('kingdom', 'phylum', 'class', 'order', 'family')
 MAX_AUTHORSHIPS = 5  # distinct supplied authorships kept per label; more is "too many to agree"
 MAX_SOURCE_QUALIFIERS = 5
 MAX_BATCHES = 5  # bulk decisions that can still be undone; each keeps the snapshots it replaced
 _OVERLONG_SOURCE_ID = '\0overlong'
 UNCERTAIN_QUALIFIERS = {'sp.', 'spp.', 'indet.'}
-INFRASPECIFIC_RANKS = {'subspecies', 'variety', 'subvariety', 'form', 'subform'}
 MAX_HINT_VALUES = 10  # distinct values kept per rank for the lineage check; the UI shows the first two
-# Rank markers inside a name; any other word after the genus in an unparsed label may be an authorship.
-RANK_MARKER_WORDS = {'subsp.', 'ssp.', 'var.', 'subvar.', 'f.', 'fo.', 'forma', 'subf.', 'agg.', 'nothosubsp.', 'nothovar.', '×', 'x'}
 # "cf.", "aff.", "nr." or "?" anywhere in a label make the identification doubtful, even beside a trailing "sp.".
 # "sp. nov." / "sp. n.": an unnamed new species, never published as its genus without the user.
 _NEW_SPECIES = re.compile(r'\s+sp(?:ec)?\.?\s*n(?:ov)?\.?(?:\s|$)', re.IGNORECASE)
@@ -350,37 +345,6 @@ def checked(record):
 
 # Parsing and matching ----------------------------------------------------------------------------
 
-def summarize_parse(label, item):
-    """What review needs from one GBIF name-parser result."""
-    item = item or {}
-    with_marker = item.get('canonicalNameWithMarker') or item.get('canonicalName') or ''
-    complete = item.get('canonicalNameComplete') or ''
-    usable = bool(item.get('parsed')) and not item.get('parsedPartially') and item.get('type') == 'SCIENTIFIC' and bool(with_marker)
-    authorship = None
-    if with_marker and complete.startswith(with_marker + ' '):
-        authorship = complete[len(with_marker):].strip() or None  # the full authorship, year and brackets included
-    elif item.get('authorship') and complete != with_marker:
-        authorship = item['authorship']
-    rank = str(item.get('rank') or '').lower().replace('_', ' ') or RANK_MARKERS.get(item.get('rankMarker'))
-    if rank in {'unranked', 'infraspecific name', 'infrasubspecific name', 'informal'}:
-        rank = None
-    return {'type': item.get('type'), 'usable': usable, 'canonical': with_marker or None, 'authorship': authorship,
-            'rank': rank or None,
-            # The parts rebuild the supplied text exactly, so splitting loses and renames nothing.
-            'lossless': usable and complete == normal(label), 'splits': usable and bool(authorship)}
-
-
-def parse_names(labels, deadline=None):
-    """One summary per label from GBIF's name parser (batch POST)."""
-    if not labels:
-        return []
-    payload = taxon_matching._get_json('POST', GBIF_PARSER_URL, deadline=deadline, json=list(labels)) or []
-    if not isinstance(payload, list) or len(payload) != len(labels):
-        raise TaxonServiceError(f'GBIF name parser returned {len(payload) if isinstance(payload, list) else "an invalid response"} '
-                                f'results for {len(labels)} names.')
-    return [summarize_parse(label, item) for label, item in zip(labels, payload)]
-
-
 def compact_usage(usage):
     if not usage:
         return None
@@ -527,21 +491,10 @@ def authorship_agrees(record, usage):
     """
     parsed = record.get('parsed') or {}
     supplied = [*record.get('source_authorships', ()), *([parsed['authorship']] if parsed.get('usable') and parsed.get('authorship') else [])]
-    if record.get('authorships_truncated'):
-        return False
-    if not parsed.get('usable') and _unread_trailing_text(record):
-        # The parser could not read the label, and text after the name may be an authorship nobody can compare; not even
-        # COL's lack of one may replace it (the user's text is kept instead).
-        return False
-    theirs = (usage or {}).get('scientificNameAuthorship')
-    return not normal(theirs) or all(authorships_agree(value, theirs) for value in supplied)
-
-
-def _unread_trailing_text(record):
-    """An unparsed label has words after the first that are not plain epithets or rank markers ("Aus bus Smith, 1900",
-    "Larus argentatus s."): they may be an authorship nobody can compare."""
-    words = split_qualifier(record.get('label'))[0].split()[1:]
-    return any(not (word.casefold() in RANK_MARKER_WORDS or (word.islower() and word.replace('-', '').isalpha())) for word in words)
+    # Text after a name the parser could not read may be an authorship nobody can compare; not even COL's lack of one
+    # may replace it (the user's text is kept instead).
+    unreadable = bool(record.get('authorships_truncated')) or (not parsed.get('usable') and unread_trailing_text(record.get('label')))
+    return col_authorship_agrees(supplied, (usage or {}).get('scientificNameAuthorship'), unreadable)
 
 
 def unconfirmed(state):
@@ -736,17 +689,8 @@ def _usage_doubtful(record):
 
 
 def _rank_change(record, usage):
-    """What a COL usage does to the rank the source supplies for its own name ("makes your genus an order"); else None.
-
-    Compared for a uninomial supplied at genus or above, and for a trinomial supplied at a specific infraspecific rank.
-    """
-    source_rank, col_rank = record.get('source_rank'), (usage or {}).get('taxonRank')
-    if source_rank not in RANK_ORDER or col_rank not in RANK_ORDER or source_rank == col_rank:
-        return None
-    parts = len(name_parts(asserted_name(record)))
-    uninomial = parts == 1 and RANK_ORDER.index(source_rank) <= RANK_ORDER.index('genus')
-    trinomial = parts > 2 and source_rank in INFRASPECIFIC_RANKS and col_rank in INFRASPECIFIC_RANKS
-    return f'makes your {source_rank} {_article(col_rank)} {col_rank}' if uninomial or trinomial else None
+    """What a COL usage does to the rank the source supplies for its own name (taxon_matching.rank_change); else None."""
+    return rank_change(asserted_name(record), record.get('source_rank'), (usage or {}).get('taxonRank'))
 
 
 def _stem_confirmation(record, stem):
@@ -921,8 +865,7 @@ def row_default(record, classification):
     kind = classification.get('kind')
     if kind == 'auto':
         usage = (record.get('match') or {}).get('usage') or {}
-        parsed = record.get('parsed') or {}
-        mine = 'parsed' if parsed.get('usable') and parsed.get('lossless') else 'keep'
+        mine = own_name_kind(record.get('parsed'), qualifier_kind(record) is not None)
         return 'col' if authorship_agrees(record, usage) and not _usage_doubtful(record) else mine
     if kind == 'uncertain':
         return 'stem'
@@ -1156,8 +1099,7 @@ def build_decision(record, spec, state, by='user', group_kind=None):
         raise NameDecisionError('Choose a name decision.')
     requested = spec.get('decision')
     if requested == 'mine':
-        parsed = record.get('parsed') or {}
-        requested = 'parsed' if qualifier_kind(record) is None and parsed.get('usable') and parsed.get('lossless') else 'keep'
+        requested = own_name_kind(record.get('parsed'), qualifier_kind(record) is not None)
         spec = {**spec, 'decision': requested}
     if requested not in DECISIONS:
         raise NameDecisionError(f'Choose one of: {", ".join(DECISIONS)}.')
@@ -1177,6 +1119,13 @@ def build_decision(record, spec, state, by='user', group_kind=None):
     parsed, match = record.get('parsed') or {}, record.get('match') or {}
     if kind == 'empty':
         snapshot['scientificName'] = ''
+    elif kind == 'corrected':
+        if by != 'user':
+            raise NameDecisionError('Only you can type a corrected name.')
+        try:
+            snapshot.update(source='reviewer', scientificName=corrected_name(spec.get('scientificName')))
+        except ValueError as exc:
+            raise NameDecisionError(str(exc)) from exc
     elif kind in {'parsed', 'stem'}:
         if kind == 'stem':
             usage = stem_usage(record)
@@ -1207,6 +1156,12 @@ def build_decision(record, spec, state, by='user', group_kind=None):
         else:
             wanted = str(spec.get('usage_id')) if spec.get('usage_id') is not None else None
             usage = next((item for item in match.get('alternatives') or [] if wanted and str(item['id']) == wanted), None)
+            if usage is None and wanted and by == 'user' and spec.get('confirm_coarser') is True:
+                # A name the user searched Catalogue of Life for and picked is itself the explicit choice.
+                try:
+                    usage = {**taxon_matching.resolve_col_usage(wanted), 'matchType': None}
+                except TaxonServiceError as exc:
+                    raise NameDecisionError(f'Catalogue of Life could not be reached to look up that name: {exc}') from exc
         if not usage or not usage.get('scientificName'):
             raise NameDecisionError(f'There is no such Catalogue of Life name to accept for "{record["label"]}".')
         match_type = match.get('matchType') if kind == 'col' else usage.get('matchType')
@@ -1334,8 +1289,7 @@ def bulk_decide(conversion, group, decision):
             continue
         resolved = decision
         if decision == 'mine':
-            parsed = record.get('parsed') or {}
-            resolved = 'parsed' if qualifier_kind(record) is None and parsed.get('usable') and parsed.get('lossless') else 'keep'
+            resolved = own_name_kind(record.get('parsed'), qualifier_kind(record) is not None)
         if decision == 'col' and kind == 'auto':
             resolved = row_default(record, classification)
         if decision in {'col', 'stem'} and qualifier_kind(record) == 'uncertain':
@@ -1344,9 +1298,8 @@ def bulk_decide(conversion, group, decision):
             elif decision == 'col' and (record.get('match') or {}).get('usage'):
                 resolved = 'col'
         if decision in {'col', 'stem'} and not (stem_usage(record) if resolved == 'stem' else (record.get('match') or {}).get('usage')):
-            # No COL name to use: the user's own name, as "Keep my names" would write it.
-            parsed = record.get('parsed') or {}
-            resolved = 'parsed' if qualifier_kind(record) is None and parsed.get('usable') and parsed.get('lossless') else 'keep'
+            # No COL name to use: the user's own name, as "Keep original names" would write it.
+            resolved = own_name_kind(record.get('parsed'), qualifier_kind(record) is not None)
         changes[record['label']] = copy.deepcopy(previous)
         state['decisions'][record['label']] = build_decision(record, {'decision': resolved, 'batch': batch_id,
                                                                       'confirm_coarser': True}, state,
@@ -1523,7 +1476,10 @@ def apply_name_decisions(frames, name_review, source_names):
     source row, so an occurrence and the identification made from it agree:
     - a parsed split writes its rank; the supplied authorship is kept (a differing one is counted), the parsed one fills a blank;
     - a COL name writes COL's rank and authorship; the supplied ones survive only where COL has none for the same name;
-    - "don't publish a name" clears all three; "keep" only fills a blank scientificName with the supplied text.
+    - "don't publish a name" clears all three; "keep" only fills a blank scientificName with the supplied text, keeping
+      the supplied authorship and rank;
+    - a corrected name, typed by the user, writes that name with the row's supplied authorship and rank.
+    These rules are `taxon_matching.written_fields`, which the publication workflow's review applies too.
     Replaced ranks are counted per entry. A COL decision that replaces the asserted name with a coarser or different taxon
     and was never explicitly confirmed (decided before that check existed) is applied as "keep": the user's own name is
     published, never an empty one. Unreviewed labels leave the converter's output as it is.
@@ -1582,15 +1538,9 @@ def apply_name_decisions(frames, name_review, source_names):
             kind = decision['decision']
             entry['rows'][table] = len(rows)
             names, authorship, rank = column('scientificName'), column('scientificNameAuthorship'), column('taxonRank')
-            decided_name, decided_authorship = decision.get('scientificName') or '', decision.get('scientificNameAuthorship') or ''
-            # A COL name that is the asserted name may keep supplied parts COL lacks; a different name may not.
-            # A COL name that is the asserted name, or only corrects its spelling, may keep supplied parts COL lacks;
-            # a different name may not.
-            # A confirmed marker or rank change is another taxon: the supplied authorship is not carried over to it.
-            keeps_name = (kind in {'col', 'alternative', 'stem'} and not decision.get('rankChange')
-                          and (decision.get('changeKind') == 'spelling'
-                               or (decision.get('changeKind') is None
-                                   and same_name(records.get(label) or {'label': label}, {'scientificName': decided_name}))))
+            decided_authorship = decision.get('scientificNameAuthorship') or ''
+            record = records.get(label) or {'label': label}
+            outcomes = written_fields(kind, decision, keeps_name=_keeps_name(record, decision), label_authorship=_label_authorship(record))
             formula = decision.get('taxonFormula')
             if taxon_formula is None and table == 'identification' and formula:
                 taxon_formula = column('taxonFormula')
@@ -1602,27 +1552,17 @@ def apply_name_decisions(frames, name_review, source_names):
                 if supplied_rank is None and rank is not None:
                     supplied_rank = rank[position]
                 supplied_authorship, supplied_rank = normal(supplied_authorship), normal(supplied_rank)
-                if kind == 'keep':
-                    # The supplied text fills a blank scientificName; a name the converter already wrote stands.
-                    if names is not None and not normal(names[position]):
-                        names[position] = str(text)
-                    continue
-                if kind == 'empty':
-                    new_authorship, new_rank = '', ''
-                elif kind == 'parsed':
-                    new_authorship = supplied_authorship or decided_authorship
-                    if supplied_authorship and decided_authorship and supplied_authorship != normal(decided_authorship):
-                        entry['authorshipKept'] += 1
-                    new_rank = decision.get('taxonRank') or supplied_rank
-                else:
-                    label_authorship = normal(((records.get(label) or {}).get('parsed') or {}).get('authorship')) \
-                        if ((records.get(label) or {}).get('parsed') or {}).get('usable') else ''
-                    new_authorship = decided_authorship or ((supplied_authorship or label_authorship) if keeps_name else '')
-                    if supplied_authorship and supplied_authorship != normal(new_authorship):
-                        entry['authorshipReplaced'] += 1
-                    new_rank = decision.get('taxonRank') or (supplied_rank if keeps_name else '')
+                # The row's own values are its supplied authorship and rank, and the name the converter wrote; a kept
+                # name fills a blank scientificName with the row's own text as written.
+                new_name = row_value(outcomes['scientificName'], names[position] if names is not None else '', str(text))
+                new_authorship = row_value(outcomes['scientificNameAuthorship'], supplied_authorship, str(text)) or ''
+                new_rank = row_value(outcomes['taxonRank'], supplied_rank, str(text)) or ''
+                if kind == 'parsed' and supplied_authorship and decided_authorship and supplied_authorship != normal(decided_authorship):
+                    entry['authorshipKept'] += 1
+                if kind in {'col', 'alternative', 'stem'} and supplied_authorship and supplied_authorship != normal(new_authorship):
+                    entry['authorshipReplaced'] += 1
                 if names is not None:
-                    names[position] = decided_name
+                    names[position] = new_name
                 row_formula = formula
                 # A doubtful formula ("A cf.") from the label itself holds for every row; one from the qualifier column
                 # holds only for the rows that say it.
@@ -1676,6 +1616,32 @@ def apply_name_decisions(frames, name_review, source_names):
         'entries': [entries[label] for label in sorted(entries)],
     }
     return result, section
+
+
+def _keeps_name(record, decision):
+    """A COL name that is the asserted name, or only corrects its spelling, may keep supplied parts COL lacks; a different
+    name may not. A confirmed marker or rank change is another taxon: the supplied authorship is not carried over to it."""
+    return (decision.get('decision') in {'col', 'alternative', 'stem'} and not decision.get('rankChange')
+            and (decision.get('changeKind') == 'spelling'
+                 or (decision.get('changeKind') is None
+                     and same_name(record, {'scientificName': decision.get('scientificName') or ''}))))
+
+
+def _label_authorship(record):
+    parsed = record.get('parsed') or {}
+    return normal(parsed.get('authorship')) if parsed.get('usable') else ''
+
+
+def decision_preview(record, decision):
+    """What applying a decision writes, as `taxon_matching.preview_items`; [] for an undecided name."""
+    if not decision:
+        return []
+    items = preview_items(written_fields(decision['decision'], decision, keeps_name=_keeps_name(record, decision),
+                                         label_authorship=_label_authorship(record)), record['label'])
+    if decision.get('taxonFormula'):
+        # Written to identification rows whose taxonFormula is empty, from each row's own qualifier where it has one.
+        items.append({'field': 'taxonFormula', 'how': 'yours', 'value': decision['taxonFormula']})
+    return items
 
 
 def _unconfirmed_replacement(record, decision):
@@ -1775,6 +1741,8 @@ def _entry(record, decisions, held=(), classification=None):
                          if eligible(record, option, classification, decisions)],
             'row_default': row_default(record, classification),
             'stem': stem_usage(record) if qualifier_kind(record) == 'uncertain' else None,
+            # What the decision writes; a held decision is applied as "keep".
+            'preview': decision_preview(record, {'decision': 'keep'} if record['label'] in held else decision),
             'stem_confirm': _stem_confirmation(record, stem_usage(record)) if qualifier_kind(record) == 'uncertain' else None}
 
 

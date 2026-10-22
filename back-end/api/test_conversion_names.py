@@ -384,6 +384,16 @@ class OverlayTests(SimpleTestCase):
         self.assertEqual(result['occurrence']['taxonRank'].tolist()[:2], ['', ''])
         self.assertEqual(section['entries'][0]['ranksReplaced'], {'species': 1})
 
+    def test_a_corrected_name_replaces_the_name_and_keeps_each_rows_authorship_and_rank(self):
+        result, section = apply(frames(), review({'Aus bus L.': decision('corrected', 'Aus bux', source='reviewer')}))
+        occurrence = result['occurrence']
+        self.assertEqual(occurrence['scientificName'].tolist(), ['Aus bux', 'Aus bux', '', ''])
+        # Only the name is typed: each row keeps the authorship and rank it supplied.
+        self.assertEqual(occurrence['scientificNameAuthorship'].tolist(), ['', 'Linnaeus', '', ''])
+        self.assertEqual(occurrence['taxonRank'].tolist(), ['', 'species', '', ''])
+        self.assertEqual(occurrence['verbatimIdentification'].tolist(), frames()['occurrence']['verbatimIdentification'].tolist())
+        self.assertEqual((section['entries'][0]['ranksReplaced'], section['decision_counts']), ({}, {'corrected': 1}))
+
     def test_col_decisions_carry_provenance_into_the_report(self):
         col = decision('col', 'Aus bus', 'L.', 'species', source='col', usageId='COL-AUS', matchType='EXACT',
                        checklist={'checklistKey': 'col-key', 'alias': 'COL26.6 XR'}, taxonomicStatus='accepted')
@@ -675,6 +685,51 @@ class NameDecisionAPITests(NamesCase):
         self.post('names', name_decisions={'Eus sp.': None})
         self.assertEqual(self.conversion.decisions, {'column:0:1': 'preserve'})
         self.assertEqual(self.state()['decision_sources']['column:0:1']['source'], 'user')
+
+    def test_a_typed_correction_is_saved_as_the_users_own_name(self):
+        self.reviewed()
+        response = self.post('names', name_decisions={'Eus sp.': {'decision': 'corrected', 'scientificName': '  Eus  bus '}})
+        self.assertEqual(response.status_code, 200, response.data)
+        saved = self.conversion.name_review['decisions']['Eus sp.']
+        self.assertEqual((saved['decision'], saved['scientificName'], saved['scientificNameAuthorship'], saved['taxonRank'], saved['by']),
+                         ('corrected', 'Eus bus', None, None, 'user'))
+        self.assertEqual(self.post('names', name_decisions={'Eus sp.': {'decision': 'corrected', 'scientificName': ' '}}).status_code, 400)
+        # A typed name is only ever one user's choice for one name.
+        self.assertEqual(self.post('names', bulk={'group': 'auto', 'decision': 'corrected'}).status_code, 400)
+
+    def test_a_searched_col_name_is_resolved_and_needs_no_second_confirmation(self):
+        self.reviewed()
+        usage = {'id': 'SEARCHED', 'scientificName': 'Eus major', 'scientificNameAuthorship': 'Smith', 'taxonRank': 'species',
+                 'status': 'accepted', 'classification': {'kingdom': 'Animalia'}}
+        with patch.object(names.taxon_matching, 'resolve_col_usage', return_value=usage) as resolve:
+            # Only a confirmed pick is looked up; an unknown id is otherwise refused.
+            refused = self.post('names', name_decisions={'Eus sp.': {'decision': 'alternative', 'usage_id': 'SEARCHED'}})
+            self.assertEqual(refused.status_code, 400)
+            resolve.assert_not_called()
+            response = self.post('names', name_decisions={'Eus sp.': {'decision': 'alternative', 'usage_id': 'SEARCHED', 'confirm_coarser': True}})
+        self.assertEqual(response.status_code, 200, response.data)
+        resolve.assert_called_once_with('SEARCHED')
+        saved = self.conversion.name_review['decisions']['Eus sp.']
+        self.assertEqual((saved['scientificName'], saved['usageId'], saved['taxonRank']), ('Eus major', 'SEARCHED', 'species'))
+
+    def test_each_name_shows_what_its_decision_writes(self):
+        self.reviewed()
+        self.post('names', name_decisions={'Aus bus L.': {'decision': 'mine'}, 'Eus sp.': {'decision': 'empty'},
+                                           'Cus dus (Smith) Jones 1900': {'decision': 'corrected', 'scientificName': 'Cus dux'}})
+        labels = {entry['label']: entry for entry in self.state()['name_review']['labels']}
+        self.assertEqual(labels['Aus bus L.']['preview'], [
+            {'field': 'scientificName', 'how': 'set', 'value': 'Aus bus'},
+            {'field': 'scientificNameAuthorship', 'how': 'yours', 'value': 'L.'},
+            {'field': 'taxonRank', 'how': 'set', 'value': 'species'},
+        ])
+        self.assertEqual({item['how'] for item in labels['Eus sp.']['preview']}, {'empty'})
+        self.assertEqual(labels['Cus dus (Smith) Jones 1900']['preview'], [
+            {'field': 'scientificName', 'how': 'set', 'value': 'Cus dux'},
+            {'field': 'scientificNameAuthorship', 'how': 'yours', 'value': None},
+            {'field': 'taxonRank', 'how': 'yours', 'value': None},
+        ])
+        self.post('names', name_decisions={'Eus sp.': None})
+        self.assertEqual(next(entry for entry in self.state()['name_review']['labels'] if entry['label'] == 'Eus sp.')['preview'], [])
 
     def test_bulk_actions_decide_only_pending_labels_they_may(self):
         self.reviewed()

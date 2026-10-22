@@ -42,16 +42,17 @@ class TaxonNameMatchSerializer(serializers.ModelSerializer):
     suggestion_status = serializers.CharField(read_only=True)
     preprocessed = serializers.SerializerMethodField()
     bulk_acceptable = serializers.SerializerMethodField()
-    replacements = serializers.SerializerMethodField()
+    choice_checks = serializers.SerializerMethodField()
+    preview = serializers.SerializerMethodField()
 
     class Meta:
         model = TaxonNameMatch
         fields = [
             'id', 'dataset', 'verbatim_label', 'context_key', 'context_note', 'record_count',
-            'source_table', 'context_column', 'query', 'preprocessing_note', 'preprocessed', 'bulk_acceptable', 'replacements',
+            'source_table', 'context_column', 'query', 'preprocessing_note', 'preprocessed', 'bulk_acceptable', 'choice_checks',
             'identification_qualifier',
             'match', 'suggestion_status', 'review_aids', 'col_release', 'matched_at',
-            'decision', 'decided_usage', 'decided_by', 'decided_at', 'applied_at',
+            'decision', 'decided_usage', 'decided_by', 'decided_at', 'applied_at', 'preview',
         ]
         read_only_fields = fields
 
@@ -63,18 +64,22 @@ class TaxonNameMatchSerializer(serializers.ModelSerializer):
         from api.taxon_matching import bulk_acceptable
         return bulk_acceptable(obj)
 
-    def get_replacements(self, obj):
+    def get_choice_checks(self, obj):
         # What accepting the suggestion or an alternative would replace; such a choice needs confirm_coarser.
-        from api.taxon_matching import choice_replacements
-        return choice_replacements(obj)
+        from api.taxon_matching import choice_checks
+        return choice_checks(obj)
+
+    def get_preview(self, obj):
+        # What applying the decision writes to each column, by the rules both name reviews share.
+        from api.taxon_matching import decision_preview
+        return decision_preview(obj)
 
 
 class TaxonDecisionSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=TaxonNameMatch.Decision.choices)
     usage_id = serializers.CharField(required=False, allow_blank=False)
+    # The reviewer's typed name for a "corrected" decision.
     scientificName = serializers.CharField(required=False, allow_blank=True)
-    scientificNameAuthorship = serializers.CharField(required=False, allow_blank=True)
-    taxonRank = serializers.CharField(required=False, allow_blank=True)
     confirm_coarser = serializers.BooleanField(required=False, default=False)
 
 

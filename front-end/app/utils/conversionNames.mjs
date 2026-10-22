@@ -1,5 +1,6 @@
-// Pure helpers for the conversion's scientific-name review.
-import { formatName } from './taxonReview.mjs'
+// Pure helpers for the conversion's scientific-name review; the choices and wording it shares with the chat's review are in
+// nameReview.mjs.
+import { choiceLabel, decisionSummary, formatName, replacementWarning } from './nameReview.mjs'
 
 export const DECISION_LABELS = {
   parsed: 'Parsed name and authorship',
@@ -8,20 +9,18 @@ export const DECISION_LABELS = {
   keep: 'Kept as supplied',
   empty: 'No name published',
   stem: 'Published without “sp.”',
+  corrected: 'Corrected name',
 }
 
 export const GROUPS = {
-  check: { title: 'Check against Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
-  unconfirmed: { title: 'Not found exactly in Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
-  spelling: { title: 'Spelling differs from Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
-  uncertain: { title: 'Identified to genus or family (sp.)', buttons: { stem: 'Use the genus or family', mine: 'Keep my names', manual: 'Review all manually' } },
-  auto: { title: 'Matched exactly', buttons: { col: 'Use COL names', mine: 'Keep my names', manual: 'Review all manually' } },
+  check: { title: 'Check against Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep original names', manual: 'Review all manually' } },
+  unconfirmed: { title: 'Not found exactly in Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep original names', manual: 'Review all manually' } },
+  spelling: { title: 'Spelling differs from Catalogue of Life', buttons: { col: 'Use COL names', mine: 'Keep original names', manual: 'Review all manually' } },
+  uncertain: { title: 'Identified to genus or family (sp.)', buttons: { stem: 'Use the genus or family', mine: 'Keep original names', manual: 'Review all manually' } },
+  auto: { title: 'Matched exactly', buttons: { col: 'Use COL names', mine: 'Keep original names', manual: 'Review all manually' } },
 }
 
-const CONTEXT_RANKS = ['kingdom', 'phylum', 'class']
 export const PAGE_SIZE = 100
-
-export const classificationContext = usage => CONTEXT_RANKS.map(rank => usage?.classification?.[rank]).filter(Boolean).join(' › ')
 
 export const choiceGroups = entry => {
   const choices = entry?.col_choices || []
@@ -31,28 +30,34 @@ export const choiceGroups = entry => {
   return { main, sameName: fresh.filter(choice => choice.same_name && !choice.replaces), others: fresh.filter(choice => !(choice.same_name && !choice.replaces)) }
 }
 
-export const choiceLabel = choice => {
-  const usage = choice?.usage
-  if (!usage) return ''
-  return [formatName(usage), usage.taxonRank, classificationContext(usage)].filter(Boolean).join(' · ')
+// The shared choices for one name (see NameChoices): COL's pick, the stem of an "sp." name, then other COL names.
+export const conversionChoices = entry => {
+  const { main, sameName, others } = choiceGroups(entry)
+  const shape = (choice, text) => ({ decision: choice.decision, usage: choice.usage, usageId: choice.usage?.id, text,
+    warning: replacementWarning(choice, entry.rows) })
+  return {
+    main: main && shape(main, `Use ${formatName(main.usage)}`),
+    stem: entry?.stem?.scientificName ? { decision: 'stem', usage: entry.stem, text: `Use ${formatName(entry.stem)}`,
+      warning: replacementWarning({ usage: entry.stem, rank_change: entry.stem_confirm }, entry.rows) } : null,
+    sameName: sameName.map(choice => shape(choice, `Use ${choiceLabel(choice)}${choice.rank_note ? ` — ${choice.rank_note}` : ''}`)),
+    others: others.map(choice => shape(choice, `${choiceLabel(choice)}${choice.replaces ? ` — ${choice.replaces.text}` : ''}`)),
+    corrects: main?.corrects ? `COL ${main.corrects}.` : '',
+  }
 }
 
-export const needsConfirmation = choice => Boolean(choice?.replaces || choice?.authorship_differs || choice?.rank_change)
-
-export const replacementWarning = (choice, rows) => {
-  if (!needsConfirmation(choice)) return ''
-  const count = rows ? ` on ${rows.toLocaleString()} ${rows === 1 ? 'row' : 'rows'}` : ''
-  if (!choice.replaces && choice.rank_change) return `“${choice.usage.scientificName}” ${choice.rank_change}${count}. It may be a different taxon with the same name.`
-  if (!choice.replaces) return `Catalogue of Life writes the authorship of “${choice.usage.scientificName}” as “${choice.usage.scientificNameAuthorship}”, which is not the authorship in your data; it would replace yours${count}. It may be a different taxon with the same name.`
-  return `“${choice.usage.scientificName}” ${choice.replaces.text}${count}. Your text stays in verbatimIdentification.`
+// One of the shared choices as a name decision: [decision, COL usage id, options] for decisionBody.
+export const conversionDecision = ({ decision, usageId, confirmCoarser, scientificName }) => {
+  const options = confirmCoarser ? { confirmCoarser: true } : {}
+  if (decision === 'col' || decision === 'alternative') return [decision, usageId, options]
+  if (decision === 'stem') return ['stem', undefined, options]
+  // A name the user searched for and picked is itself the explicit choice, so it is sent confirmed.
+  if (decision === 'search') return ['alternative', usageId, { confirmCoarser: true }]
+  if (decision === 'keep') return ['mine']
+  if (decision === 'corrected') return ['corrected', undefined, { scientificName }]
+  return [decision]
 }
 
-export const decisionResult = decision => {
-  if (!decision) return ''
-  if (decision.decision === 'empty') return 'No name published'
-  if (decision.decision === 'keep') return 'Your text as written'
-  return `${formatName(decision)}${decision.taxonRank ? ` (${decision.taxonRank})` : ''}`
-}
+export const decisionResult = decision => decisionSummary(decision?.decision, decision || {})
 
 const CHECK_TITLES = {
   name: 'Catalogue of Life has a different name',
@@ -139,8 +144,9 @@ export const rowStatus = entry => {
 }
 
 export const reasonText = entry => entry?.reasons?.[0]?.text || ''
-export const decisionBody = (planId, label, kind, usageId, { confirmCoarser = false } = {}) => ({ action: 'names', plan_id: planId,
-  name_decisions: { [label]: kind ? { decision: kind, ...(usageId ? { usage_id: usageId } : {}), ...(confirmCoarser ? { confirm_coarser: true } : {}) } : null } })
+export const decisionBody = (planId, label, kind, usageId, { confirmCoarser = false, scientificName } = {}) => ({ action: 'names', plan_id: planId,
+  name_decisions: { [label]: kind ? { decision: kind, ...(usageId ? { usage_id: usageId } : {}), ...(confirmCoarser ? { confirm_coarser: true } : {}),
+    ...(scientificName !== undefined ? { scientificName } : {}) } : null } })
 export const groupQuery = ({ group, offset = 0, limit = PAGE_SIZE, q = '' } = {}) => {
   const params = new URLSearchParams({ names_view: 'group', names_group: group || '', names_offset: String(offset), names_limit: String(limit) })
   if (q) params.set('names_q', q)

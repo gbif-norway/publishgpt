@@ -1203,10 +1203,7 @@ class TaxonNameMatchViewSet(viewsets.ReadOnlyModelViewSet):
                     user=request.user,
                     usage_id=data.get('usage_id'),
                     confirm_coarser=data.get('confirm_coarser', False),
-                    name={
-                        key: data.get(key)
-                        for key in ('scientificName', 'scientificNameAuthorship', 'taxonRank')
-                    },
+                    scientific_name=data.get('scientificName'),
                 )
             except ValueError as exc:
                 raise ValidationError({'detail': str(exc)})

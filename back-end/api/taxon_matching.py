@@ -10,6 +10,7 @@ stored for review and only reviewer decisions are written back to the data.
 """
 
 import json
+import logging
 import re
 import time
 import unicodedata
@@ -19,8 +20,11 @@ import pandas as pd
 import requests
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
+
 
 GBIF_MATCH_URL = "https://api.gbif.org/v2/species/match"
+GBIF_PARSER_URL = "https://api.gbif.org/v1/parser/name"
 GBIF_MATCH_METADATA_URL = "https://api.gbif.org/v2/species/match/metadata"
 CHECKLISTBANK_API = "https://api.checklistbank.org"
 USER_AGENT = "ChatIPT (GBIF Norway; https://chatipt.svc.gbif.no)"
@@ -283,10 +287,39 @@ def name_change(asserted, usage, match_type=None, asserted_rank=None, hints=None
     return {**change, "kind": "epithet", "text": f"replaces your name with {usage['scientificName']}"}
 
 
-def coarser_replacement(asserted, usage, match_type=None, asserted_rank=None, hints=None):
-    """The change accepting `usage` would make when it needs the user's explicit confirmation; None otherwise."""
-    change = name_change(asserted, usage, match_type, asserted_rank, hints)
-    return change if change and change["confirm"] else None
+INFRASPECIFIC_RANKS = {"subspecies", "variety", "subvariety", "form", "subform"}
+# Rank markers inside a name; any other word after the genus in an unparsed label may be an authorship.
+RANK_MARKER_WORDS = {"subsp.", "ssp.", "var.", "subvar.", "f.", "fo.", "forma", "subf.", "agg.", "nothosubsp.", "nothovar.", "×", "x"}
+
+
+def rank_change(asserted, supplied_rank, col_rank):
+    """What COL's rank does to the rank the source supplies for its own name ("makes your genus an order"); else None.
+
+    Compared for a uninomial supplied at genus or above, and for a trinomial supplied at a specific infraspecific rank.
+    """
+    if supplied_rank not in RANK_ORDER or col_rank not in RANK_ORDER or supplied_rank == col_rank:
+        return None
+    parts = len(name_parts(asserted))
+    uninomial = parts == 1 and RANK_ORDER.index(supplied_rank) <= RANK_ORDER.index("genus")
+    trinomial = parts > 2 and supplied_rank in INFRASPECIFIC_RANKS and col_rank in INFRASPECIFIC_RANKS
+    article = "an" if col_rank[:1] in "aeiou" else "a"
+    return f"makes your {supplied_rank} {article} {col_rank}" if uninomial or trinomial else None
+
+
+def unread_trailing_text(label):
+    """An unparsed label has words after the first that are not plain epithets or rank markers ("Aus bus Smith, 1900",
+    "Larus argentatus s."): they may be an authorship nobody can compare."""
+    words = split_qualifier(label)[0].split()[1:]
+    return any(not (word.casefold() in RANK_MARKER_WORDS or (word.islower() and word.replace("-", "").isalpha())) for word in words)
+
+
+def col_authorship_agrees(supplied, theirs, unreadable=False):
+    """COL's authorship (theirs) names the authors of every supplied authorship, or COL has none, so writing it replaces
+    nothing of the user's. An unreadable supplied authorship (too many to compare, or text after a name the parser could
+    not read) never agrees."""
+    if unreadable:
+        return False
+    return not " ".join(str(theirs or "").split()) or all(authorships_agree(value, theirs) for value in supplied)
 
 
 # Standard abbreviations too short for prefix matching that name one author unambiguously.
@@ -748,6 +781,42 @@ def resolve_col_usage(usage_id):
     return resolved
 
 
+# GBIF's parser reports a rank marker rather than a rank; only these are mapped to a DwC taxonRank.
+RANK_MARKERS = {"sp.": "species", "subsp.": "subspecies", "var.": "variety", "f.": "form",
+                "subvar.": "subvariety", "subf.": "subform", "agg.": "species aggregate"}
+
+
+def summarize_parse(label, item):
+    """What review needs from one GBIF name-parser result."""
+    item = item or {}
+    with_marker = item.get("canonicalNameWithMarker") or item.get("canonicalName") or ""
+    complete = item.get("canonicalNameComplete") or ""
+    usable = bool(item.get("parsed")) and not item.get("parsedPartially") and item.get("type") == "SCIENTIFIC" and bool(with_marker)
+    authorship = None
+    if with_marker and complete.startswith(with_marker + " "):
+        authorship = complete[len(with_marker):].strip() or None  # the full authorship, year and brackets included
+    elif item.get("authorship") and complete != with_marker:
+        authorship = item["authorship"]
+    rank = str(item.get("rank") or "").lower().replace("_", " ") or RANK_MARKERS.get(item.get("rankMarker"))
+    if rank in {"unranked", "infraspecific name", "infrasubspecific name", "informal"}:
+        rank = None
+    return {"type": item.get("type"), "usable": usable, "canonical": with_marker or None, "authorship": authorship,
+            "rank": rank or None,
+            # The parts rebuild the supplied text exactly, so splitting loses and renames nothing.
+            "lossless": usable and complete == " ".join(str(label or "").split()), "splits": usable and bool(authorship)}
+
+
+def parse_names(labels, deadline=None):
+    """One summary per label from GBIF's name parser (batch POST)."""
+    if not labels:
+        return []
+    payload = _get_json("POST", GBIF_PARSER_URL, deadline=deadline, json=list(labels)) or []
+    if not isinstance(payload, list) or len(payload) != len(labels):
+        raise TaxonServiceError(f"GBIF name parser returned {len(payload) if isinstance(payload, list) else 'an invalid response'} "
+                                f"results for {len(labels)} names.")
+    return [summarize_parse(label, item) for label, item in zip(labels, payload)]
+
+
 # --- Dataset-level workflow -------------------------------------------------------------------
 
 # Qualifiers that express uncertainty rather than rank; "sp." is carried by the genus rank.
@@ -793,9 +862,111 @@ def distinct_labels(df, verbatim_column, context_column=None):
     return counts
 
 
+MAX_SUPPLIED_AUTHORSHIPS = 5
+
+
+def supplied_context(df, verbatim_column, context_column=None):
+    """Per (label, context_key): the authorships and the one rank the table itself gives the label's rows."""
+    columns = {field: df[field].tolist() for field in ("scientificNameAuthorship", "taxonRank") if field in df.columns}
+    found = {}
+    for position, key in enumerate(_row_keys(df, verbatim_column, context_column)):
+        if not key[0]:
+            continue
+        entry = found.setdefault(key, {"authorships": set(), "ranks": set()})
+        authorship = _clean_label(columns["scientificNameAuthorship"][position]) if "scientificNameAuthorship" in columns else None
+        rank = _clean_label(columns["taxonRank"][position]) if "taxonRank" in columns else None
+        if authorship:
+            entry["authorships"].add(authorship)
+        if rank:
+            entry["ranks"].add(rank.casefold())
+    return {key: {"authorships": sorted(entry["authorships"])[:MAX_SUPPLIED_AUTHORSHIPS],
+                  "truncated": len(entry["authorships"]) > MAX_SUPPLIED_AUTHORSHIPS,
+                  "rank": next(iter(entry["ranks"])) if len(entry["ranks"]) == 1 else None}
+            for key, entry in found.items()}
+
+
 def default_query(label):
     name, qualifier = split_qualifier(label)
     return {"scientificName": name}, qualifier
+
+
+MAX_CORRECTED_NAME_CHARS = 200
+
+
+def corrected_name(text):
+    """A name the reviewer typed, whitespace-normalised. Both reviews publish it as scientificName exactly as typed."""
+    name = " ".join(str(text or "").split())
+    if not name:
+        raise ValueError("Type the corrected name.")
+    if len(name) > MAX_CORRECTED_NAME_CHARS:
+        raise ValueError(f"A corrected name can be at most {MAX_CORRECTED_NAME_CHARS} characters.")
+    return name
+
+# --- What a name decision writes (both reviews) ------------------------------------------------
+
+NAME_FIELDS = ("scientificName", "scientificNameAuthorship", "taxonRank")
+
+
+def own_name_kind(parsed, qualified):
+    """What "Keep original" writes: the parser's split ("parsed") when it rebuilds the label exactly and nothing
+    qualifies the name ("sp.", "cf."), else the label as written ("keep")."""
+    parsed = parsed or {}
+    return "parsed" if not qualified and parsed.get("usable") and parsed.get("lossless") else "keep"
+
+
+def written_fields(kind, decided, keeps_name=False, label_authorship=None):
+    """What a name decision writes to each of NAME_FIELDS, for both reviews and their previews.
+
+    Each field maps to (how, value): "set" writes value ("" empties the cell); "yours" keeps the row's own value;
+    "yours_or" keeps the row's own value and writes value where the row has none; "yours_or_label" does so with the
+    row's own label as written.
+    - keep: the label fills an empty scientificName; authorship and rank stay the row's own.
+    - parsed: the parser's name, and its rank when it has one; the row's own authorship, else the parsed one.
+    - corrected: the typed name; authorship and rank stay the row's own.
+    - empty: no name, authorship or rank.
+    - any COL name: COL's name, rank and authorship. When it is the user's own name (keeps_name), the row's authorship
+      (else the label's) and rank stand where COL has none; another taxon gets none of them.
+    """
+    decided = decided or {}
+    name, authorship, rank = (decided.get(field) or "" for field in NAME_FIELDS)
+    yours = ("yours", None)
+    if kind == "keep":
+        return {"scientificName": ("yours_or_label", None), "scientificNameAuthorship": yours, "taxonRank": yours}
+    if kind == "empty":
+        return dict.fromkeys(NAME_FIELDS, ("set", ""))
+    if kind == "corrected":
+        return {"scientificName": ("set", name), "scientificNameAuthorship": yours, "taxonRank": yours}
+    if kind == "parsed":
+        return {"scientificName": ("set", name), "scientificNameAuthorship": ("yours_or", authorship),
+                "taxonRank": ("set", rank) if rank else yours}
+    return {"scientificName": ("set", name),
+            "scientificNameAuthorship": ("set", authorship) if authorship
+            else ("yours_or", label_authorship or "") if keeps_name else ("set", ""),
+            "taxonRank": ("set", rank) if rank else yours if keeps_name else ("set", "")}
+
+
+def row_value(outcome, own, label):
+    """One row's value for one field of `written_fields`, given the row's own value and label."""
+    how, value = outcome
+    if how == "set":
+        return value
+    if how == "yours" or not _is_blank(own):
+        return own
+    return label if how == "yours_or_label" else (value or own)
+
+
+def preview_items(fields, label):
+    """`written_fields` as the reviews show them: [{field, how, value}], how being "set", "empty" or "yours" (the row's
+    own value, or value where it has none)."""
+    items = []
+    for field in NAME_FIELDS:
+        how, value = fields[field]
+        if how == "set":
+            items.append({"field": field, "how": "set" if value else "empty", "value": value or None})
+        else:
+            fill = label if how == "yours_or_label" else value
+            items.append({"field": field, "how": "yours", "value": fill or None})
+    return items
 
 
 def _scope(dataset, source_table, context_column):
@@ -840,6 +1011,7 @@ def record_matches(dataset, source_table, df, verbatim_column, context_column=No
     overrides = overrides or {}
     hints = {rank: value for rank, value in (hints or {}).items() if rank in HINT_RANKS and value}
     counts = distinct_labels(df, verbatim_column, context_column)
+    supplied = supplied_context(df, verbatim_column, context_column)
     existing = {(row.verbatim_label, row.context_key): row for row in _scope(dataset, source_table, context_column)}
 
     to_match = []
@@ -855,6 +1027,7 @@ def record_matches(dataset, source_table, df, verbatim_column, context_column=No
         column_changed = row.pk is not None and row.verbatim_column != verbatim_column
         row.verbatim_column = verbatim_column
         row.identification_qualifier = default_query(label)[1] or ""
+        row.supplied = supplied.get(key, {})
         if key in overrides:
             query, note = {**hints, **overrides[key]["query"]}, overrides[key].get("note") or ""
         elif row.query:
@@ -886,13 +1059,15 @@ def record_matches(dataset, source_table, df, verbatim_column, context_column=No
         for start in range(0, len(to_match), PROGRESS_CHUNK):
             chunk = to_match[start:start + PROGRESS_CHUNK]
             summaries = match_col([row.query for row in chunk], deadline=deadline)
+            parsed = _parse_labels(chunk, deadline)
             now = timezone.now()
             for row, summary in zip(chunk, summaries):
                 row.match = summary
+                row.parsed = parsed.get(row.verbatim_label, {})
                 row.col_release = release
                 row.matched_at = now
                 row.review_aids = {} if summary["status"] in {"exact", "variant"} else {"pending": True}
-                row.save(update_fields=["match", "col_release", "matched_at", "review_aids", "updated_at"])
+                row.save(update_fields=["match", "parsed", "col_release", "matched_at", "review_aids", "updated_at"])
                 saved += 1
                 if _aids_pending(row):
                     aid_rows.append(row)
@@ -902,6 +1077,17 @@ def record_matches(dataset, source_table, df, verbatim_column, context_column=No
             raise
         return current, False
     return current, True
+
+
+def _parse_labels(rows, deadline):
+    """GBIF's name parser on the unqualified labels, by label; {} when the parser is unavailable, as it only refines
+    the authorship checks and "Keep original"."""
+    labels = sorted({row.verbatim_label for row in rows if not row.identification_qualifier})
+    try:
+        return dict(zip(labels, parse_names(labels, deadline=deadline)))
+    except TaxonServiceError as exc:
+        logger.warning("Taxon labels left unparsed: %s", exc)
+        return {}
 
 
 def _aids_pending(row):
@@ -951,19 +1137,31 @@ def usage_for_decision(row, usage_id=None):
     return {**resolve_col_usage(usage_id), "source": "checklistbank_xr"}
 
 
-def row_replacement(row, usage, match_type):
-    """The confirmation-needing change accepting `usage` would make to the row's matched name; None otherwise."""
-    query = row.query or {}
-    return coarser_replacement(query.get("scientificName"), usage, match_type,
-                               hints={rank: query[rank] for rank in HINT_RANKS if query.get(rank)})
+def choice_check(row, usage, match_type):
+    """What accepting a COL usage would change, by the rules the conversion's review applies: "replaces" (a coarser or
+    different name), "authorship_differs" (COL's authorship would replace the table's or the label's own) and
+    "rank_change" (COL's rank would replace the one the table gives); each needs the reviewer's confirmation.
+    "changeKind" is the name change's kind (None for the matched name itself)."""
+    query, parsed, supplied = row.query or {}, row.parsed or {}, row.supplied or {}
+    asserted = query.get("scientificName")
+    found = name_change(asserted, usage, match_type, hints={rank: query[rank] for rank in HINT_RANKS if query.get(rank)})
+    authorships = [*(supplied.get("authorships") or []), *([parsed["authorship"]] if parsed.get("usable") and parsed.get("authorship") else [])]
+    unreadable = bool(supplied.get("truncated")) or (not parsed.get("usable") and unread_trailing_text(row.verbatim_label))
+    return {"replaces": found if found and found["confirm"] else None, "changeKind": found["kind"] if found else None,
+            "authorship_differs": not col_authorship_agrees(authorships, usage.get("scientificNameAuthorship"), unreadable),
+            "rank_change": rank_change(asserted, supplied.get("rank"), usage.get("taxonRank"))}
 
 
-def choice_replacements(row):
-    """For the review: what accepting the suggestion or each alternative would replace (None when nothing)."""
+def needs_confirmation(check):
+    return bool(check["replaces"] or check["authorship_differs"] or check["rank_change"])
+
+
+def choice_checks(row):
+    """For the review: `choice_check` of the suggestion and of each alternative."""
     match = row.match or {}
     return {
-        "suggestion": row_replacement(row, match["usage"], match.get("matchType")) if match.get("usage") else None,
-        "alternatives": {str(alternative.get("id")): row_replacement(row, alternative, alternative.get("matchType"))
+        "suggestion": choice_check(row, match["usage"], match.get("matchType")) if match.get("usage") else None,
+        "alternatives": {str(alternative.get("id")): choice_check(row, alternative, alternative.get("matchType"))
                          for alternative in match.get("alternatives") or []},
     }
 
@@ -978,11 +1176,11 @@ def _reset_decision(row):
     row.decided_at = None
 
 
-def decide(row, decision, user=None, usage_id=None, name=None, confirm_coarser=False):
-    """Record one reviewer decision. ``name`` carries the reviewer's name for NOT_IN_COL.
+def decide(row, decision, user=None, usage_id=None, scientific_name=None, confirm_coarser=False):
+    """Record one reviewer decision. ``scientific_name`` is the reviewer's typed name for CORRECTED.
 
     Accepting a COL name that is coarser than or different from the matched name (see `name_change`) needs
-    ``confirm_coarser``.
+    ``confirm_coarser``. KEEP_ORIGINAL stores how the label is kept (see `own_name`), so the review can show it.
     """
     from django.utils import timezone
     from api.models import TaxonNameMatch
@@ -998,34 +1196,28 @@ def decide(row, decision, user=None, usage_id=None, name=None, confirm_coarser=F
         usage = usage_for_decision(row, usage_id)
         suggestion = (row.match or {}).get("usage") or {}
         match_type = (row.match or {}).get("matchType") if usage.get("id") == suggestion.get("id") else usage.get("matchType")
-        replaces = row_replacement(row, usage, match_type)
-        if replaces and confirm_coarser is not True:
-            raise ValueError(f'"{usage.get("scientificName")}" {replaces["text"]} for "{row.verbatim_label}". '
-                             "Confirm that replacement explicitly, or keep the original.")
+        check = choice_check(row, usage, match_type)
+        if needs_confirmation(check) and confirm_coarser is not True:
+            name = usage.get("scientificName")
+            if check["replaces"]:
+                reason = f'"{name}" {check["replaces"]["text"]} for "{row.verbatim_label}".'
+            elif check["rank_change"]:
+                reason = f'"{name}" {check["rank_change"]}.'
+            else:
+                reason = (f'Catalogue of Life writes the authorship of "{name}" as "{usage.get("scientificNameAuthorship")}", '
+                          "not as in your data.")
+            raise ValueError(f"{reason} Confirm that replacement explicitly, or keep the original.")
         usage.pop("matchType", None)
-        if replaces:
-            usage["replaces"] = replaces["text"]
-    elif decision == Decision.NOT_IN_COL:
-        name = name or {}
-        scientific_name = " ".join(str(name.get("scientificName") or "").split())
-        if not scientific_name:
-            scientific_name = row.query.get("scientificName") or ""
-        if not scientific_name:
-            raise ValueError("A scientific name is required when the name is not in COL.")
-        # The higher-rank placement COL did find is still a valid classification for the name.
-        suggestion = (row.match or {}).get("usage") or {}
-        classification = dict(suggestion.get("classification") or {}) if (
-            (row.match or {}).get("status") == "higher_rank"
-        ) else {}
-        usage = {
-            "id": None,
-            "scientificName": scientific_name,
-            "scientificNameAuthorship": name.get("scientificNameAuthorship") or None,
-            "taxonRank": _rank(name.get("taxonRank")),
-            "classification": classification,
-            "source": "reviewer",
-        }
+        usage["changeKind"] = check["changeKind"]
+        if check["replaces"]:
+            usage["replaces"] = check["replaces"]["text"]
+        if check["rank_change"]:
+            usage["rankChange"] = check["rank_change"]
+    elif decision == Decision.CORRECTED:
+        usage = {"scientificName": corrected_name(scientific_name), "source": "reviewer"}
     elif decision == Decision.KEEP_ORIGINAL:
+        usage = own_name(row.verbatim_label, bool(row.identification_qualifier), row.parsed)
+    elif decision == Decision.EMPTY:
         usage = {}
     else:
         raise ValueError(f"Unknown decision '{decision}'.")
@@ -1036,6 +1228,74 @@ def decide(row, decision, user=None, usage_id=None, name=None, confirm_coarser=F
     row.decided_at = timezone.now()
     row.save(update_fields=["decision", "decided_usage", "decided_query", "decided_by", "decided_at", "updated_at"])
     return row
+
+
+def own_name(label, qualified, parsed=None):
+    """How "Keep original" writes one label: the parser's split ("parsed") when it rebuilds the label exactly, as the
+    conversion's review does, else the label as written ("keep"), which then also stands when the parser is unavailable.
+    `parsed` is the label's stored parse; without one the label is parsed now."""
+    parsed = parsed or {}
+    if not qualified and not parsed:
+        try:
+            parsed = parse_names([label], deadline=time.monotonic() + INTERACTIVE_BUDGET_SECONDS)[0]
+        except TaxonServiceError as exc:
+            logger.warning("Keeping %r as written: the GBIF name parser is unavailable (%s).", label, exc)
+    if own_name_kind(parsed, qualified) == "parsed":
+        return {"kind": "parsed", "scientificName": parsed["canonical"], "scientificNameAuthorship": parsed.get("authorship"),
+                "taxonRank": parsed.get("rank"), "source": "parser"}
+    return {"kind": "keep", "source": "verbatim"}
+
+
+def decided_kind(row):
+    """The `written_fields` kind of a row's decision; None while it is pending."""
+    from api.models import TaxonNameMatch
+
+    Decision = TaxonNameMatch.Decision
+    if row.decision == Decision.KEEP_ORIGINAL:
+        return (row.decided_usage or {}).get("kind") or "keep"
+    return {Decision.ACCEPTED: "col", Decision.CORRECTED: "corrected", Decision.EMPTY: "empty"}.get(row.decision)
+
+
+def row_fields(row):
+    """`written_fields` for a decided row. As in the conversion, an accepted COL name keeps the table's authorship and
+    rank where COL has none only when it is the matched name itself or corrects its spelling, without a rank change."""
+    usage = row.decided_usage or {}
+    kind = decided_kind(row)
+    same_name = bool(name_parts(usage.get("scientificName"))) and (
+        name_parts(usage.get("scientificName")) == name_parts((row.decided_query or row.query or {}).get("scientificName")))
+    keeps_name = kind == "col" and not usage.get("rankChange") and (
+        usage.get("changeKind") == "spelling" or (usage.get("changeKind") is None and same_name))
+    parsed = row.parsed or {}
+    label_authorship = parsed.get("authorship") if parsed.get("usable") else None
+    return written_fields(kind, usage, keeps_name=keeps_name, label_authorship=label_authorship)
+
+
+def _schema_fields(source_table):
+    """The columns a DwC-DP resource may hold; None for a working table, which may hold any Darwin Core term."""
+    from api.dwc_dp_specs import get_table_spec
+
+    try:
+        return set(get_table_spec(source_table).fields)
+    except KeyError:
+        return None
+
+
+def decision_preview(row):
+    """What applying the row's decision writes, as `preview_items`, limited to the columns its table may hold."""
+    from api.models import TaxonNameMatch
+
+    if decided_kind(row) is None:
+        return []
+    fields = _schema_fields(row.source_table)
+    items = [item for item in preview_items(row_fields(row), row.verbatim_label) if fields is None or item["field"] in fields]
+    if row.decision == TaxonNameMatch.Decision.ACCEPTED:
+        classification = (row.decided_usage or {}).get("classification") or {}
+        ranks = [rank for rank in CLASSIFICATION_RANKS if classification.get(rank) and (fields is None or rank in fields)]
+        if ranks:
+            items.append({"field": "higher classification", "how": "yours", "value": " › ".join(classification[rank] for rank in ranks)})
+        if row.identification_qualifier and (fields is None or "identificationQualifier" in fields):
+            items.append({"field": "identificationQualifier", "how": "yours", "value": row.identification_qualifier})
+    return items
 
 
 def bulk_acceptable(row):
@@ -1057,7 +1317,7 @@ def bulk_acceptable(row):
         and bool(match.get("usage"))
         and not row.identification_qualifier
         and not is_preprocessed(row)
-        and not row_replacement(row, match["usage"], match.get("matchType"))
+        and not needs_confirmation(choice_check(row, match["usage"], match.get("matchType")))
     )
 
 
@@ -1074,12 +1334,19 @@ def _is_blank(value):
     return _clean_label(value) is None
 
 
-def apply_decisions(dataset, table, verbatim_column, context_column=None):
-    """Write reviewed names onto a table's rows; unreviewed and kept labels are left unchanged.
+def _same_cell(current, new):
+    """Blank cells (None, NaN, pd.NA, "") are the same; a blank is never compared with ==, which pd.NA cannot answer."""
+    if _is_blank(current) or _is_blank(new):
+        return _is_blank(current) and _is_blank(new)
+    return current == new
 
-    The reviewed name, authorship and rank replace the current values (only with values the
-    decision has). Higher classification only fills blank cells, so supplied taxonomy is never
-    overwritten. verbatim_column is only read. Returns a summary dict.
+
+def apply_decisions(dataset, table, verbatim_column, context_column=None):
+    """Write reviewed names onto a table's rows; unreviewed labels are left unchanged.
+
+    Name, authorship and rank follow `written_fields`, the rules the conversion's review applies too. An accepted
+    COL name also fills blank higher-classification and identificationQualifier cells, so supplied taxonomy is
+    never overwritten. verbatim_column is only read. Returns a summary dict.
     """
     from django.utils import timezone
     from api.dwc_dp_specs import get_table_spec, normalize_resource_name
@@ -1116,21 +1383,20 @@ def apply_decisions(dataset, table, verbatim_column, context_column=None):
             written["pending_labels"] += 1
             written["pending_rows"] += len(row_positions)
             continue
-        if row.decision == TaxonNameMatch.Decision.KEEP_ORIGINAL:
-            written["kept_labels"] += 1
-            continue
-        usage = row.decided_usage or {}
-        replace = {
-            column: usage.get(column)
-            for column in ("scientificName", "scientificNameAuthorship", "taxonRank")
-            if usage.get(column)
-        }
-        fill = dict(usage.get("classification") or {})
-        if row.identification_qualifier:
-            fill["identificationQualifier"] = row.identification_qualifier
-            if not writable("identificationQualifier"):
-                written["qualifiers_not_written"] += 1
-        for column, value in [*replace.items(), *fill.items()]:
+        written["kept_labels" if row.decision == TaxonNameMatch.Decision.KEEP_ORIGINAL else "labels_applied"] += 1
+        outcomes = dict(row_fields(row))
+        if row.decision == TaxonNameMatch.Decision.ACCEPTED:
+            for rank, value in ((row.decided_usage or {}).get("classification") or {}).items():
+                outcomes[rank] = ("yours_or", value)
+            if row.identification_qualifier:
+                outcomes["identificationQualifier"] = ("yours_or", row.identification_qualifier)
+                if not writable("identificationQualifier"):
+                    written["qualifiers_not_written"] += 1
+        changed = set()
+        for column, outcome in outcomes.items():
+            how, value = outcome
+            if how == "yours" or (how == "yours_or" and not value) or (how == "set" and not value and column not in df.columns):
+                continue  # nothing to write
             if not writable(column):
                 written["skipped_columns"].add(column)
                 continue
@@ -1140,10 +1406,12 @@ def apply_decisions(dataset, table, verbatim_column, context_column=None):
                 df[column] = df[column].astype(object)
             column_index = df.columns.get_loc(column)
             for position in row_positions:
-                if column in replace or _is_blank(df.iat[position, column_index]):
-                    df.iat[position, column_index] = value
-        written["rows_updated"] += len(row_positions)
-        written["labels_applied"] += 1
+                current = df.iat[position, column_index]
+                new = row_value(outcome, current, row.verbatim_label) or None
+                if not _same_cell(current, new):
+                    df.iat[position, column_index] = new
+                    changed.add(position)
+        written["rows_updated"] += len(changed)
         applied.append(row.id)
 
     if applied:
@@ -1191,7 +1459,7 @@ def apply_review(dataset, source_table, context_column=""):
         present = set(_row_keys(table.df, column, context_column))
         missing = [
             row.verbatim_label for row in rows
-            if row.decision in {TaxonNameMatch.Decision.ACCEPTED, TaxonNameMatch.Decision.NOT_IN_COL}
+            if row.decision != TaxonNameMatch.Decision.PENDING
             and (row.verbatim_label, row.context_key) not in present
         ]
         if missing:
@@ -1208,7 +1476,8 @@ def describe_apply_result(result, table):
     """Plain sentences describing what apply_decisions did, for the agent."""
     lines = [
         f"Applied reviewed names for {result['labels_applied']:,} labels to {result['rows_updated']:,} rows "
-        f"of table {table.id} (`{table.title}`). {result['kept_labels']:,} labels were kept unchanged by the user.",
+        f"of table {table.id} (`{table.title}`). {result['kept_labels']:,} labels keep their original name, "
+        "split into name and authorship where the GBIF name parser could do so exactly.",
     ]
     if result["pending_labels"]:
         lines.append(
@@ -1257,8 +1526,9 @@ def review_summary(rows):
         f"{_plural(counts[decision], 'name')} {outcome}"
         for decision, outcome in (
             (Decision.ACCEPTED, "accepted"),
-            (Decision.NOT_IN_COL, "marked as correct but not in COL"),
-            (Decision.KEEP_ORIGINAL, "kept unchanged"),
+            (Decision.CORRECTED, "corrected"),
+            (Decision.KEEP_ORIGINAL, "kept as the original"),
+            (Decision.EMPTY, "left without a published name"),
         )
         if counts.get(decision)
     ]

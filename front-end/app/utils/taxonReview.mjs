@@ -1,4 +1,5 @@
-// Pure helpers for the taxon name review modal.
+// Pure helpers for the chat's taxon name review; the choices and wording it shares with the conversion are in nameReview.mjs.
+import { choiceLabel, decisionSummary, formatName, replacementWarning } from './nameReview.mjs'
 
 export const STATUS_LABELS = {
   exact: { label: 'Exact match', variant: 'success' },
@@ -8,24 +9,7 @@ export const STATUS_LABELS = {
   none: { label: 'No match', variant: 'secondary' },
 }
 
-export const DECISION_LABELS = {
-  accepted: 'Accepted',
-  not_in_col: 'Correct name, not in COL',
-  keep_original: 'Kept unchanged',
-  pending: 'Needs review',
-}
-
-export const RANKS = [
-  'kingdom', 'phylum', 'class', 'order', 'family', 'subfamily', 'tribe',
-  'genus', 'subgenus', 'species', 'subspecies', 'variety', 'form',
-]
-
 export const statusInfo = (row) => STATUS_LABELS[row?.match?.status] || STATUS_LABELS.none
-
-export const formatName = (usage) => {
-  if (!usage?.scientificName) return ''
-  return [usage.scientificName, usage.scientificNameAuthorship].filter(Boolean).join(' ')
-}
 
 export const isPending = (row) => row.decision === 'pending'
 
@@ -51,21 +35,43 @@ export const countByDecision = (rows) => rows.reduce((counts, row) => {
   return counts
 }, { records: {} })
 
-// Best-effort split of "Genus epithet (Author, 1882)" into name, authorship and rank, used only to
-// prefill the reviewer's form; the reviewer can correct every field.
-export const splitScientificName = (text) => {
-  const tokens = String(text || '').trim().split(/\s+/).filter(Boolean)
-  if (!tokens.length) return { scientificName: '', scientificNameAuthorship: '', taxonRank: '' }
-  const nameTokens = [tokens[0]]
-  let index = 1
-  while (index < tokens.length && /^[a-z×-][a-z-]*\.?$/.test(tokens[index]) && !/^(et|ex|in)$/.test(tokens[index])) {
-    nameTokens.push(tokens[index])
-    index += 1
+// The server's written_fields kind of a row's decision (api.taxon_matching.decided_kind).
+export const decidedKind = (row) => {
+  if (row?.decision === 'keep_original') return row.decided_usage?.kind || 'keep'
+  return { accepted: 'col', corrected: 'corrected', empty: 'empty' }[row?.decision] || null
+}
+
+export const decisionResult = (row) => decisionSummary(decidedKind(row), row?.decided_usage || {})
+
+// The shared choices for one row: COL's suggestion, then its alternatives, the same names first. choice_checks says
+// what each would replace (api.taxon_matching.choice_check), as the conversion's col_choices does.
+export const chatChoices = (row) => {
+  const usage = row?.match?.usage
+  const choice = (decision, choiceUsage, check) => {
+    const { replaces = null, authorship_differs: authorshipDiffers = false, rank_change: rankChange = null } = check || {}
+    const confirm = { usage: choiceUsage, replaces, authorship_differs: authorshipDiffers, rank_change: rankChange }
+    return { decision, usage: choiceUsage, usageId: decision === 'alternative' ? choiceUsage.id : undefined, replaces,
+      warning: replacementWarning(confirm, row.record_count) }
   }
-  const ranks = { 1: '', 2: 'species', 3: 'subspecies' }
+  const alternatives = (row?.match?.alternatives || [])
+    .map((alternative) => choice('alternative', alternative, row.choice_checks?.alternatives?.[String(alternative.id)]))
   return {
-    scientificName: nameTokens.join(' '),
-    scientificNameAuthorship: tokens.slice(index).join(' '),
-    taxonRank: ranks[nameTokens.length] ?? '',
+    main: usage ? { ...choice('col', usage, row.choice_checks?.suggestion), text: `Use ${formatName(usage)}` } : null,
+    stem: null,
+    sameName: alternatives.filter((item) => !item.replaces).map((item) => ({ ...item, text: `Use ${choiceLabel(item)}` })),
+    others: alternatives.filter((item) => item.replaces).map((item) => ({ ...item, text: `${choiceLabel(item)} — ${item.replaces.text}` })),
+    corrects: '',
   }
+}
+
+// The decide request for one of the shared choices (see NameChoices).
+export const chatDecisionBody = ({ decision, usageId, confirmCoarser, scientificName }) => {
+  const confirm = confirmCoarser ? { confirm_coarser: true } : {}
+  if (decision === 'col') return { decision: 'accepted', ...confirm }
+  if (decision === 'alternative') return { decision: 'accepted', usage_id: usageId, ...confirm }
+  // A name the reviewer searched for and picked is itself the explicit choice, so it is sent confirmed.
+  if (decision === 'search') return { decision: 'accepted', usage_id: usageId, confirm_coarser: true }
+  if (decision === 'keep') return { decision: 'keep_original' }
+  if (decision === 'corrected') return { decision: 'corrected', scientificName }
+  return { decision }
 }
