@@ -2708,18 +2708,37 @@ class ResponsesAdapterCompatibilityTests(SimpleTestCase):
     @patch("api.helpers.openai_helpers.query_responses_api")
     def test_flex_capacity_retries_then_falls_back_to_standard(self, query_mock, sleep_mock):
         request = httpx2.Request("POST", "https://api.openai.com/v1/responses")
-        error = RateLimitError(
-            "Resource Unavailable",
-            response=httpx2.Response(429, request=request),
-            body={"error": {"type": "resource_unavailable", "message": "Resource Unavailable"}},
-        )
-        query_mock.side_effect = [error, error, SimpleNamespace(id="resp_1", status="completed", output=[])]
+        bodies = [
+            # The SDK's error body for production's 429 on 2026-10-22.
+            {
+                "message": (
+                    "Flex processing is temporarily unavailable. "
+                    "Please try again later or use standard processing."
+                ),
+                "type": "resource_unavailable",
+                "param": None,
+                "code": "flex_unavailable",
+            },
+            {"error": {"type": "resource_unavailable", "message": "Resource Unavailable"}},
+        ]
+        for body in bodies:
+            with self.subTest(body=body):
+                query_mock.reset_mock()
+                sleep_mock.reset_mock()
+                error = RateLimitError(
+                    "Flex unavailable",
+                    response=httpx2.Response(429, request=request),
+                    body=body,
+                )
+                query_mock.side_effect = [
+                    error, error, SimpleNamespace(id="resp_1", status="completed", output=[]),
+                ]
 
-        create_response_message([], [], model="gpt-6-sol")
+                create_response_message([], [], model="gpt-6-sol")
 
-        self.assertEqual([call.args[0]["service_tier"] for call in query_mock.call_args_list],
-                         ["flex", "flex", "default"])
-        sleep_mock.assert_called_once_with(2)
+                self.assertEqual([call.args[0]["service_tier"] for call in query_mock.call_args_list],
+                                 ["flex", "flex", "default"])
+                sleep_mock.assert_called_once_with(2)
 
     @patch("api.helpers.openai_helpers.query_responses_api")
     def test_other_429_does_not_trigger_standard_fallback(self, query_mock):

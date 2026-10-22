@@ -87,9 +87,14 @@ def _flex_capacity_unavailable(exc):
     error = body.get('error', body) if isinstance(body, dict) else {}
     if not isinstance(error, dict):
         return False
-    code = str(error.get('code') or error.get('type') or '').lower()
+    # OpenAI sends type resource_unavailable with code flex_unavailable; read both.
+    codes = f"{error.get('code') or ''} {error.get('type') or ''}".lower()
     message = str(error.get('message') or '').lower()
-    return 'resource_unavailable' in code or 'resource unavailable' in message
+    return (
+        'resource_unavailable' in codes
+        or 'flex_unavailable' in codes
+        or 'resource unavailable' in message
+    )
 
 
 def _query_with_flex_fallback(args, max_retries=None):
