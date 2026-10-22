@@ -1455,24 +1455,52 @@ def review_summary(rows):
 
 
 def open_review(dataset, lock=False):
-    """(agent, scope) when the dataset's current agent is paused waiting for a taxon review."""
+    """(agent, scope) when the dataset's current agent has a taxon review open and is waiting for the user.
+
+    A review opens when the agent pauses with RequestTaxonReview and stays open through chat replies until the user
+    presses Done or Skip. While the agent is answering a reply, the review can be read but not changed or closed.
+    """
     from api.models import Agent, Message
 
     agents = Agent.objects.filter(dataset=dataset, completed_at__isnull=True).order_by(
         'task__order', 'task_id', 'created_at', 'id',
     )
     if lock:
-        agents = agents.select_for_update()
+        agents = agents.select_for_update(of=('self',))  # not the joined Task row other datasets share
     agent = agents.first()
-    if not agent or agent.busy_thinking:
+    scope = agent.open_taxon_review if agent else None
+    if not scope or not isinstance(scope, dict) or agent.busy_thinking:
         return None
     last_message = agent.message_set.last()
-    if not last_message or last_message.role != Message.Role.ASSISTANT:
-        return None
-    scope = (last_message.openai_obj or {}).get("taxon_review")
-    if not isinstance(scope, dict):
+    if not last_message or last_message.role != Message.Role.ASSISTANT or (last_message.openai_obj or {}).get("tool_calls"):
         return None
     return agent, {"source_table": scope.get("source_table") or "", "context_column": scope.get("context_column") or ""}
+
+
+def undecided_names(agent):
+    """(undecided, total) names in the taxon review `agent` has open."""
+    from api.models import TaxonNameMatch
+
+    scope = agent.open_taxon_review or {}
+    rows = TaxonNameMatch.objects.filter(
+        dataset=agent.dataset_id, record_count__gt=0,
+        source_table=scope.get("source_table") or "", context_column=scope.get("context_column") or "",
+    )
+    return rows.filter(decision=TaxonNameMatch.Decision.PENDING).count(), rows.count()
+
+
+def open_review_error(agent, action):
+    """The refusal for an agent `action` (e.g. "publish") while its taxon review is open; None otherwise."""
+    from api.schema_ledger import OPEN_TAXON_REVIEW_REFUSAL
+
+    if agent.completed_at or not agent.open_taxon_review:
+        return None
+    undecided, total = undecided_names(agent)
+    return (
+        f"{OPEN_TAXON_REVIEW_REFUSAL} ({undecided} of {total} names undecided), so you cannot {action} yet. Only "
+        "the user closes it, with Done (ChatIPT applies their decisions) or Skip (the names stay as they are) in the "
+        "review. End your turn so they can finish it, and answer anything they ask in the chat meanwhile."
+    )
 
 
 def compact_usage(usage):

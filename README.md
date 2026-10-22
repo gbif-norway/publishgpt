@@ -28,6 +28,9 @@ automatic defaults, choices, confirmation checks and column-value previews. Thei
 decision policy lives in `back-end/api/name_review.py`; both screens render
 `front-end/app/components/ScientificNameReview.js`. Keep name-review changes in
 these shared layers and verify both workflows with `api.test_name_review`.
+In the chat, a review the agent requests (`Agent.open_taxon_review`) stays open
+through chat replies until the user presses Done or Skip, and the agent cannot
+complete its stage or publish meanwhile.
 
 ## Who it is for
 

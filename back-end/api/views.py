@@ -1284,17 +1284,10 @@ class TaxonNameMatchViewSet(viewsets.ReadOnlyModelViewSet):
         """
         from api import taxon_matching
 
-        agents = Agent.objects.all() if request.user.is_superuser else Agent.objects.filter(dataset__user=request.user)
-        requested = get_object_or_404(agents, pk=request.data.get('agent'))
         with transaction.atomic():
-            # Dataset before agent: the same lock order as the agent turn worker.
-            dataset = Dataset.objects.select_for_update().get(pk=requested.dataset_id)
-            review = taxon_matching.open_review(dataset, lock=True)
-            if not review or review[0].id != requested.id:
-                return Response(
-                    {'detail': 'ChatIPT is not waiting for this taxon review.'},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            review = self._requested_review(request)
+            if not review:
+                return self._not_waiting()
             agent, scope = review
             source_table = scope['source_table']
             context_column = scope['context_column']
@@ -1320,15 +1313,56 @@ class TaxonNameMatchViewSet(viewsets.ReadOnlyModelViewSet):
                     + (f" with context column `{context_column}`" if context_column else "")
                     + ", then re-run ValidateDwcDp."
                 )
-            message = Message.objects.create(
-                agent=agent,
-                openai_obj={
-                    'role': Message.Role.USER,
-                    'content': f"{taxon_matching.review_summary(rows)}\n\n[NOTE: {note}]",
-                },
-            )
-            transaction.on_commit(lambda: ensure_dataset_work(agent.dataset_id))
+            message = self._close_review(agent, f"{taxon_matching.review_summary(rows)}\n\n[NOTE: {note}]")
         return Response({'applied': applied, 'message': MessageSerializer(message).data})
+
+    @action(detail=False, methods=['post'], url_path='skip-review')
+    def skip_review(self, request, *args, **kwargs):
+        """Close an open taxon review without writing any names, then tell the paused agent."""
+        from api import taxon_matching
+
+        with transaction.atomic():
+            review = self._requested_review(request)
+            if not review:
+                return self._not_waiting()
+            agent, scope = review
+            undecided, total = taxon_matching.undecided_names(agent)
+            note = (
+                f"The user skipped the taxon review of the `{scope['source_table']}` table, so ChatIPT wrote no "
+                "reviewed names: scientificName, scientificNameAuthorship and taxonRank stay as they are "
+                f"({undecided} of {total} names were undecided). Do not call ApplyTaxonDecisions for this review. "
+                "Record in structure_notes that the names were not reviewed against Catalogue of Life, then continue."
+            )
+            message = self._close_review(
+                agent, f"I skipped the taxon name review: keep the names as they are.\n\n[NOTE: {note}]",
+            )
+        return Response({'message': MessageSerializer(message).data})
+
+    @staticmethod
+    def _requested_review(request):
+        """(agent, scope) of the open review the requested agent is waiting on, locked; None if it has none.
+        Call inside a transaction."""
+        from api import taxon_matching
+
+        agents = Agent.objects.all() if request.user.is_superuser else Agent.objects.filter(dataset__user=request.user)
+        requested = get_object_or_404(agents, pk=request.data.get('agent'))
+        # Dataset before agent: the same lock order as the agent turn worker.
+        dataset = Dataset.objects.select_for_update().get(pk=requested.dataset_id)
+        review = taxon_matching.open_review(dataset, lock=True)
+        return review if review and review[0].id == requested.id else None
+
+    @staticmethod
+    def _not_waiting():
+        return Response({'detail': 'ChatIPT is not waiting for this taxon review.'}, status=status.HTTP_409_CONFLICT)
+
+    @staticmethod
+    def _close_review(agent, content):
+        """Close the agent's open review and hand `content` back to it as the user's message."""
+        agent.open_taxon_review = {}
+        agent.save(update_fields=['open_taxon_review'])
+        message = Message.objects.create(agent=agent, openai_obj={'role': Message.Role.USER, 'content': content})
+        transaction.on_commit(lambda: ensure_dataset_work(agent.dataset_id))
+        return message
 
     @action(detail=False, methods=['get'])
     def search(self, request, *args, **kwargs):

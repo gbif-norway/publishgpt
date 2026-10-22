@@ -1666,10 +1666,25 @@ class Agent(models.Model):
     task = models.ForeignKey(Task, on_delete=models.PROTECT)
     tables = models.ManyToManyField(Table, blank=True)
     busy_thinking = models.BooleanField(default=False)
+    open_taxon_review = models.JSONField(
+        default=dict, blank=True,
+        help_text='Scope of the taxon review this agent asked for, until the user presses Done or Skip.',
+    )
 
     class Meta:
         get_latest_by = 'created_at'
         ordering = ['created_at']
+
+    def pause_for_taxon_review(self, content, scope):
+        """Ask the user to review taxon names. The review stays open through chat replies until they press Done
+        or Skip."""
+        with transaction.atomic():
+            message = Message.objects.create(agent=self, openai_obj={
+                'role': Message.Role.ASSISTANT, 'content': content, 'taxon_review': scope,
+            })
+            self.open_taxon_review = scope
+            self.save(update_fields=['open_taxon_review'])
+        return message
 
     @classmethod
     def create_with_system_message(cls, dataset, task, tables):
@@ -1815,6 +1830,12 @@ class Agent(models.Model):
         eml_changed = initial_obj.get('initial_eml_digest') != self._state_digest(
             self.dataset.eml
         )
+        open_taxon_review = None
+        if self.open_taxon_review:
+            from api.taxon_matching import undecided_names
+
+            undecided, total = undecided_names(self)
+            open_taxon_review = {**self.open_taxon_review, 'undecided': undecided, 'total': total}
         return render_to_string(
             'state_update.txt',
             {
@@ -1838,6 +1859,7 @@ class Agent(models.Model):
                 'no_progress_stop_turns': self.no_progress_stop_turns,
                 'dwc_dp_export_current': dwc_dp_export_current,
                 'dwca_uploaded_this_task': dwca_uploaded_this_task,
+                'open_taxon_review': open_taxon_review,
                 'tool_call_count': self.tool_call_count,
                 'call_count_nudge_threshold': getattr(
                     settings, "AGENT_CALL_COUNT_NUDGE_THRESHOLD", 20
@@ -2341,12 +2363,13 @@ class Agent(models.Model):
 
             # A non-final workflow task must either act, ask through the structured
             # user-input tool, or complete. Retry once internally instead of making
-            # the user type "please continue".
+            # the user type "please continue". While a taxon review is open, a plain
+            # reply is the right end of the turn: the user still has the review to finish.
             completion_tool_available = any(
                 function.__name__ == agent_tools.SetAgentTaskToComplete.__name__
                 for function in self.task.functions
             )
-            if not response_message.tool_calls and completion_tool_available:
+            if not response_message.tool_calls and completion_tool_available and not self.open_taxon_review:
                 first_response_content = getattr(response_message, "content", "") or ""
                 if self._dataset_cost_limit_reached():
                     return [self._pause_for_cost_limit()]
@@ -2454,13 +2477,14 @@ class Agent(models.Model):
                         messages.append(skipped_message)
                     break
 
-            if requested_user_input:
+            if requested_user_input and pause_marker:
+                messages.append(self.pause_for_taxon_review(requested_user_input, pause_marker["taxon_review"]))
+            elif requested_user_input:
                 question_message = Message.objects.create(
                     agent=self,
                     openai_obj={
                         "role": Message.Role.ASSISTANT,
                         "content": requested_user_input,
-                        **pause_marker,
                     },
                 )
                 messages.append(question_message)

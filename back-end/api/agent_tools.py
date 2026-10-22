@@ -2713,7 +2713,8 @@ class RequestTaxonReview(OpenAIBaseModel):
     MatchTaxonNames. `message` is shown to the user above the review button: in plain language, say
     how many names matched, what kinds of labels you interpreted and why, and what remains
     unresolved. When the user finishes, ChatIPT writes their decisions to the table itself and its
-    reply carries a note saying what changed.
+    reply carries a note saying what changed. The review stays open, also through chat replies,
+    until the user presses Done or Skip; until then the task cannot be completed.
     """
 
     agent_id: PositiveInt = Field(..., description="REQUIRED: The ID of the agent making this request")
@@ -2739,6 +2740,9 @@ class RequestTaxonReview(OpenAIBaseModel):
             return "Error: This task is already complete."
         if not Table.objects.filter(id=self.table_id, dataset=agent.dataset).exists():
             return f"ERROR: table {self.table_id} does not belong to this dataset."
+        if agent.open_taxon_review and agent.open_taxon_review != self.scope():
+            # Replacing it would drop the user's open review without applying it.
+            return taxon_matching.open_review_error(agent, "request a review of another table or context column")
         rows = list(TaxonNameMatch.objects.filter(dataset=agent.dataset, record_count__gt=0, **self.scope()))
         if not rows:
             return (
@@ -2810,6 +2814,11 @@ class SetAgentTaskToComplete(OpenAIBaseModel):
         try:
             agent = Agent.objects.get(id=self.agent_id)
             task_name = agent.task.name if agent.task else ""
+            from api.taxon_matching import open_review_error
+
+            review_error = open_review_error(agent, f"complete '{task_name}'")
+            if review_error:
+                return review_error
             from api.prepared_dates import PREPARATION_TASKS, preparation_date_error
 
             date_warnings = []
@@ -3270,6 +3279,11 @@ class PublishToGBIF(OpenAIBaseModel):
                 return (
                     "Error: GBIF publication is available only in the final publication task."
                 )
+            from api.taxon_matching import open_review_error
+
+            review_error = open_review_error(agent, "publish")
+            if review_error:
+                return review_error
             quality_gate_complete = dataset.agent_set.filter(
                 task__name=Task.PREPUBLICATION_QUALITY_TASK,
                 completed_at__isnull=False,

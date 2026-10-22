@@ -5,7 +5,7 @@ import config from '../config.js'
 import { getCsrfToken } from '../utils/csrf.js'
 import ScientificNameReview from './ScientificNameReview'
 
-export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDone, editable }) {
+export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDone, onSkip, open, editable }) {
   const [review, setReview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -98,7 +98,9 @@ export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDo
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
           </div>
           <div className="modal-body">
-            {!editable && <div className="alert alert-secondary small py-2">This review is finished. Your decisions are saved.</div>}
+            {!editable && <div className="alert alert-secondary small py-2">{open
+              ? 'ChatIPT is replying to your message. You can change decisions and finish the review once it has.'
+              : 'This review is finished. Your decisions are saved.'}</div>}
             {error && <div className="alert alert-danger small" role="alert">{error}</div>}
             {loading && <div className="small text-muted">Loading taxon names…</div>}
             {review && <ScientificNameReview nameReview={review} updated={updated} datasetId={datasetId} url={url}
@@ -109,6 +111,7 @@ export default function TaxonReviewModal({ datasetId, scope, show, onClose, onDo
             <span className="small text-muted">{summary?.decided || 0} of {summary?.labels || 0} names decided</span>
             <div className="d-flex gap-2">
               <button type="button" className="btn btn-outline-secondary" onClick={onClose}>Close</button>
+              {editable && <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={onSkip}>Skip review</button>}
               {editable && <button type="button" className="btn btn-primary" disabled={busy || loading || !summary?.labels} onClick={onDone}>Done, apply my decisions</button>}
             </div>
           </div>

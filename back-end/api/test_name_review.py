@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from api import conversion_names, name_review, taxon_matching, taxon_review
-from api.models import Agent, CustomUser, Dataset, Message, Table, Task, TaxonNameMatch
+from api.models import Agent, CustomUser, Dataset, Table, Task, TaxonNameMatch
 
 
 def usage(name='Larus', rank='genus', authorship=None, **extra):
@@ -154,8 +154,7 @@ class GroupedReviewApiTests(TestCase):
             parsed={'usable': True, 'lossless': True, 'canonical': 'Larus', 'rank': 'genus'},
             match={'matchType': 'EXACT', 'status': 'exact', 'usage': usage()}, matched_at=timezone.now()) for context in ('first', 'second')]
         self.agent = Agent.objects.create(dataset=self.dataset, task=Task.objects.create(name='Name review', text='x'))
-        Message.objects.create(agent=self.agent, openai_obj={'role': 'assistant', 'content': 'Review names',
-            'taxon_review': {'source_table': 'identification', 'context_column': ''}})
+        self.agent.pause_for_taxon_review('Review names', {'source_table': 'identification', 'context_column': ''})
         self.client = APIClient()
         self.client.force_authenticate(self.owner)
         self.url = f'/api/taxon-matches/review/?dataset={self.dataset.id}&source_table=identification'

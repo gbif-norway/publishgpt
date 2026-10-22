@@ -110,6 +110,7 @@ class AgentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = '__all__'
+        read_only_fields = ['open_taxon_review']  # opened by the agent, closed by Done or Skip
 
     def get_table_set(self, agent):
         return list(

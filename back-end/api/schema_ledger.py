@@ -60,6 +60,8 @@ PROGRESS_RESULT_PREFIXES = {
     "ExportDwcDp": ("DwC-DP successfully created and uploaded",),
     "UploadDwCA": ("DwCA successfully created and uploaded",),
 }
+# Any tool refused because the user has a taxon review to finish: retrying is not progress.
+OPEN_TAXON_REVIEW_REFUSAL = "Error: The taxon review you requested is still open"
 
 
 def _as_list(value: Any) -> List[str]:
@@ -518,7 +520,7 @@ def result_is_progress(tool_name: Optional[str], result: Any) -> bool:
     if tool_name in READ_ONLY_TOOLS:
         return False
     text = result if isinstance(result, str) else json.dumps(result)
-    if text.startswith("ERROR CALLING FUNCTION"):
+    if text.startswith(("ERROR CALLING FUNCTION", OPEN_TAXON_REVIEW_REFUSAL)):
         return False
     success_prefixes = PROGRESS_RESULT_PREFIXES.get(tool_name or "")
     return success_prefixes is None or text.startswith(success_prefixes)

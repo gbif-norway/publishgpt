@@ -6001,6 +6001,8 @@ class AgentWorkflowActionTests(TestCase):
         self.assertEqual(
             messages[-1].openai_obj["taxon_review"], {"source_table": "occurrence", "context_column": ""},
         )
+        agent.refresh_from_db()
+        self.assertEqual(agent.open_taxon_review, {"source_table": "occurrence", "context_column": ""})
         outputs = {
             message.openai_obj.get("tool_call_id"): message.openai_obj.get("content")
             for message in messages

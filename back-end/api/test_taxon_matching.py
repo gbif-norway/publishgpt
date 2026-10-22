@@ -8,8 +8,9 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from api import taxon_matching
-from api.agent_tools import ApplyTaxonDecisions, MatchTaxonNames, RequestTaxonReview
+from api import schema_ledger, taxon_matching
+from api.helpers.openai_helpers import CompatAssistantMessage
+from api.agent_tools import ApplyTaxonDecisions, MatchTaxonNames, PublishToGBIF, RequestTaxonReview, SetAgentTaskToComplete
 from api.models import Agent, CustomUser, Dataset, Message, Table, Task, TaxonNameMatch
 
 
@@ -767,18 +768,12 @@ class TaxonToolTests(TestCase):
     def test_open_review_uses_dataset_active_agent_order(self, match_col, aids, release):
         self.agent.task.order = 1
         self.agent.task.save(update_fields=['order'])
-        Message.objects.create(agent=self.agent, openai_obj={
-            'role': 'assistant', 'content': 'Review current names.',
-            'taxon_review': {'source_table': 'occurrence', 'context_column': ''},
-        })
+        self.agent.pause_for_taxon_review('Review current names.', {'source_table': 'occurrence', 'context_column': ''})
         later_agent = Agent.objects.create(
             dataset=self.dataset,
             task=Task.objects.create(name='Later task', text='Later', order=2),
         )
-        Message.objects.create(agent=later_agent, openai_obj={
-            'role': 'assistant', 'content': 'Later review.',
-            'taxon_review': {'source_table': 'later', 'context_column': ''},
-        })
+        later_agent.pause_for_taxon_review('Later review.', {'source_table': 'later', 'context_column': ''})
 
         review = taxon_matching.open_review(self.dataset)
 
@@ -860,10 +855,7 @@ class TaxonMatchApiTests(TestCase):
         self.agent = Agent.objects.create(
             dataset=self.dataset, task=Task.objects.create(name="Data validation and refinement", text="x"),
         )
-        Message.objects.create(agent=self.agent, openai_obj={
-            "role": "assistant", "content": "Please review.",
-            "taxon_review": {"source_table": "occurrence", "context_column": ""},
-        })
+        self.agent.pause_for_taxon_review("Please review.", {"source_table": "occurrence", "context_column": ""})
         self.client = APIClient()
 
     def test_owner_lists_current_labels_only(self):
@@ -924,15 +916,23 @@ class TaxonMatchApiTests(TestCase):
         # The exact same-name suggestion needs no confirmation.
         self.assertEqual(self.client.post(f"/api/taxon-matches/{self.exact.id}/decide/", {"decision": "accepted"}).status_code, 200)
 
-    def test_decisions_are_refused_once_the_review_is_closed(self):
+    def test_decisions_are_refused_while_the_agent_answers_and_once_the_review_is_closed(self):
         self.client.force_authenticate(self.owner)
-        Message.objects.create(agent=self.agent, openai_obj={"role": "user", "content": "Done"})
-        response = self.client.post(f"/api/taxon-matches/{self.exact.id}/decide/", {"decision": "accepted"})
-        self.assertEqual(response.status_code, 409)
-        response = self.client.post("/api/taxon-matches/accept-exact/", {"dataset": self.dataset.id})
-        self.assertEqual(response.status_code, 409)
-        self.exact.refresh_from_db()
-        self.assertEqual(self.exact.decision, "pending")
+
+        def refused():
+            response = self.client.post(f"/api/taxon-matches/{self.exact.id}/decide/", {"decision": "accepted"})
+            self.assertEqual(response.status_code, 409)
+            response = self.client.post("/api/taxon-matches/accept-exact/", {"dataset": self.dataset.id})
+            self.assertEqual(response.status_code, 409)
+            self.exact.refresh_from_db()
+            self.assertEqual(self.exact.decision, "pending")
+
+        Message.objects.create(agent=self.agent, openai_obj={"role": "user", "content": "A question"})
+        refused()
+        Message.objects.create(agent=self.agent, openai_obj={"role": "assistant", "content": "An answer"})
+        self.agent.open_taxon_review = {}
+        self.agent.save()
+        refused()
 
     def test_decisions_are_refused_for_another_table_than_the_open_review(self):
         self.client.force_authenticate(self.owner)
@@ -973,10 +973,7 @@ class FinishReviewApiTests(TestCase):
         TaxonNameMatch.objects.create(verbatim_label="Pająki", record_count=1, decision="keep_original", **base)
         TaxonNameMatch.objects.create(verbatim_label="Zieminek", record_count=1, **base)
         taxon_matching.decide(self.dinychus, TaxonNameMatch.Decision.ACCEPTED)
-        Message.objects.create(agent=self.agent, openai_obj={
-            "role": "assistant", "content": "Please review.",
-            "taxon_review": {"source_table": "occurrence", "context_column": ""},
-        })
+        self.agent.pause_for_taxon_review("Please review.", {"source_table": "occurrence", "context_column": ""})
         self.client = APIClient()
         self.client.force_authenticate(self.owner)
 
@@ -1048,13 +1045,141 @@ class FinishReviewApiTests(TestCase):
         self.agent.busy_thinking = True
         self.agent.save()
         self.assertEqual(self.finish().status_code, 409)
+        self.assertEqual(self.skip().status_code, 409)
         self.agent.busy_thinking = False
         self.agent.save()
-        Message.objects.create(agent=self.agent, openai_obj={"role": "assistant", "content": "Something else"})
+        Message.objects.create(agent=self.agent, openai_obj={"role": "user", "content": "Not answered yet"})
         self.assertEqual(self.finish().status_code, 409)
+        self.assertEqual(self.skip().status_code, 409)
         ensure_work.assert_not_called()
 
-    def test_other_users_cannot_finish(self, ensure_work):
+    def test_other_users_cannot_finish_or_skip(self, ensure_work):
         self.client.force_authenticate(CustomUser.objects.create_user(username="other", password="x"))
         self.assertEqual(self.finish().status_code, 404)
+        self.assertEqual(self.skip().status_code, 404)
         ensure_work.assert_not_called()
+
+    def skip(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post("/api/taxon-matches/skip-review/", {"agent": self.agent.id}, format="json")
+
+    def test_a_chat_reply_keeps_the_review_open_and_tells_the_agent(self, ensure_work):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/messages/", {"agent": self.agent.id, "openai_obj": {
+                "role": "user", "content": "Is Zieminek a subclass?",
+            }}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(self.agent.message_set.last().openai_obj["content"], "Is Zieminek a subclass?")
+        self.agent.refresh_from_db()
+        state = self.agent.current_state_update()
+        self.assertIn("Taxon review open: the review you requested for the `occurrence` table is waiting for the user "
+                      "(1 of 3 names undecided).", state)
+        self.assertIn("Done can overwrite such edits.", state)
+        self.assertEqual(self.finish().status_code, 409)  # ChatIPT has not answered yet
+
+        Message.objects.create(agent=self.agent, openai_obj={"role": "assistant", "content": "It is a genus."})
+        self.assertEqual(self.client.post(
+            f"/api/taxon-matches/{TaxonNameMatch.objects.get(verbatim_label='Zieminek').id}/decide/",
+            {"decision": "keep_original"},
+        ).status_code, 200)
+        response = self.finish()
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn("[NOTE: ChatIPT applied the reviewed taxon names itself", self.agent.message_set.last().openai_obj["content"])
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.open_taxon_review, {})
+        self.assertNotIn("Taxon review open", self.agent.current_state_update())
+
+    def test_skip_closes_the_review_without_writing_names(self, ensure_work):
+        response = self.skip()
+        self.assertEqual(response.status_code, 200, response.content)
+        self.table.refresh_from_db()
+        self.assertNotIn("scientificName", self.table.df.columns)
+        message = self.agent.message_set.last()
+        self.assertEqual(response.json()["message"]["id"], message.id)
+        self.assertEqual(message.role, Message.Role.USER)
+        content = message.openai_obj["content"]
+        self.assertTrue(content.startswith("I skipped the taxon name review: keep the names as they are.\n\n[NOTE: "))
+        self.assertIn("(1 of 3 names were undecided)", content)
+        self.assertIn("Do not call ApplyTaxonDecisions for this review", content)
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.open_taxon_review, {})
+        self.assertEqual(TaxonNameMatch.objects.get(verbatim_label="Dinychus").decision, "accepted")  # kept, not applied
+        ensure_work.assert_called_once_with(self.dataset.id)
+
+        Message.objects.create(agent=self.agent, openai_obj={"role": "assistant", "content": "Noted."})
+        self.assertEqual(self.skip().status_code, 409)
+        self.assertEqual(self.finish().status_code, 409)
+        self.assertEqual(ensure_work.call_count, 1)
+
+    def test_the_agent_cannot_complete_or_publish_while_the_review_is_open(self, ensure_work):
+        result = SetAgentTaskToComplete(agent_id=self.agent.id).run()
+        self.assertTrue(result.startswith(
+            "Error: The taxon review you requested is still open (1 of 3 names undecided), so you cannot complete "
+            "'Data validation and refinement' yet."
+        ), result)
+        self.assertFalse(schema_ledger.result_is_progress("SetAgentTaskToComplete", result))
+        self.agent.task.name = Task.FINAL_PUBLICATION_TASK
+        self.agent.task.save()
+        self.assertIn("so you cannot publish yet.", PublishToGBIF(agent_id=self.agent.id).run())
+        self.agent.refresh_from_db()
+        self.assertIsNone(self.agent.completed_at)
+
+        self.skip()
+        self.assertNotIn("taxon review", SetAgentTaskToComplete(agent_id=self.agent.id).run())
+        self.assertNotIn("taxon review", PublishToGBIF(agent_id=self.agent.id).run())
+
+    def test_another_review_cannot_replace_the_open_one(self, ensure_work):
+        result = RequestTaxonReview(
+            agent_id=self.agent.id, table_id=self.table.id, context_column="block", message="Review again",
+        ).run()
+        self.assertTrue(result.startswith(
+            "Error: The taxon review you requested is still open (1 of 3 names undecided), so you cannot request a "
+            "review of another table or context column yet."
+        ), result)
+        self.assertFalse(schema_ledger.result_is_progress("RequestTaxonReview", result))
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.open_taxon_review, {"source_table": "occurrence", "context_column": ""})
+
+
+class OpenReviewTurnTests(TestCase):
+    @patch("api.models.create_response_message")
+    def test_a_plain_answer_ends_the_turn_while_the_review_is_open(self, model):
+        task = Task.objects.create(name="Workflow action test", text="Complete it.", order=1)
+        Task.objects.create(name="Data maintenance", text="Stay available.", order=2)
+        agent = Agent.create_with_system_message(
+            dataset=Dataset.objects.create(title="Open review", description="Test"), task=task, tables=[],
+        )
+        scope = {"source_table": "occurrence", "context_column": ""}
+        agent.pause_for_taxon_review("Please review.", scope)
+        Message.objects.create(agent=agent, openai_obj={"role": "user", "content": "Is Oligochaeta a subclass?"})
+        model.return_value = CompatAssistantMessage(content="Yes; choose COL's subclass in the review.")
+
+        messages = agent.next_message()
+
+        self.assertEqual(model.call_count, 1)  # no "took no action" retry pushing it to complete
+        self.assertEqual(messages[-1].openai_obj["content"], "Yes; choose COL's subclass in the review.")
+        agent.refresh_from_db()
+        self.assertEqual(agent.open_taxon_review, scope)
+        self.assertIsNone(agent.completed_at)
+
+
+class OpenReviewMigrationTests(TestCase):
+    def test_only_reviews_still_waiting_for_the_user_stay_open(self):
+        from importlib import import_module
+        from django.apps import apps
+
+        migration = import_module("api.migrations.0040_agent_open_taxon_review")
+        dataset = Dataset.objects.create(title="Migrated")
+        task = Task.objects.create(name="Data validation and refinement", text="x")
+        scope = {"source_table": "identification", "context_column": ""}
+        waiting, answered, completed = (Agent.objects.create(dataset=dataset, task=task) for _ in range(3))
+        for agent in (waiting, answered, completed):
+            Message.objects.create(agent=agent, openai_obj={"role": "assistant", "content": "Review", "taxon_review": scope})
+        Message.objects.create(agent=answered, openai_obj={"role": "user", "content": "Done"})
+        completed.completed_at = timezone.now()
+        completed.save()
+
+        migration.open_waiting_reviews(apps, None)
+
+        self.assertEqual([Agent.objects.get(id=agent.id).open_taxon_review for agent in (waiting, answered, completed)],
+                         [scope, {}, {}])

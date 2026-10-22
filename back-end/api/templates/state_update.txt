@@ -37,6 +37,10 @@ Use only the current URLs below for explicit Markdown download links. Missing UR
 - GBIF validator: not yet run for the current archive
 {% endif %}
 
+{% if open_taxon_review %}
+Taxon review open: the review you requested for the `{{ open_taxon_review.source_table }}` table is waiting for the user ({{ open_taxon_review.undecided }} of {{ open_taxon_review.total }} names undecided). Reply to their chat messages as usual, then end your turn: the review stays open until the user presses Done (ChatIPT applies their decisions) or Skip (the names stay as they are), and SetAgentTaskToComplete and PublishToGBIF are refused until then. For a change to these names' scientificName, scientificNameAuthorship or taxonRank, point the user to the review choice that makes it (COL's suggestion or another COL name, a Catalogue of Life search, Keep original, or Type a correction) rather than editing those columns yourself: Done can overwrite such edits.
+
+{% endif %}
 {% if tool_call_count and tool_call_count > call_count_nudge_threshold %}
 Note: this task stage has made {{ tool_call_count }} tool calls so far. If the package above is already exported, uploaded, and valid, prefer calling SetAgentTaskToComplete over re-checking it again. If you're stuck on something specific, use RequestUserInput.
 {% endif %}

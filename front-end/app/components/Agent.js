@@ -317,8 +317,18 @@ const Agent = ({
     }
   };
 
-  // ChatIPT applies the reviewed names itself, then hands the outcome back to the agent.
-  const finishTaxonReview = async () => {
+  // Done: ChatIPT applies the reviewed names itself, then hands the outcome back to the agent.
+  const finishTaxonReview = () => closeTaxonReview('finish-review');
+
+  // Skip: the names stay as they are; decisions already made are kept but not applied.
+  const skipTaxonReview = () => {
+    if (!window.confirm('Skip the taxon name review? No suggested names will be applied, and the names stay as they are in your data.')) {
+      return;
+    }
+    closeTaxonReview('skip-review');
+  };
+
+  const closeTaxonReview = async (endpoint) => {
     setShowTaxonReview(false);
     setIsUserSending(true);
     setIsLoading(true);
@@ -329,7 +339,7 @@ const Agent = ({
       if (csrfToken) {
         headers['X-CSRFToken'] = csrfToken;
       }
-      const response = await fetch(`${config.baseUrl}/api/taxon-matches/finish-review/`, {
+      const response = await fetch(`${config.baseUrl}/api/taxon-matches/${endpoint}/`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ agent: agent.id }),
@@ -347,7 +357,7 @@ const Agent = ({
         await refreshTables();
       }
     } catch (error) {
-      console.error('Error finishing taxon review:', error);
+      console.error('Error closing taxon review:', error);
       setUploadError(error.message);
     } finally {
       setIsLoading(false);
@@ -511,11 +521,16 @@ const Agent = ({
   // Determine if the assistant is waiting for a reply from the user
   const lastMessage = (agent.message_set && agent.message_set.length > 0) ? agent.message_set[agent.message_set.length - 1] : null;
   const assistantWaitingForReply = lastMessage && lastMessage.role === 'assistant' && (!lastMessage.openai_obj.tool_calls || lastMessage.openai_obj.tool_calls.length === 0);
-  const taxonReviewScope = [...(agent.message_set || [])]
+  // A requested review stays open, also through chat replies, until the user presses Done or Skip.
+  const openTaxonReview = !agent.completed_at && agent.open_taxon_review && Object.keys(agent.open_taxon_review).length > 0
+    ? agent.open_taxon_review
+    : null;
+  const taxonReviewScope = openTaxonReview || [...(agent.message_set || [])]
     .reverse()
     .find((message) => message.role === 'assistant' && message.openai_obj?.taxon_review)
     ?.openai_obj.taxon_review;
-  const awaitingTaxonReview = Boolean(assistantWaitingForReply && lastMessage.openai_obj?.taxon_review);
+  const awaitingTaxonReview = Boolean(openTaxonReview && assistantWaitingForReply);
+  const taxonReviewActionable = awaitingTaxonReview && !isUserSending && !agent.busy_thinking;
   const composerClassName = [
     'chat-composer border rounded p-3 mt-3',
     isDark ? 'bg-dark border-secondary text-light' : 'bg-light'
@@ -572,18 +587,25 @@ const Agent = ({
           )}
           
           {taxonReviewScope && !agent.completed_at && (
-            <div className={`taxon-review-callout d-flex flex-wrap align-items-center gap-2 mt-2${awaitingTaxonReview ? '' : ' opacity-75'}`}>
+            <div className={`taxon-review-callout d-flex flex-wrap align-items-center gap-2 mt-2${openTaxonReview ? '' : ' opacity-75'}`}>
               <button
                 type="button"
-                className={`btn ${awaitingTaxonReview ? 'btn-primary' : 'btn-outline-primary'} btn-sm`}
+                className={`btn ${openTaxonReview ? 'btn-primary' : 'btn-outline-primary'} btn-sm`}
                 onClick={() => setShowTaxonReview(true)}
               >
                 <i className="bi bi-list-check me-1" aria-hidden="true"></i>
                 Review taxon names
               </button>
-              {awaitingTaxonReview && (
+              {taxonReviewActionable && (
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={skipTaxonReview}>
+                  Skip review
+                </button>
+              )}
+              {openTaxonReview && (
                 <span className="small text-muted">
-                  Decide on the suggested names, then press “Done” to apply them.
+                  {taxonReviewActionable
+                    ? 'Decide on the names and press “Done” to apply them, or skip to keep them as they are. Questions? Ask in the chat; the review stays open.'
+                    : 'The review stays open; you can finish it once ChatIPT has replied.'}
                 </span>
               )}
             </div>
@@ -630,7 +652,7 @@ const Agent = ({
                         setUploadError(null);
                       }
                     }}
-                    placeholder="Message ChatIPT"
+                    placeholder={openTaxonReview ? 'Questions about the names? Ask here.' : 'Message ChatIPT'}
                     disabled={isUserSending}
                     aria-label="Message ChatIPT"
                   />
@@ -713,7 +735,9 @@ const Agent = ({
           show={showTaxonReview}
           onClose={() => setShowTaxonReview(false)}
           onDone={finishTaxonReview}
-          editable={awaitingTaxonReview && !isUserSending && !agent.busy_thinking}
+          onSkip={skipTaxonReview}
+          open={Boolean(openTaxonReview)}
+          editable={taxonReviewActionable}
         />
       )}
     </>
