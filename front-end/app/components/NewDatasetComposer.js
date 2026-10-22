@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import config from '../config.js';
 import { getCsrfToken } from '../utils/csrf.js';
 import { ACCEPT_INPUT_EXTENSIONS, ALLOWED_FILE_EXTENSIONS, isExtensionAllowed } from '../utils/uploadConstraints.js';
+import { formatFileSize, sendUpload, uploadSizeError } from '../utils/uploadSize.mjs';
 import { useAuth } from '../contexts/AuthContext.js';
 import { useTheme } from '../contexts/ThemeContext.js';
 
@@ -39,6 +40,11 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
   const fileInputRef = useRef(null);
 
   const displayName = useMemo(() => buildDisplayName(user), [user]);
+  // All files go in one request, so their total counts against the upload limit.
+  const sizeError = useMemo(
+    () => uploadSizeError(selectedFiles.map(({ file }) => file), config.maxUploadMB),
+    [selectedFiles]
+  );
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -105,7 +111,7 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (isSubmitting) {
+    if (isSubmitting || sizeError) {
       return;
     }
 
@@ -135,18 +141,14 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
         formData.append('upload_context_message', trimmedInput);
       }
 
-      const response = await fetch(`${config.baseUrl}/api/datasets/`, {
+      const response = await sendUpload(`${config.baseUrl}/api/datasets/`, {
         method: 'POST',
         body: formData,
         headers,
         credentials: 'include'
-      });
+      }, config.maxUploadMB);
 
       if (!response.ok) {
-        if (response.status === 413) {
-          throw new Error('The file is too large for the server to accept. Please reduce your data file size and try again.');
-        }
-
         let errorMessage = 'Failed to create dataset.';
 
         try {
@@ -185,13 +187,7 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
         typeof err?.message === 'string' && err.message.length > 0
           ? err.message
           : defaultMessage;
-
-      const lowerMessage = message.toLowerCase();
-      if (lowerMessage === 'failed to fetch' || lowerMessage.includes('networkerror')) {
-        setError('Upload failed. Please reduce your data file size and try again.');
-      } else {
-        setError(message || defaultMessage);
-      }
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -237,7 +233,7 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
                   aria-label="Message ChatIPT"
                 />
               </div>
-              <button type="submit" className="btn btn-primary d-flex align-items-center gap-1" disabled={isSubmitting}>
+              <button type="submit" className="btn btn-primary d-flex align-items-center gap-1" disabled={isSubmitting || Boolean(sizeError)}>
                 {isSubmitting ? (
                   <>
                     <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -261,6 +257,7 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
                   >
                     <i className="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
                     <span className="text-truncate" style={{ maxWidth: '200px' }}>{file.name}</span>
+                    <span className="opacity-75">{formatFileSize(file.size)}</span>
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-light border-0 text-white px-2 py-0"
@@ -275,11 +272,11 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
               </div>
             )}
 
-            {error && (
-              <div className="text-danger small mt-3" role="alert">
-                {error}
+            {[error, sizeError].filter(Boolean).map((message) => (
+              <div key={message} className="text-danger small mt-3" role="alert">
+                {message}
               </div>
-            )}
+            ))}
 
             <input
               ref={fileInputRef}
@@ -290,7 +287,7 @@ const NewDatasetComposer = ({ onDatasetCreated }) => {
               className="d-none"
             />
             <div className="text-muted small mt-3">
-              Tip: use the paperclip to add data files, tree files, or manuscript PDFs.
+              Tip: use the paperclip to add data files, tree files, or manuscript PDFs, up to {config.maxUploadMB} MB in total.
             </div>
           </form>
         </div>

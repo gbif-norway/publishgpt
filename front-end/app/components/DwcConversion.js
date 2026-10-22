@@ -7,6 +7,7 @@ import { useDataset } from '../contexts/DatasetContext'
 import { attentionItems, chatVisible, conflictsFor, optionState, shownRecommendation, unresolvedIssues } from '../utils/conversionReview.mjs'
 import { AGENT_NAMES_ID, automaticSummary, conversionTitle, dedupeNotices, glossaryEntry, isColumnId, makeSelector, shortTerm } from '../utils/conversionPlan.mjs'
 import { focusDecision } from '../utils/focusDecision'
+import { formatFileSize, sendUpload, uploadSizeError } from '../utils/uploadSize.mjs'
 import ConversionAiDecisions from './ConversionAiDecisions'
 import ConversionAutomaticSummary from './ConversionAutomaticSummary'
 import ConversionChat from './ConversionChat'
@@ -30,13 +31,15 @@ export function ConversionUpload({ onDatasetCreated }) {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const sizeError = uploadSizeError(files, config.maxUploadMB)
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setError('')
+    event.preventDefault(); if (sizeError) return
+    setBusy(true); setError('')
     try {
       const body = new FormData()
       body.append('workflow_type', 'dwca_conversion'); body.append('title', title)
       files.forEach(file => body.append('files', file))
-      const response = await fetch(`${config.baseUrl}/api/datasets/`, { method: 'POST', body, credentials: 'include', headers: { 'X-CSRFToken': await getCsrfToken() } })
+      const response = await sendUpload(`${config.baseUrl}/api/datasets/`, { method: 'POST', body, credentials: 'include', headers: { 'X-CSRFToken': await getCsrfToken() } }, config.maxUploadMB)
       const data = await response.json()
       if (!response.ok) throw new Error(Array.isArray(data) ? data.join(' ') : JSON.stringify(data))
       onDatasetCreated(data.id)
@@ -50,10 +53,10 @@ export function ConversionUpload({ onDatasetCreated }) {
         <span id="conversion-title-help" className="form-text">Leave this blank to use the title in the archive&apos;s metadata, or the file name.</span></label>
       <label className="form-label">Archive or loose files<input type="file" multiple accept=".zip,.dwca,.csv,.tsv,.txt,.xml" className="form-control mt-1" disabled={busy} onChange={event => setFiles(Array.from(event.target.files || []))} /></label>
       <p className="small text-body-secondary mb-0">Add a ZIP, or select all the archive&apos;s files together. Include meta.xml and eml.xml if available. For loose tables, name the main table occurrence.csv, event.csv or taxon.csv.</p>
-      {files.length > 0 && <ul>{files.map(file => <li key={file.name}>{file.name} · {(file.size / 1024).toFixed(0)} KB</li>)}</ul>}
+      {files.length > 0 && <ul>{files.map(file => <li key={file.name}>{file.name} · {formatFileSize(file.size)}</li>)}</ul>}
       <small className="text-muted">Maximum 200 MB uploaded or expanded. Archives built around events, occurrences or taxa (a species checklist) are accepted. A checklist on its own produces a taxonomy data package; actual occurrence records can also be converted to the Data Package standard after you review them.</small>
-      {error && <div className="alert alert-danger" role="alert">{error}</div>}
-      <button className="btn btn-primary align-self-start" disabled={busy || !files.length}>{busy ? 'Uploading…' : 'Inspect my archive'}<i className="bi bi-arrow-right ms-2" aria-hidden="true" /></button>
+      {[error, sizeError].filter(Boolean).map(message => <div key={message} className="alert alert-danger" role="alert">{message}</div>)}
+      <button className="btn btn-primary align-self-start" disabled={busy || !files.length || Boolean(sizeError)}>{busy ? 'Uploading…' : 'Inspect my archive'}<i className="bi bi-arrow-right ms-2" aria-hidden="true" /></button>
     </form>
   </div>
 }

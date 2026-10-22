@@ -17,6 +17,7 @@ import {
   ACCEPT_INPUT_EXTENSIONS,
   isExtensionAllowed
 } from '../utils/uploadConstraints.js';
+import { exceedsUploadLimit, formatFileSize, oversizedFilesError, sendUpload } from '../utils/uploadSize.mjs';
 import { useTheme } from '../contexts/ThemeContext.js';
 
 const normalizeMessageContent = (content) => {
@@ -248,11 +249,17 @@ const Agent = ({
     }
 
     const rejectedNames = [];
+    const oversized = [];
     const nextFiles = [...selectedFiles];
 
     files.forEach((file) => {
       if (!isExtensionAllowed(file.name)) {
         rejectedNames.push(file.name);
+        return;
+      }
+      // Each file is uploaded in its own request, so the limit applies per file.
+      if (exceedsUploadLimit(file, config.maxUploadMB)) {
+        oversized.push(file);
         return;
       }
 
@@ -271,13 +278,13 @@ const Agent = ({
     setSelectedFiles(nextFiles);
     resetFileInput();
 
-    if (rejectedNames.length > 0) {
-      setUploadError(
-        `Unsupported file type: ${rejectedNames.join(', ')}. Allowed types: ${ALLOWED_FILE_EXTENSIONS.join(', ')}`
-      );
-    } else {
-      setUploadError(null);
-    }
+    const errors = [
+      rejectedNames.length > 0
+        ? `Unsupported file type: ${rejectedNames.join(', ')}. Allowed types: ${ALLOWED_FILE_EXTENSIONS.join(', ')}`
+        : null,
+      oversizedFilesError(oversized, config.maxUploadMB)
+    ].filter(Boolean);
+    setUploadError(errors.length > 0 ? errors.join(' ') : null);
   };
 
   const removeSelectedFile = (id) => {
@@ -402,17 +409,14 @@ const Agent = ({
             formData.append('upload_context_message', trimmedInput);
           }
 
-          const response = await fetch(`${config.baseUrl}/api/user-files/`, {
+          const response = await sendUpload(`${config.baseUrl}/api/user-files/`, {
             method: 'POST',
             body: formData,
             headers,
             credentials: 'include'
-          });
+          }, config.maxUploadMB);
 
           if (!response.ok) {
-            if (response.status === 413) {
-              throw new Error('The file is too large for the server to accept. Please reduce your data file size and try again.');
-            }
             let errorMessage = 'Failed to upload file.';
             try {
               const errorData = await response.json();
@@ -481,16 +485,7 @@ const Agent = ({
         typeof error?.message === 'string' && error.message.length > 0
           ? error.message
           : defaultMessage;
-
-      const lowerMessage = message.toLowerCase();
-      if (
-        filesToUpload.length > 0 &&
-        (lowerMessage === 'failed to fetch' || lowerMessage.includes('networkerror'))
-      ) {
-        setUploadError('Upload failed. Please reduce your data file size and try again.');
-      } else {
-        setUploadError(message || defaultMessage);
-      }
+      setUploadError(message);
     }
   };
 
@@ -683,6 +678,7 @@ const Agent = ({
                     >
                       <i className="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
                       <span className="text-truncate" style={{ maxWidth: '200px' }}>{file.name}</span>
+                      <span className="opacity-75">{formatFileSize(file.size)}</span>
                       <button
                         type="button"
                         className="btn btn-sm btn-outline-light border-0 text-white px-2 py-0"
@@ -711,7 +707,7 @@ const Agent = ({
                 className="d-none"
               />
               <div className="text-muted small mt-3">
-                Tip: use the paperclip to add data files, tree files, or manuscript PDFs.
+                Tip: use the paperclip to add data files, tree files, or manuscript PDFs, up to {config.maxUploadMB} MB each.
               </div>
               {showMetadataEditLink && (
                 <button
